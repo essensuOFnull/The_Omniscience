@@ -1,0 +1,40 @@
+{
+  "name": "The_Omniscience",
+  "version": "7.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "electron --experimental-default-type=commonjs .",
+    "postinstall": "electron-rebuild --use-tmp-dir"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@ghostery/adblocker-electron": "^2.18.1",
+    "@monaco-editor/react": "^4.7.0",
+    "@mui/icons-material": "^9.2.0",
+    "@mui/material": "^9.2.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "chonky2": "^6.5.8",
+    "cross-env": "^10.1.0",
+    "cross-fetch": "^4.1.0",
+    "electron": "^43.2.0",
+    "electron-chrome-extensions": "^4.9.0",
+    "iconv-lite": "^0.7.3",
+    "motion": "^12.42.2",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-filerobot-image-editor": "^5.0.0-beta.159",
+    "react-frame-component": "^5.3.2",
+    "styled-components": "^6.4.3",
+    "vite": "^5.2.0"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  },
+  "devDependencies": {
+    "electron-rebuild": "^3.2.9"
+  }
+}

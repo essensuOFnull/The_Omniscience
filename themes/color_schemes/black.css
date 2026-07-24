@@ -1,0 +1,62 @@
+/* === Определяем кастомные свойства как числа, чтобы анимация была плавной === */
+@property --TheOmniscience-max-r {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --TheOmniscience-max-g {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --TheOmniscience-max-b {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --TheOmniscience-target-alpha {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.25;
+}
+
+@property --TheOmniscience-text-brightness {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 255;
+}
+
+/* === Тема === */
+:root {
+  color-scheme: dark;
+  --TheOmniscience-text-brightness: 255;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #000000 !important;
+    color: #ffffff !important;
+  }
+}
+body, html, main {
+  background: transparent !important;
+}
+.window {
+  background: #000 !important;
+}
+
+/* === Анимация === */
+:root {
+  animation: set-black 0s linear;
+}
+
+@keyframes set-black {
+  0%,
+  100% { --TheOmniscience-max-r: 0; --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 0; }
+}

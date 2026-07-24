@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Crossout — Калькулятор разбора декора</title>
+    <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="main-window">
+    <menu role="tablist">
+        <li role="tab" data-tab="0" aria-selected="true">Исходные данные</li>
+        <li role="tab" data-tab="1" aria-selected="false">Результат</li>
+    </menu>
+
+    <!-- Панель Исходные данные -->
+    <div role="tabpanel" data-panel="0" class="window" style="display: block;">
+        <div class="window-body">
+            <!-- Таблица цен ресурсов -->
+            <div class="sunken-panel">
+                <table class="interactive" id="priceTable">
+                    <thead>
+                        <tr><th colspan="3">Цены на ресурсы (без учёта комиссии)</th></tr>
+                        <tr><th>Цена, монет (за пакет)</th><th>Кол-во в пакете</th><th>Ресурс</th></tr>
+                    </thead>
+                    <tbody id="priceTbody"></tbody>
+                </table>
+            </div>
+
+            <!-- Таблица выдачи ресурсов при разборе -->
+            <div class="sunken-panel">
+                <table class="interactive" id="dropTable">
+                    <thead>
+                        <tr><th colspan="7">Сколько выдаётся ресурсов за разбор декора разной редкости</th></tr>
+                        <tr><th style="width:110px">Редкость</th>
+                            <th><img class="rarity-img" src="./images/scrap_metal.png" alt="Лом"><br>Лом</th>
+                            <th><img class="rarity-img" src="./images/copper.png" alt="Медь"><br>Медь</th>
+                            <th><img class="rarity-img" src="./images/wires.png" alt="Провода"><br>Провода</th>
+                            <th><img class="rarity-img" src="./images/plastic.png" alt="Пластик"><br>Пластик</th>
+                            <th><img class="rarity-img" src="./images/batteries.png" alt="Батареи"><br>Батареи</th>
+                            <th><img class="rarity-img" src="./images/electronics.png" alt="Электроника"><br>Электроника</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dropTbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Панель Результат -->
+    <div role="tabpanel" data-panel="1" class="window" style="display: none;">
+        <div class="window-body">
+            <div class="sunken-panel">
+                <table class="interactive" id="resultTable">
+                    <thead><tr><th colspan="3">Стоимость разбора одного декора каждой редкости</th></tr>
+                    <tr><th>Редкость</th><th>Без комиссии (крафты)</th><th>С комиссией 10%</th></tr></thead>
+                    <tbody id="resultTbody"></tbody>
+                </table>
+            </div>
+            <div class="sunken-panel" style="padding: 12px;">
+                <h4 style="margin-top:0">📊 Как работает расчёт:</h4>
+                <ul style="margin:0; padding-left:20px;">
+                    <li><strong>(количество ресурса ÷ размер пакета) × цена за пакет</strong> = стоимость ресурса</li>
+                    <li>Суммируем все ресурсы для каждой редкости → стоимость без комиссии</li>
+                    <li>Вычитаем 10% комиссии рынка → чистая прибыль</li>
+                </ul>
+                <p style="text-align:center; margin-top:12px; background:#fff3cd56; padding:8px;">Подбредье на вашей стороне, удачного фарма 😎</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---------- Данные о ресурсах ----------
+    const RESOURCES = [
+        { name: "Лом", img: "./images/scrap_metal.png", price: 0, packSize: 100 },
+        { name: "Медь", img: "./images/copper.png", price: 0, packSize: 100 },
+        { name: "Провода", img: "./images/wires.png", price: 0, packSize: 100 },
+        { name: "Пластик", img: "./images/plastic.png", price: 0, packSize: 100 },
+        { name: "Батареи", img: "./images/batteries.png", price: 0, packSize: 10 },
+        { name: "Электроника", img: "./images/electronics.png", price: 0, packSize: 10 }
+    ];
+
+    const RARITIES = [
+        { name: "Редкая", color: "#379BFE" },
+        { name: "Особая", color: "#48C2CE" },
+        { name: "Эпическая", color: "#CA40FF" },
+        { name: "Легендарная", color: "#FFA217" }
+    ];
+
+    // Количество ресурсов при разборе декора (4 редкости × 6 ресурсов)
+    let dropData = [
+        [150, 50,  0,  0,  0,  0],   // Редкая
+        [40,  100, 60, 30,  0,  0],   // Особая
+        [80,  150, 170,80,  0,  0],   // Эпическая
+        [50,  250, 0,  0,  250,250]   // Легендарная
+    ];
+
+    // Функция обновления таблицы результатов (вызывается после любого изменения)
+    function updateResults() {
+        const tbody = document.getElementById('resultTbody');
+        tbody.innerHTML = '';
+        for (let r = 0; r < RARITIES.length; r++) {
+            let total = 0;
+            for (let i = 0; i < RESOURCES.length; i++) {
+                const count = dropData[r][i];
+                if (count <= 0) continue;
+                const price = RESOURCES[i].price;
+                const packSize = RESOURCES[i].packSize;
+                if (packSize > 0 && price > 0) {
+                    total += (count / packSize) * price;
+                }
+            }
+            const net = total * 0.9;
+            const tr = document.createElement('tr');
+            const th = document.createElement('th');
+            th.style.background = RARITIES[r].color;
+            th.textContent = RARITIES[r].name;
+            tr.appendChild(th);
+            const tdGross = document.createElement('td');
+            tdGross.textContent = total.toFixed(2) + ' монет';
+            tr.appendChild(tdGross);
+            const tdNet = document.createElement('td');
+            tdNet.style.fontWeight = 'bold';
+            tdNet.textContent = net.toFixed(2) + ' монет';
+            tr.appendChild(tdNet);
+            tbody.appendChild(tr);
+        }
+    }
+
+    // Построить таблицу цен ресурсов
+    function buildPriceTable() {
+        const tbody = document.getElementById('priceTbody');
+        tbody.innerHTML = '';
+        for (let i = 0; i < RESOURCES.length; i++) {
+            const res = RESOURCES[i];
+            const row = tbody.insertRow();
+            // Цена
+            const tdPrice = row.insertCell(0);
+            const priceInput = document.createElement('input');
+            priceInput.type = 'number';
+            priceInput.step = '0.01';
+            priceInput.value = res.price;
+            priceInput.addEventListener('input', (function(idx) {
+                return function(e) {
+                    let val = parseFloat(e.target.value);
+                    if (isNaN(val)) val = 0;
+                    RESOURCES[idx].price = val;
+                    updateResults();
+                };
+            })(i));
+            tdPrice.appendChild(priceInput);
+            // Размер пакета
+            const tdPack = row.insertCell(1);
+            const packInput = document.createElement('input');
+            packInput.type = 'number';
+            packInput.step = '1';
+            packInput.value = res.packSize;
+            packInput.addEventListener('input', (function(idx) {
+                return function(e) {
+                    let val = parseInt(e.target.value);
+                    if (isNaN(val)) val = 0;
+                    RESOURCES[idx].packSize = val;
+                    updateResults();
+                };
+            })(i));
+            tdPack.appendChild(packInput);
+            // Ресурс (картинка + название)
+            const tdRes = row.insertCell(2);
+            tdRes.style.display = 'block';
+            tdRes.style.alignItems = 'center';
+            tdRes.style.gap = '10px';
+            tdRes.style.justifyContent = 'center';
+            const img = document.createElement('img');
+            img.src = res.img;
+            img.alt = res.name;
+            img.className = 'resource-img';
+            img.style.width = '48px';
+            img.style.height = '48px';
+            const span = document.createElement('span');
+            span.textContent = res.name;
+            tdRes.appendChild(img);
+            tdRes.appendChild(span);
+        }
+    }
+
+    // Построить таблицу выдачи ресурсов (drop)
+    function buildDropTable() {
+        const tbody = document.getElementById('dropTbody');
+        tbody.innerHTML = '';
+        for (let r = 0; r < RARITIES.length; r++) {
+            const row = tbody.insertRow();
+            // Заголовок редкости
+            const th = document.createElement('th');
+            th.style.background = RARITIES[r].color;
+            th.textContent = RARITIES[r].name;
+            row.appendChild(th);
+            // Для каждого ресурса – поле ввода
+            for (let i = 0; i < RESOURCES.length; i++) {
+                const td = row.insertCell();
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = '1';
+                input.value = dropData[r][i];
+                input.addEventListener('input', (function(rowIdx, colIdx) {
+                    return function(e) {
+                        let val = parseInt(e.target.value);
+                        if (isNaN(val)) val = 0;
+                        dropData[rowIdx][colIdx] = val;
+                        updateResults();
+                    };
+                })(r, i));
+                td.appendChild(input);
+            }
+        }
+    }
+
+    // Инициализация вкладок
+    function initTabs() {
+        const tabs = document.querySelectorAll('[role="tab"]');
+        const panels = document.querySelectorAll('[role="tabpanel"]');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetTab = tab.getAttribute('data-tab');
+                tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
+                tab.setAttribute('aria-selected', 'true');
+                panels.forEach(panel => {
+                    const panelNum = panel.getAttribute('data-panel');
+                    panel.style.display = (panelNum === targetTab) ? 'block' : 'none';
+                });
+            });
+        });
+    }
+
+    // Запуск
+    buildPriceTable();
+    buildDropTable();
+    updateResults();
+    initTabs();
+</script>
+<div class="footer-note">
+    📝 Все изменения применяются сразу.
+</div>
+</body>
+</html>

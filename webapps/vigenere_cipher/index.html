@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="planetcalc_common_3769.css">
+
+    <meta name="keywords" content="#криптография, #шифр, Компьютеры, Криптография, текст, шифр, шифр Виженера">
+    <meta name="description"
+        content=" Калькулятор шифрует входной текст на русском языке шифром Виженера. Неалфавитные символы (пробелы, знаки препинания, цифры) — не преобразуются.">
+    <meta name="author" content="Timur : пользователь planetcalc">
+    <meta name="generator" content="Planetcalc">
+    <style media="all">
+        body {
+            min-height: 100%
+        }
+
+        h1 {
+            font-size: 3.75rem;
+            line-height: 3.75rem;
+        }
+
+        img.pc-math {
+            vertical-align: middle;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .social-float {
+            position: absolute;
+            margin-left: auto;
+            margin-right: auto;
+            left: 0;
+            right: 0;
+            width: 350px;
+            height: 400px;
+            background: white;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        td.comment_created {
+            border-bottom: 0 !important;
+            padding-bottom: 0 !important;
+        }
+
+        td.message {
+            padding-top: 0 !important;
+        }
+
+        #main_div {
+            padding: 0
+        }
+
+        .f_ {
+            margin-top: 0;
+            line-height: normal;
+        }
+
+        #request_status {
+            width: 900px;
+        }
+
+        .modal-body {
+            max-height: 800px;
+        }
+
+        .sofia {
+            margin: 8px auto;
+            text-align: center;
+        }
+
+        .v5 {
+            background-color: #fafafa;
+        }
+
+        .card-authors {
+            padding: 0 1.5em 1.5em 1.5em;
+        }
+
+        .author-date {
+            padding: 16px 0;
+        }
+
+        .author-date i {
+            padding-right: 8px;
+        }
+
+        .author-date a {
+            padding-right: 32px;
+        }
+
+        #comments {
+            margin-top: 32px;
+        }
+
+        #comments .t9 {
+            margin-top: 0;
+        }
+
+        .embed-form {
+            margin-bottom: 16px;
+        }
+
+        div.social a.oc {
+            margin-right: 16px
+        }
+
+        div.social {
+            margin: 16px 0;
+        }
+
+        div.social h4 {
+            margin-bottom: 0
+        }
+
+        .share-url-text {
+            margin: 16px 0
+        }
+
+        .share-mode {
+            margin-bottom: 16px;
+        }
+
+        .share-url-text div {
+            width: 100%
+        }
+
+        .similar-calc ul {
+            padding: 0;
+        }
+
+        .similar-calc ul li {
+            padding: 0 0 16px 16px;
+            display: inline-block;
+        }
+
+        #bottom-right-card {
+            position: -webkit-sticky;
+            position: sticky;
+            top: 80px;
+        }
+
+        #yandex_rtb_top {
+            min-height: 250px
+        }
+
+        #yandex_rtb_bottom {
+            min-height: 200px
+        }
+
+        #yandex_rtb_right {
+            min-height: 250px
+        }
+
+        @media (min-width:1366px) {
+            #yandex_rtb_sticker {
+                min-height: 500px
+            }
+        }
+    </style>
+    <title>Онлайн калькулятор: Шифр Виженера</title>
+    <script async="" crossorigin="anonymous" src="host.js"></script>
+    <style type="text/css">
+        .UZznxc {
+            height: inherit;
+            max-height: inherit;
+            min-height: inherit;
+            width: 100%
+        }
+    </style>
+    <style nonce="">
+        #005b009416 {
+            width: 1px;
+            height: 1px;
+            position: relative;
+        }
+    </style>
+    <style nonce="">
+        #id8718 {
+            width: 1px;
+            height: 1px;
+            top: 0px;
+            left: 0px;
+            position: absolute;
+        }
+    </style>
+    <style type="text/css">
+        ::-webkit-media-controls {
+            display: none !important;
+        }
+    </style>
+    <script type="text/javascript" async="" src="weborama.js"
+        charset="utf-8"></script>
+    <style type="text/css">
+        ::-webkit-media-controls {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body id="ui_viewer" class="y1 viewer">
+    <div id="main_div" class="jb">
+        <div class="main-column x_ g0" id="left-block">
+            <header>
+                <h1>Шифр Виженера</h1>
+                <p class="f_">Калькулятор шифрует входной текст на русском языке шифром Виженера. Неалфавитные
+                    символы (пробелы, знаки препинания, цифры) — не преобразуются.</p>
+                <div></div>
+            </header>
+            <script>
+                document.addEventListener("DOMContentLoaded", function () {
+                    var f = new FormatterTimeSpan();
+                    $('.nav-created').text(function (i, t) { return f.Format(t); });
+                });
+            </script>
+            <div class="article">
+                <div class="article_body">
+                    <p>Так как Шифр Цезаря у нас уже есть, было бы логично дополнить его
+                        калькулятором, который шифрует/расшифровывает текст используя шифр Виженера. </p>
+                    <p>Суть алгоритма шифрования проста. Шифр Виженера — это последовательность шифров Цезаря с
+                        различными значениями сдвига (ROTX — см. Шифр Цезаря). То есть к
+                        первой букве текста применяется преобразование, например, ROT5, ко второй, например,
+                        ROT17, и так далее. Последовательность применяемых преобразований определяется ключевой
+                        фразой, в которой каждая буква слова обозначает требуемый сдвиг, например, фраза ГДЕ ОН
+                        задает такую последовательность шифров Цезаря: ROT3-ROT4-ROT5-ROT15-ROT14, которая
+                        повторяется, пока не будет зашифрован весь текст сообщения. </p>
+                    <p>Как повествует Википедия, шифр Виженера является шифром подстановки, то есть
+                        шифром, в котором каждая буква исходного текста заменяется буквой шифр-текста. Для
+                        вскрытия подобных шифров используется частотный криптоанализ. </p>
+                    <p>Еще там можно прочитать про вариант шифра с бегущим ключом (running key), который был
+                        когда-то был невзламываемым. Этот вариант заключается в использовании в качестве ключа
+                        блока текста, равного по длине исходному тексту. Впрочем, и этот вариант, как оказалось,
+                        успешно поддается взлому. Проблема с бегущим ключом шифра Виженера состоит в том, что
+                        криптоаналитик имеет статистическую информацию о ключе (учитывая, что блок текста
+                        написан на известном языке) и эта информация будет отражаться в шифрованном тексте. Если
+                        ключ действительно случайный, его длина равна длине сообщения и он использовался
+                        единожды, то шифр Виженера теоретически будет невзламываемым, но такие системы уже
+                        относятся к классу систем <strong>одноразового кода</strong>, или <strong>одноразового
+                            шифр-блокнота</strong> (<strong>one-time pad</strong>). Они действительно не
+                        поддаются взлому, однако их практическое применение довольно затруднительно.</p>
+                    <p></p>
+                    <div id="calculator2463"></div>
+                    <div class="pc-article-part">
+                        <div class="u5">
+                            <div class="w_ f8" id="dialogv6411ef371cc2e">
+                                <div class="x_ j0">
+                                    <div class="s8 t8">
+                                        <h4 class="y9">Шифр Виженера</h4>
+                                    </div>
+                                </div>
+                                <div class="x_ f0">
+                                    <div class="v8" id="dialogv6411ef371cc2e_method"><label
+                                            class="l8 w8">Квадрат Виженера начинается с</label>
+                                        <div class="m8">
+                                            <div class="h2">
+                                                <div class="u2 o1 v1"
+                                                    style="--mdc-ripple-fg-size: 24px; --mdc-ripple-fg-scale: 1.6666666666666667; --mdc-ripple-left: 8px; --mdc-ripple-top: 8px;">
+                                                    <input type="radio" class="v2"
+                                                        id="dialogv6411ef371cc2e_method0" name="method"
+                                                        checked="" value="ROT0">
+                                                    <div class="w2">
+                                                        <div class="x2"></div>
+                                                        <div class="y2"></div>
+                                                    </div>
+                                                </div><label for="dialogv6411ef371cc2e_method0">ROT0 ("a"
+                                                    преобразуется в "а")</label>
+                                            </div>
+                                            <div class="h2">
+                                                <div class="u2 o1 v1"
+                                                    style="--mdc-ripple-fg-size: 24px; --mdc-ripple-fg-scale: 1.6666666666666667; --mdc-ripple-left: 8px; --mdc-ripple-top: 8px;">
+                                                    <input type="radio" class="v2"
+                                                        id="dialogv6411ef371cc2e_method1" name="method"
+                                                        value="ROT1">
+                                                    <div class="w2">
+                                                        <div class="x2"></div>
+                                                        <div class="y2"></div>
+                                                    </div>
+                                                </div><label for="dialogv6411ef371cc2e_method1">ROT1 ("а"
+                                                    преобразуется в "б")</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="n4">
+                                        <div id="hlp_dialogv6411ef371cc2e_method" class="e4 c4"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ j0">
+                                    <div class="j4 m4 g8"><textarea class="l4" name="text"
+                                            id="dialogv6411ef371cc2e_text" rows="5"
+                                            cols="60">Карл у Клары украл кораллы</textarea>
+                                        <div class="c3 j3 k3">
+                                            <div class="e3"></div>
+                                            <div class="f3" style="width: 40.25px;"><label class="h3 i3"
+                                                    for="dialogv6411ef371cc2e_text">Текст</label></div>
+                                            <div class="g3"></div>
+                                        </div>
+                                    </div>
+                                    <div class="n4">
+                                        <div id="hlp_dialogv6411ef371cc2e_text" class="e4 c4"
+                                            aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ a0">
+                                    <div class="j4 g8 o1"
+                                        style="--mdc-ripple-fg-size: 261px; --mdc-ripple-fg-scale: 1.7209317429424302; --mdc-ripple-fg-translate-start: -5.5px, -96.875px; --mdc-ripple-fg-translate-end: 87.2890625px, -102.5px;">
+                                        <input class="l4" type="text" value="кларнет" name="key"
+                                            id="dialogv6411ef371cc2e_key"><label class="h3 i3"
+                                            for="dialogv6411ef371cc2e_key">Ключ</label>
+                                        <div class="_3" style="transform-origin: 125px center;"></div>
+                                    </div>
+                                    <div class="n4">
+                                        <div id="hlp_dialogv6411ef371cc2e_key" class="e4 c4" data-original=""
+                                            aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ a0">
+                                    <div class="v8" id="dialogv6411ef371cc2e_transform"><label
+                                            class="l8 w8">Преобразование</label>
+                                        <div class="m8">
+                                            <div class="h2">
+                                                <div class="u2 o1 v1"
+                                                    style="--mdc-ripple-fg-size: 24px; --mdc-ripple-fg-scale: 1.6666666666666667; --mdc-ripple-left: 8px; --mdc-ripple-top: 8px;">
+                                                    <input type="radio" class="v2"
+                                                        id="dialogv6411ef371cc2e_transform0" name="transform"
+                                                        checked="" value="c">
+                                                    <div class="w2">
+                                                        <div class="x2"></div>
+                                                        <div class="y2"></div>
+                                                    </div>
+                                                </div><label
+                                                    for="dialogv6411ef371cc2e_transform0">Зашифровать</label>
+                                            </div>
+                                            <div class="h2">
+                                                <div class="u2 o1 v1"
+                                                    style="--mdc-ripple-fg-size: 24px; --mdc-ripple-fg-scale: 1.6666666666666667; --mdc-ripple-left: 8px; --mdc-ripple-top: 8px;">
+                                                    <input type="radio" class="v2"
+                                                        id="dialogv6411ef371cc2e_transform1" name="transform"
+                                                        value="d">
+                                                    <div class="w2">
+                                                        <div class="x2"></div>
+                                                        <div class="y2"></div>
+                                                    </div>
+                                                </div><label
+                                                    for="dialogv6411ef371cc2e_transform1">Расшифровать</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="n4">
+                                        <div id="hlp_dialogv6411ef371cc2e_transform" class="e4 c4"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ a0">
+                                    <div class="s3 _ h8 o1"><i class="w3"></i><label class="h3 i3 h8"
+                                            for="dialogv6411ef371cc2e_aselector">Алфавит</label><select
+                                            class="t3" name="aselector" id="dialogv6411ef371cc2e_aselector">
+                                            <option value="english">Английский</option>
+                                            <option value="spanish">Испанский</option>
+                                            <option value="portuguese">Португальский</option>
+                                            <option selected="selected" value="russian">Русский</option>
+                                            <option value="russiannoYO">Русский (без ё)</option>
+                                        </select>
+                                        <div class="_3"></div>
+                                    </div>
+                                    <div class="n4">
+                                        <div id="hlp_dialogv6411ef371cc2e_aselector" class="e4 c4"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ j0">
+                                    <div class="r8"><button type="button" id="dialogv6411ef371cc2e_calculate"
+                                            class="c2 g2 s_ pc-btn-calc o1"><span
+                                                id="dialogv6411ef371cc2e_button_text">Рассчитать</span></button>
+                                    </div>
+                                </div>
+                                <div class="x_ j0">
+                                    <div class="e8">
+                                        <div id="dialogv6411ef371cc2e__progress_" role="progressbar"
+                                            class="c8 m0 t0" style="display: none;">
+                                            <div class="p0"></div>
+                                            <div class="q0"></div>
+                                            <div class="n0 r0"><span class="o0"></span></div>
+                                            <div class="n0 s0"><span class="o0"></span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="x_ j0">
+                                    <div></div>
+                                    <div class="n4 x">
+                                        <div id="hlp_default_dialogv6411ef371cc2e" class="e4 c4"></div>
+                                    </div>
+                                </div>
+                                <div class="x_ j0" style="opacity: 1;">
+                                    <div class="o8">Преобразованный текст</div>
+                                    <div class="pc-output-value q8" id="dialogv6411ef371cc2e_transformed">хлрь б
+                                        пюкьы дшхтц цобнрюё</div>
+                                </div>
+                                <div class="x_ j0">
+                                    <div class="b2">
+                                        <div class="pc-calc-footer">
+                                            <div class="ba u8"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <script>function Dialogv6411ef371cc2e() { var me = this; me.id = "dialogv6411ef371cc2e"; me.GetElement = function () { return document.getElementById(me.id); }; me.GetEventHandlerName = function () { return "dialoghandlerv6411ef371cc2e"; }; this.dialog_controls = [new DialogInput("method", this, 0, new ElementAccessorRadio()), new DialogInput("text", this, 0, new ElementAccessorText()), new DialogInput("key", this, 0, new ElementAccessorText()), new DialogInput("transform", this, 0, new ElementAccessorRadio()), new DialogInput("aselector", this, 0, new ElementAccessorSelect()), new DialogInput("calculate", this, 0, new ElementAccessorOperation()), new DialogInput("_progress_", this, 0, new ElementAccessorDefault()), new DialogInput("", this, 0, new ElementAccessorDefault()), new DialogInput("transformed", this, 0, new ElementAccessorOutput())]; me.dialog_controls._all = {}; me.dialog_controls.forEach(function (e) { if (me[e.id] === undefined) me[e.id] = e; me.dialog_controls._all[e.id] = e; }); this.addHandler = function (handler) { this.dialog_controls.forEach(function (c) { c.addHandler(handler); }); }; this.SetValues = function (values) { this.dialog_controls.forEach(function (c) { if (values[c.id] !== undefined) { c.SetValue(values[c.id]); } }); }; this.Clear = function () { this.dialog_controls.forEach(function (c) { c.ResetValue(); }); }; this.SetDefaultValues = function () { this.Clear(); }; this.GetValues = function () { var ret = {}; this.dialog_controls.forEach(function (c) { ret[c.id] = c.GetValue(); }); return ret; }; this.Validate = function () { for (var i = 0; i < me.dialog_controls.length; ++i) if (!me.dialog_controls[i].Validate()) return false; return true; }; this.layout = function () { } }; document.addEventListener("DOMContentLoaded", function (event) {
+                                    var dlg = new Dialogv6411ef371cc2e();
+                                    var hd = new CalculatorHandler(new function () {
+                                        var me = this;
+                                        me.id = 2463;
+                                        me.global = 1;
+                                        var outputs = {};
+                                        me.sinks = { change: [], done: [] };
+                                        me.startOnLoad = 1;
+                                        me.infinite = 0;
+                                        var inputs = {};
+                                        var renderers = {};
+                                        var recordsets = {};
+                                        var diagrams = {};
+                                        var handler, dialog, refreshTimer; var outer = this; me.adapter = null; me.timeout = 1500;
+                                        me.auto = 1;
+                                        me.init = function (h, dlg) { var o; handler = h; dialog = dlg; me.control = new CalcController(h, me.id); var n; var fn; n = 'text'; if (dlg[n]) { inputs[n] = dlg[n]; } n = 'key'; if (dlg[n]) { inputs[n] = dlg[n]; } n = 'transform'; if (dlg[n]) { inputs[n] = dlg[n]; } n = 'method'; if (dlg[n]) { inputs[n] = dlg[n]; } n = 'aselector'; if (dlg[n]) { inputs[n] = dlg[n]; } o = dlg.transformed; outputs[o.id] = o; o.formatter = new FormatterSame(); handler.onReady(); };
+                                        me.stop = function () { };
+                                        me.start = function () {
+                                            handler.onStart();
+                                            var inputValues = me.getInputValues(); me.control.onCalculate(inputValues);
+                                        }; me.getInputs = function () {
+                                            return inputs;
+                                        };
+                                        function objectValues(a, o) {
+                                            for (var n in o) {
+                                                a.push(o[n]);
+                                            }
+                                        }
+                                        me.getOutputs = function () {
+                                            var ret = [];
+                                            objectValues(ret, outputs);
+                                            objectValues(ret, diagrams);
+                                            objectValues(ret, renderers);
+                                            return ret;
+                                        };
+                                        me.getInputValues = function () {
+                                            var r = {};
+                                            for (var n in inputs) {
+                                                r[n] = inputs[n].GetValue();
+                                            }
+                                            return r;
+                                        };
+                                        me.setResult = function (res, done) { outputs.transformed.SetValue(res.transformed); if (done) { handler.onStop(); if (PCF.requestFormulaUpdate(false)) { var mjx = window.MathJax; mjx.Hub.Queue(["Typeset", mjx.Hub]); }; } }
+                                    }, { calculate: "Рассчитать", stop: "Остановить" });;
+                                    hd.initdialog(dlg); dlg.addHandler(hd); window.dialoghandlerv6411ef371cc2e = hd;
+                                });</script>
+                        </div>
+                    </div>                            
+                    <p></p>
+                </div>
+            </div>
+            <div id="copied_msg" class="ke">
+                <div class="me">
+                    <div class="ne">Ссылка скопирована в буфер обмена</div>
+                </div>
+            </div>
+            <div class="social social-share ee">
+                <div class="share-mode">
+                    <div class="t9 share-switch">
+                        <div class="x6">
+                            <div class="z6"></div>
+                            <div class="b7 o1 v1"
+                                style="--mdc-ripple-fg-size: 0px; --mdc-ripple-fg-scale: NaN; --mdc-ripple-left: 0px; --mdc-ripple-top: 0px;">
+                                <div class="_7"><input class="a7" type="checkbox" id="share_data_md"></div>
+                            </div>
+                        </div> <label for="share_data_md">&nbsp;поделиться расчетом</label>
+                    </div>
+                    <div class="share_data_msg z"></div>
+                </div>
+            </div>
+        </div>
+    </div><!-- container-->
+    <script src="jquery.min.js" crossorigin="anonymous"></script>
+    <script src="pla_0_3768.js"></script>
+    <script
+        id="Lib220406">"use strict"; self.Planetcalc = new function () { var t = this; this.Calc2463 = function (e, r, t, s, n, a, o) { var l = { russian: "абвгдеёжзийклмнопрстуфхцчшщъыьэюя", russiannoYO: "абвгдежзийклмнопрстуфхцчшщъыьэюя", english: "abcdefghijklmnopqrstuvwxyz", spanish: "abcdefghijklmnñopqrstuvwxyz", portuguese: "abcdefghijklmnopqrstuvwxyz" }; function i(e) { for (var r = 0; r < l[a].length; ++r)if (l[a][r] == e) return r; return -1 } for (var h = new Array, u = 0; u < l[a].length; ++u) { for (var f = new Array, c = 0; c < l[a].length; ++c)f[c] = l[a]["ROT0" == s ? (u + c) % l[a].length : (u + c + 1) % l[a].length]; h[u] = f } for (var g = new Array, w = 0, u = 0; u < r.length; ++u)-1 != i(r[u].toLowerCase()) && (g[w++] = r[u]); if (!g.length) throw { source: "key", message: n.badkey }; for (var v, n = "", w = 0, u = 0; u < e.length; ++u)if ("c" == t) -1 != (v = i(e[u].toLowerCase())) ? (n += h[r = i(g[w % g.length].toLowerCase())][v], w++) : n += e[u]; else if ("d" == t) if (-1 != (v = i(e[u].toLowerCase()))) { for (r = i(g[w % g.length].toLowerCase()), c = 0; c < l[a].length; c++)h[r][c] == e[u].toLowerCase() && (n += l[a][c]); w++ } else n += e[u]; o.SetValue(n) }, this.Res2463 = { res: { badkey: "Неверный алфавит ключа", transform: { c: "Зашифровать", d: "Расшифровать" }, method: { ROT0: 'ROT0 ("a" преобразуется в "а")', ROT1: 'ROT1 ("а" преобразуется в "б")' }, aselector: { english: "Английский", russian: "Русский", spanish: "Испанский", russiannoYO: "Русский (без ё)", portuguese: "Португальский" } } }, this.Calculate2463 = function (e) { var r = {}; return t.Calc2463(e.text, e.key, e.transform, e.method, t.Res2463.res, e.aselector, { SetValue: function (e) { r.transformed = e } }), r } };</script>
+    <script>
+        PLANETCALC.init();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,297 @@
+*{
+	word-break: break-all !important;
+	word-wrap: break-word !important;
+	min-width: 0 !important;
+}
+
+[role="dialog"][id="radix-:r3g:"] {
+  all: unset !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: scroll !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  z-index: 2147483645 !important;
+  pointer-events: all !important;
+}
+
+[role="dialog"][id="radix-:r3g:"]::before {
+  content: '' !important;
+  display: inline-block !important;
+  height: 100% !important;
+  vertical-align: middle !important;
+  margin-right: -0.25em !important; /* коррекция для inline-block */
+}
+
+[role="dialog"][id="radix-:r3g:"] img.w-full.h-full.object-contain.cursor-pointer {
+  all: unset !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+/* styles/nyx.css */
+.nyx-download-btn {
+  display: inline-block;
+  background: #2d2d2d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-left: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.nyx-download-btn:hover {
+  background: #404040;
+}
+/*отключаем лишнее элементы'*/
+div.px-3.py-2,div.border-b.px-4.py-3.flex.items-center.gap-3{
+	display:none;
+}
+
+/* Анимация для боковой панели */
+.server-page__sidebar {
+  transition: margin-left 0.3s ease !important;
+  z-index: 0 !important;
+  user-select: none !important;
+  /* Ширина панели теперь задаётся через переменную (с запасным значением) */
+  width: var(--sidebar-width, 250px);
+}
+.dashboard > div {
+  transition: margin-left 0.3s ease !important;
+  z-index: 0 !important;
+  user-select: none !important;
+  /* Ширина панели теперь задаётся через переменную (с запасным значением) */
+  width: var(--friends-width);
+}
+
+.nyx-sidebar-hidden {
+  margin-left: calc(-1 * var(--sidebar-width)) !important;
+}
+
+div.overflow-y-auto.h-full.shrink-0 {
+  z-index: 1 !important;
+  user-select: none !important;
+  pointer-events: none !important;
+}
+div.overflow-y-auto.h-full.shrink-0 a{
+  pointer-events: all !important;
+}
+/* Правая панель участников */
+.server-page__members {
+  transition: margin-right 0.3s ease !important;
+  z-index: 0 !important;
+  user-select: none !important;
+  width: var(--members-width, 250px);
+  /* Добавить: */
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;          /* чтобы занять всю доступную высоту */
+}
+.nyx-members-hidden {
+	margin-right: calc(var(--handle-width) - var(--members-width)) !important;
+}
+/* Панель друзей на dashboard */
+.nyx-friends-hidden {
+  margin-left: calc(-1 * var(--friends-width)) !important;
+}
+
+.server-page__routes{
+	max-width:calc(100vw - calc(var(--handle-width) * 2)) !important;
+	width:0 !important;
+}
+
+/* Постоянная адаптация панели пользователя и поля ввода */
+/* Растягиваем панель пользователя на всю доступную ширину */
+div.w-\[356px\].z-1.flex.flex-col.gap-1 {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Разрешаем перенос иконок в панели пользователя */
+.connection-panel-controls {
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 4px !important;
+}
+
+/* Разрешаем перенос кнопок в поле ввода (скрепка, смайлик, GIF, отправка) */
+.flex.items-center.gap-2.flex-shrink-0.self-end {
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+}
+
+/* Уменьшаем отступы в контейнере поля ввода, чтобы больше помещалось */
+.p-3 {
+  padding: 8px !important;
+}
+
+/* Подсказки про Enter/Shift+Enter — переносим на новую строку при необходимости */
+.px-3.py-2 .flex.items-center.gap-4 {
+  flex-wrap: wrap !important;
+}
+
+/* Само поле ввода — делаем чуть компактнее */
+[data-slate-editor] {
+  min-height: 24px !important;
+  line-height: 24px !important;
+  font-size: 14px !important;
+}
+
+/* Адаптивность панели пользователя: перенос иконок под ник/статус при необходимости */
+.bg-\(--nyx-background-user-panel\) .flex.items-center.justify-between {
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* Адаптивность поля ввода: перенос кнопок под поле ввода */
+.w-full.p-2 .flex.items-center.gap-3.p-3 {
+  flex-wrap: wrap !important;
+}
+
+/* Разрешаем перенос внутри блока кнопок */
+.w-full.p-2 .flex.items-center.gap-2.flex-shrink-0.self-end {
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+}
+
+/* Поле ввода: кнопки всегда под текстом */
+.w-full.p-2 .flex.items-center.gap-3.p-3 {
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+/* Поле ввода занимает всю ширину */
+.w-full.p-2 .flex-1 {
+  width: 100% !important;
+}
+
+/* Блок кнопок выравниваем по правому краю и растягиваем на всю ширину */
+.w-full.p-2 .flex.items-center.gap-2.flex-shrink-0.self-end {
+  align-self: flex-end !important;
+  justify-content: flex-end !important;
+  width: 100% !important;
+}
+
+/* Фиксируем панель пользователя внизу экрана, но ниже интерфейса */
+div.absolute.bottom-2.left-2.w-\[356px\] {
+  position: fixed !important;
+  bottom: 0px !important;
+  left: 0px !important;
+  right: 0px !important;
+  width: auto !important;
+}
+
+/* Поднимаем основной интерфейс (контейнеры страниц) выше панели */
+.home {
+  margin-bottom: var(--user-panel-height, 100px) !important;
+  max-height: calc(100vh - var(--user-panel-height, 100px)) !important;
+}
+
+/* Кнопки возврата панелей (для мобильных) */
+.nyx-restore-buttons {
+  display: flex !important;
+  justify-content: space-around !important;
+  padding: 8px 4px !important;
+  gap: 4px !important;
+  border-top: 1px solid var(--nyx-divider-background, #1E1B26) !important;
+  margin-top: auto !important; /* прижимаем к низу, если контейнер flex-колонка */
+  background: var(--nyx-background-darker) !important;
+}
+
+.nyx-restore-btn {
+  background: var(--nyx-background-darker, #2d2d2d) !important;
+  color: var(--nyx-font-main, #eee) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  flex: 1 !important;
+  transition: background 0.2s !important;
+  min-width: 40px !important;
+  text-align: center !important;
+  z-index:2147483647 !important;
+  pointer-events: all !important;
+}
+
+.nyx-restore-btn:hover {
+  background: var(--nyx-background-channels-hover, #404040) !important;
+}
+
+/* Если контейнер навигации — flex-колонка, то кнопки прижмутся к низу */
+.overflow-y-auto.h-full.bg-\(--nyx-background-darkest\).shrink-0 {
+  display: flex !important;
+  flex-direction: column !important;
+}
+/* Контейнер правой кнопки (в списке участников) */
+.members-list .nyx-restore-buttons {
+  display: flex !important;
+  justify-content: flex-start !important; /* прижимаем к левому краю */
+  margin-top: auto !important;
+}
+
+/* Правая кнопка — компактная, без растяжения */
+.members-list .nyx-restore-btn.right-btn {
+  flex: none !important;      /* отключаем растяжение */
+  width: auto !important;      /* ширина по содержимому */
+  min-width: 40px !important;            /* минимальный размер для удобства */
+  padding: 8px 12px !important;
+}
+
+.server-page__members .nyx-restore-buttons {
+  display: flex !important;
+  justify-content: flex-start !important; /* кнопка слева */
+  margin-top: auto !important;             /* прижимаем к низу */
+  padding: 8px 4px !important;
+  gap: 4px !important;
+  border-top: 1px solid var(--nyx-divider-background, #333) !important;
+}
+
+.server-page__members .nyx-restore-btn {
+  flex: none !important;
+  width: auto !important;
+  min-width: 40px !important;
+  margin-left: 4px; /* небольшой отступ от левого края */
+}
+/*улучшение вида изображений при открытии*/
+[role="dialog"]:not([id="radix-:r4:"]){
+  all: unset !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: scroll !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  z-index: 2147483645 !important;
+  pointer-events: all !important;
+}
+
+[role="dialog"]:not([id="radix-:r4:"])::before {
+  content: '' !important;
+  display: inline-block !important;
+  height: 100% !important;
+  vertical-align: middle !important;
+  margin-right: -0.25em !important; /* коррекция для inline-block */
+}
+
+[role="dialog"]:not([id="radix-:r4:"]) img {
+  all: unset !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  image-rendering: pixelated !important;
+  scale:1 !important;
+}

@@ -1,0 +1,66 @@
+/* === Определяем кастомные свойства как числа, чтобы анимация была плавной === */
+@property --TheOmniscience-max-r {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 192;
+}
+@property --TheOmniscience-max-g {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+@property --TheOmniscience-max-b {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 192;
+}
+@property --TheOmniscience-target-alpha {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0.25;
+}
+
+@property --TheOmniscience-text-brightness {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 255;
+}
+
+/* === Тема === */
+:root {
+  color-scheme: system;
+  --TheOmniscience-text-brightness: 255;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #000000 !important;
+    color: #ffffff !important;
+  }
+}
+body, html, main {
+  background: transparent !important;
+}
+.window {
+  background: #000 !important;
+}
+
+/* === Анимация === */
+:root {
+  animation: purple-cycle 4s linear infinite;
+  will-change: --TheOmniscience-max-r, --TheOmniscience-max-b;
+}
+
+@keyframes purple-cycle {
+  0%   { --TheOmniscience-max-r: 192; --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 192; }
+  25%  { --TheOmniscience-max-r: 192; --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 0; }
+  50%  { --TheOmniscience-max-r: 192; --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 192; }
+  75%  { --TheOmniscience-max-r: 0;   --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 192; }
+  100% { --TheOmniscience-max-r: 192; --TheOmniscience-max-g: 0; --TheOmniscience-max-b: 192; }
+}

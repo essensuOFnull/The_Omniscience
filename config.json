@@ -1,0 +1,36 @@
+{
+	"viteProtocol": "http",
+	"viteHost": "127.0.0.1",
+	"vitePort": 22869,
+	"homepageUrl":"https://www.google.com",
+	"theme":{
+		"app":"dark"
+	},
+	"color_scheme": "default",
+    "window_animation": "default",
+
+	"minWindowZ": 5,
+	"taskbarHeight": "48px",
+	"tabBarHeight": 48,
+	"overviewColumns": 3,
+	"overviewGap": "16px",
+	"overviewZIndex": 1000,
+	"windows": {
+		"defaultSize": { "width": 800, "height": 600 }
+	},
+	"enablePictureInPicture": true,
+	"enableControlsList": true,
+	"enableRemotePlayback": true,
+	"enableDefaultContextMenu": true,
+	"enableXWebkitAirplay": true,
+	"enableSiteContextMenu": true,
+	"encryptKey": "12345678",
+	"decryptKey": "12345678",
+	"encryptEnabled": false,
+	"decryptEnabled": true,
+	"protectInput": false,
+	"googleFullscreenImage": true,
+	"googleHideExtraElements": true,
+	"googleOpenImageDirectly": true,
+	"enableLayoutSwap": true
+}

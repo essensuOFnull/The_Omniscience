@@ -1,0 +1,257 @@
+html {
+    height:100%;
+}
+
+body, html {
+	/*background-color:#dddddd;*/
+	width:100%;
+	padding:0;
+	margin:0;
+}
+
+body {
+	padding-top: 40px;
+	padding-bottom: 20px;
+}
+
+.main-title {
+  margin-top: 10px;
+}
+
+.main-title h1 {
+	font-family:'Myriad Pro', Verdana, Arial, Helvetica, sans-serif;
+
+    font-size: 70px;
+    font-size: 3.5vw;
+
+	text-transform: uppercase;
+	color:#FFF;
+	letter-spacing:5px;
+	text-align:center;
+	margin-top: 0px;
+	margin-bottom: 0px;
+
+text-shadow:
+	1px 1px 0 #CCC,
+	2px 2px 0 #CCC,
+	3px 3px 0 #444,
+	4px 4px 0 #444,
+	5px 5px 0 #444,
+	6px 6px 0 #444,
+	5px 5px 15px #999; /*<-the blur*/
+
+}
+
+.main-title .subtitle {
+	text-align:center;
+	font-family: Georgia, Arial, Sans Serif;
+	text-shadow: 1px 1px 1px rgba(0,0,0,0.3);
+	color: #555555;
+	margin-top:15px;
+}
+
+.translate-container {
+	margin-top:20px;
+	height:auto;
+}
+
+#ghetto-text {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 30%;
+  background-image: none;
+}
+
+#english-text {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 30%;
+  background-image: none;
+}
+
+.box-shadow-1 {
+	border: none;
+	-webkit-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+	-moz-box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+	-webkit-border-radius: 5px;
+	-moz-border-radius: 5px;
+	border-radius: 2px;
+
+}
+
+.halving-div-left {
+	width:50%;
+	display:inline;
+	float:left;
+}
+
+.halving-div-right {
+	width:50%;
+	display:inline;
+	float:right;
+}
+
+.translate-container .transdiv {
+	background-color:#ffffff;
+	padding:0px;
+	height:400px;
+}
+
+.translate-container .english {
+	margin-left:20px;
+	margin-right:10px;
+}
+
+.translate-container .ghetto {
+	margin-left:10px;
+	margin-right:20px;
+}
+
+.translate-container textarea {
+	width:100%;
+	height:100%;
+	border:none;
+	resize: none;
+	outline:none;
+  
+  padding:20px;
+  box-sizing:border-box;
+  border-radius: 2px;
+  
+
+	font-size: 24px;
+	font-family: 'Noto Sans', sans-serif;
+
+}
+
+
+.share {
+    margin-top: 40px;
+	width:340px;
+	margin-left:auto;
+	margin-right:auto;
+}
+
+.fb-like-wrapper {
+	width:225px;
+	height:30px;
+	display:inline-block;
+	overflow:hidden;
+}
+
+.twitter-wrapper {
+	display:inline-block;
+	width: 110px;
+	position:relative;
+	top: -9px;
+}
+
+
+
+.white-section-area-thing {
+  width:800px;
+	margin-top:20px;
+	margin-left:auto;
+	margin-right:auto;
+	background: #fff;
+	padding: 20px;
+	border-radius: 2px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* .intro p {
+	font-family: 'Noto Sans', sans-serif;
+	margin: 0;
+	margin-bottom: 20px;
+} */
+
+/* the .intro-p elements are now divs to prevent "simplify page?" notification (which breaks the page) */
+.intro .intro-p {
+	font-family: 'Noto Sans', sans-serif;
+	margin: 0;
+	margin-bottom: 20px;
+}
+
+.intro a {
+	color:#00a3e1;
+}
+
+.intro img {
+    max-height: 240px;
+    max-width: 80%;
+    display: block;
+    margin: 40px auto;
+    border-radius: 2px;
+}
+
+.intro h1, .intro h2, .intro h3, .intro h4, .intro h5, .intro h6 {
+    text-align:center;
+}
+
+.intro h2 {
+    margin-top: 1.5em;
+}
+
+.intro > *:first-child {
+    margin-top: 0px;
+}
+
+.intro table {
+    margin: 0 auto;
+    border: 1px solid #bbb;
+}
+
+.intro table th {
+    padding: 5px 10px;
+    border: 1px solid #bbb;
+}
+
+.footer {
+	width:100%;
+}
+
+.footer p {
+	width:100%;
+	text-align:center;
+	margin-top:100px;
+}
+
+a {
+	color: #666666;
+	text-decoration:none;
+}
+
+a:hover {
+	color: #222222;
+}
+
+
+.disqus-container {
+	width:800px;
+	margin-left:auto;
+	margin-right:auto;
+
+    background: #fff;
+    padding: 20px;
+    border-radius: 2px;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+
+
+
+@media (min-width: 0px) and (max-width: 768px) {
+    .lingojam-logo {text-align: left; padding-left: 7px;}
+	.halving-div-left { width:95%; float:none; display:block; height:200px; margin: 0 auto; margin-bottom: 10px; }
+	.halving-div-right { width:95%; float:none;  display:block;  height:200px; margin: 0 auto; margin-top: 10px; }
+	.translate-container .transdiv {  height:200px;}
+	.translate-container .ghetto { margin: 0; }
+	.translate-container .english { margin: 0; }
+  .translate-container { margin-bottom: 20px; }
+    .intro {box-sizing: border-box; margin: 0 auto; margin-top:20px; width: 95%;}
+    #suggestion-area {box-sizing: border-box; margin: 0 auto; margin-top:20px; width: 95%; font-size:80%; } /* this needs margin 60px because it's below translator boxes which are weird */
+    .disqus-container {box-sizing: border-box; margin: 0 auto; width: 95%;}
+    .intro img { max-width: 100%; }
+}
+

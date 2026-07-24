@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<style>
+		html, body {
+			margin: 0;
+			display: flex;
+			align-items: stretch;
+			font-family: sans-serif;
+			background: transparent;
+			width: 100%;
+			height: 100%;
+			user-select: none;
+		}
+
+		#tabs-container {
+			display: flex;
+			flex: 1;
+			overflow: hidden;
+		}
+
+		#tabs-scrollable {
+			flex: 1;
+			overflow-x: auto;
+			overflow-y: hidden;
+			display: flex;
+			align-items: stretch;
+		}
+		/* когда редактируем URL, скрываем ленту вкладок */
+		#tabs-scrollable.hidden {
+			display: none;
+		}
+
+		#url-editor {
+			display: none;
+			flex: 1;
+			border: none;
+			background: #2d002d;
+			color: #fff;
+			font-family: monospace;
+			font-size: 16px;
+			padding: 0 12px;
+			outline: none;
+			box-sizing: border-box;
+		}
+		#url-editor.visible {
+			display: flex;
+		}
+
+		#tabs {
+			display: flex;
+			flex-shrink: 0;
+			align-items: stretch;
+		}
+
+		.desktop-tab,
+		.web-tab {
+			display: inline-flex;
+			flex-shrink: 0;
+			align-items: center;
+			justify-content: center;
+			margin-right: 2px;
+			background: #ffffff22;
+			color: #ccc;
+			cursor: pointer;
+			position: relative;
+			min-width: 40px;
+			box-shadow: 1px 0px 0px 0px #fff;
+		}
+
+		.desktop-tab.active,
+		.web-tab.active {
+			background: #50005099;
+			color: #fff;
+			z-index: 1;
+		}
+
+		.desktop-tab {
+			width: var(--desktop-width);
+			height: 100vh;
+		}
+
+		.web-tab .tab-title {
+			padding: 0 12px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			max-width: 25vw;
+			pointer-events: none;
+		}
+
+		#add-tab {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 40px;
+			flex-shrink: 0;
+			background: #3c003c99;
+			color: #ccc;
+			cursor: pointer;
+			font-size: 20px;
+			margin-right: 1px;
+		}
+
+		#add-tab:hover {
+			background: #50005099;
+		}
+
+		#popup-overlay {
+			display: none;
+			position: fixed;
+			top: 0; left: 0;
+			width: 100%; height: 100%;
+			background: rgba(0,0,0,0.5);
+			z-index: 100;
+			justify-content: center;
+			align-items: center;
+		}
+		#popup-overlay.visible {
+			display: flex;
+		}
+
+		#popup-box {
+			background: #2d002d;
+			border: 1px solid #500050;
+			padding: 20px;
+			color: #fff;
+			display: flex;
+			flex-direction: row;
+			gap: 12px;
+			min-width: 250px;
+		}
+
+		#popup-box button {
+			background: #500050;
+			color: #fff;
+			border: 1px solid #7a007a;
+			padding: 10px 16px;
+			border-radius: 8px;
+			cursor: pointer;
+			font-size: 14px;
+		}
+		#popup-box button:hover {
+			background: #700070;
+		}
+	</style>
+</head>
+<body>
+	<div id="tabs-container">
+		<div id="tabs-scrollable">
+			<div id="tabs"></div>
+		</div>
+		<input id="url-editor" type="text" spellcheck="false" />
+		<div id="add-tab" title="Добавить">+</div>
+	</div>
+
+	<!-- шаблоны -->
+	<template id="desktop-tab-template">
+		<div class="desktop-tab" draggable="true">
+			<!-- содержимое рабочего стола не нужно -->
+		</div>
+	</template>
+	<template id="web-tab-template">
+		<div class="web-tab" draggable="true">
+			<span class="tab-title"></span>
+		</div>
+	</template>
+
+	<div id="popup-overlay">
+		<div id="popup-box">
+			<button id="popup-desktop-btn">Рабочий стол</button>
+			<button id="popup-web-btn">Открыть ссылку</button>
+			<button id="popup-xterm-btn">Открыть терминал</button>
+			<button id="popup-cancel-btn" style="background:#333;">Отмена</button>
+		</div>
+	</div>
+
+	<script>
+		(() => {
+			const container = document.getElementById('tabs');
+			const scrollable = document.getElementById('tabs-scrollable');
+			const addTabBtn = document.getElementById('add-tab');
+			const popupOverlay = document.getElementById('popup-overlay');
+			const urlEditor = document.getElementById('url-editor');
+
+			// прототипы из шаблонов
+			const desktopTmpl = document.getElementById('desktop-tab-template');
+			const webTmpl = document.getElementById('web-tab-template');
+
+			// текущее состояние (будет обновляться через IPC)
+			let tabsData = [];
+			let activeTabIndex = -1;
+			let editingTabIndex = -1; // какая вкладка редактируется
+
+			function updateAspectRatio() {
+				document.documentElement.style.setProperty('--desktop-width',
+					`${window.mainWindowWidth / window.mainWindowHeight * 100}vh`);
+			}
+
+			// клонируем шаблон и наполняем данными
+			function createTabElement(tab, index) {
+				const tmpl = tab.type === 'desktop' ? desktopTmpl : webTmpl;
+				const el = tmpl.content.firstElementChild.cloneNode(true);
+				el.dataset.index = index;
+
+				if (tab.type === 'web') {
+					const titleSpan = el.querySelector('.tab-title');
+					const displayTitle = tab.title ? `${tab.title} | ${tab.url}` : (tab.url || 'Новая вкладка');
+					titleSpan.textContent = displayTitle;
+					el.title = tab.title || '';
+				} else {
+					el.title = tab.title || '';
+				}
+
+				if (index === activeTabIndex) el.classList.add('active');
+
+				// общие события
+				el.addEventListener('click', () => {
+					if (editingTabIndex >= 0) return; // во время редактирования не переключаем
+					window.electronAPI.tab_activate(index);
+				});
+
+				el.addEventListener('contextmenu', (e) => {
+					e.preventDefault();
+					window.electronAPI.tab_context_menu(index, e.clientX, e.clientY);
+				});
+
+				el.addEventListener('dragstart', (e) => {
+					e.dataTransfer.setData('text/plain', index);
+				});
+				el.addEventListener('dragover', (e) => e.preventDefault());
+				el.addEventListener('drop', (e) => {
+					e.preventDefault();
+					const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+					const to = parseInt(el.dataset.index, 10);
+					if (!isNaN(from) && from !== to) window.electronAPI.tab_move(from, to);
+				});
+
+				return el;
+			}
+
+			function renderTabs() {
+				container.innerHTML = '';
+				const sorted = [...tabsData.filter(t => t.type === 'desktop'), ...tabsData.filter(t => t.type !== 'desktop')];
+				sorted.forEach(tab => {
+					const originalIndex = tabsData.indexOf(tab);
+					container.appendChild(createTabElement(tab, originalIndex));
+				});
+			}
+
+			function openUrlEditor(index) {
+				const tab = tabsData[index];
+				if (!tab || tab.type !== 'web') return;
+				editingTabIndex = index;
+				urlEditor.value = tab.url || '';
+				scrollable.classList.add('hidden');
+				urlEditor.classList.add('visible');
+				urlEditor.focus();
+				urlEditor.select();
+			}
+
+			function closeUrlEditor(apply = true) {
+				if (editingTabIndex < 0) return;
+				const newUrl = urlEditor.value;
+				const oldUrl = tabsData[editingTabIndex]?.url;
+				if (apply && newUrl !== oldUrl) {
+					window.electronAPI.tab_url_update(editingTabIndex, newUrl);
+				}
+				// возвращаем ленту вкладок
+				scrollable.classList.remove('hidden');
+				urlEditor.classList.remove('visible');
+				editingTabIndex = -1;
+				// возвращаем фокус активной вкладке, если нужно
+			}
+
+			// редактор: завершение по blur, Enter, Escape
+			urlEditor.addEventListener('blur', () => closeUrlEditor(true));
+			urlEditor.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') { e.preventDefault(); closeUrlEditor(true); }
+				if (e.key === 'Escape') { e.preventDefault(); closeUrlEditor(false); }
+			});
+
+			// Popup
+			function openPopup() { popupOverlay.classList.add('visible'); }
+			function closePopup() { popupOverlay.classList.remove('visible'); }
+			document.getElementById('popup-desktop-btn').onclick = () => { closePopup(); window.electronAPI.desktop_create(); };
+			document.getElementById('popup-web-btn').onclick = () => { closePopup(); window.electronAPI.tab_create(); };
+			document.getElementById('popup-xterm-btn').onclick = () => { closePopup(); window.electronAPI.xterm_create(); };
+			document.getElementById('popup-cancel-btn').onclick = closePopup;
+			popupOverlay.onclick = (e) => { if (e.target === popupOverlay) closePopup(); };
+			addTabBtn.onclick = openPopup;
+
+			// Приём обновлений от Electron
+			window.electronAPI.tabs_on_update((data) => {
+				tabsData = data.tabsData || [];
+				activeTabIndex = data.activeTabIndex != null ? data.activeTabIndex : -1;
+				if (typeof data.mainWindowWidth === 'number' && typeof data.mainWindowHeight === 'number') {
+					window.mainWindowWidth = data.mainWindowWidth;
+					window.mainWindowHeight = data.mainWindowHeight;
+				}
+				updateAspectRatio();
+				renderTabs();
+			});
+
+			// Команда начать редактирование URL (из контекстного меню)
+			window.electronAPI.tab_edit_url((index) => {
+				if (editingTabIndex >= 0) closeUrlEditor(true); // завершим предыдущее, если висело
+				openUrlEditor(index);
+			});
+
+			// Горизонтальная прокрутка колёсиком
+			scrollable.addEventListener('wheel', (e) => {
+				if (editingTabIndex >= 0) return; // когда редактор открыт, не скроллим
+				e.preventDefault();
+				scrollable.scrollLeft += e.deltaY;
+			});
+
+			closePopup();
+		})();
+	</script>
+</body>
+</html>

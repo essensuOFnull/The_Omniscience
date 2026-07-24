@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html,
+        body,
+        #background {
+            /*отключние отступов для правильног позиционирования*/
+            margin:0;
+            padding:0;
+            /*растягиваем фон на всё окно, можно в принципе делать что угодно)*/
+            min-width: 100vw;
+            min-height: 100vh;
+            width: 100vw;
+            height: 100vh;
+            max-width: 100vw;
+            max-height: 100vh;
+            /*мне не нужны полосы прокрутки у фона, может вам нужны?)*/
+            overflow: hidden;
+            /*в общем делайте с фоном ВСЁ ЧТО ЗАХОТИТЕ)*/
+        }
+        #background{
+            /* изображение или любой другой фон, вплоть до видео */
+            background: url('./public/images/background.jpg') center/cover no-repeat;
+            /*прозрачность фона вплоть до абсолютной*/
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="background">
+
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,493 @@
+<html no_gl="true" lang="ru" class="dcg-calculator-api-container-v1_13">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="Description"
+    content="Красивый и бесплатный научный онлайн-калькулятор с расширенными возможностями для вычисления процентов, дробей, экспоненциальных функций, логарифмов, тригонометрии, статистики и многого другого.">
+  <meta http-equiv="Content-Security-Policy" content="worker-src blob:; script-src 'self' 'unsafe-eval'; object-src 'self'">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    @keyframes dcg-loading-pulse {
+      0% {
+        opacity: 0;
+      }
+
+      20% {
+        opacity: 1;
+      }
+
+      80% {
+        opacity: 0;
+        transform: scale(1.5, 1.5);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.5, 1.5);
+      }
+    }
+
+    .dcg-loading-div-container {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      background: #fff;
+      z-index: 1000;
+    }
+
+    .dcg-loading-background-div {
+      animation: dcg-loading-pulse 2.2s infinite;
+      background: #eee;
+      width: 140px;
+      height: 140px;
+      display: inline-block;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      margin-left: -70px;
+      margin-top: -70px;
+      border-radius: 50%;
+    }
+
+    .dcg-loading-div {
+      font-size: 18px;
+      width: 140px;
+      height: 140px;
+      display: inline-block;
+      text-align: center;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      color: transparent;
+      margin-left: -70px;
+      margin-top: -70px;
+      border-radius: 50%;
+      background: no-repeat center center;
+      background-size: 120px 25px;
+      background-image: url(data:image/webp;base64,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);
+    }
+  </style>
+</head>
+
+<body>
+  <main id="main" class="dcg-scientific-container" style="border-color: rgb(255, 255, 255);">
+    <div class="dcg-calculator-api-container-v1_13" style="width: 100%; height: 100%; position: relative;">
+      <div
+        class="dcg-calc-basic-main-wrapper dcg-scientific-calculator dcg-container dcg-tap-container touchtracking_id_1"
+        x-ms-format-detection="none"
+        style="--dcg-accent-color:#2f72dc;--dcg-accent-color-shaded-10:#2a67c6;--dcg-accent-color-shaded-20:#265bb0">
+        <div role="application" aria-label="Научный калькулятор Desmos" class="dcg-calc-basic-main"
+          style="font-size:16px;filter:none">
+          <div class="dcg-basic-list-container" role="region" aria-label="Список выражений">
+            <div class="dcg-basic-list-placeholder"></div>
+            <div class="dcg-basic-list">
+              <div class="dcg-basic-expression" ontap="">
+                <div class="dcg-exp-mathquill-container">
+                  <div class="dcg-mq-container">
+                    <div class="dcg-math-field dcg-mq-editable-field dcg-mq-math-mode"><span
+                        class="dcg-mq-textarea"><span class="dcg-mq-mathspeak" id="d0644ada-b4a4-49d7-916b-dde34bc28dd5"
+                          aria-hidden="true">Выражение 1:</span><textarea inputmode="none" autocorrect="off"
+                          autocapitalize="none" spellcheck="false" autocomplete="off"
+                          aria-labelledby="d0644ada-b4a4-49d7-916b-dde34bc28dd5" tabindex="0"
+                          class=""></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping dcg-mq-empty"
+                        aria-hidden="true"></span></div>
+                  </div>
+                </div>
+                <div class="dcg-exp-output-container"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dcg-keypad-control-bar dcg-do-not-blur" role="group" aria-label="Панель управления">
+            <div class="dcg-keypad-control-bar-contents">
+              <div class="dcg-keypad-control-btn dcg-selected dcg-selectable-btn" role="button" aria-label="осн."
+                dcg-command="main" ontap="" aria-pressed="true" tabindex="0">осн.</div>
+              <div class="dcg-keypad-control-btn dcg-selectable-btn" role="button" aria-label="A B C" dcg-command="ABC"
+                ontap="" aria-pressed="false" tabindex="0">abc</div>
+              <div class="dcg-keypad-control-btn dcg-selectable-btn" role="button" aria-label="Функции"
+                dcg-command="functions" ontap="" aria-pressed="false" tabindex="0">функ.</div>
+              <div class="dcg-options-menu-section dcg-radiangroup">
+                <div class="dcg-segmented-control-container dcg-theme-mini" role="radiogroup"
+                  aria-label="Настройка углов">
+                  <div class="dcg-segmented-control-btn" role="radio" tabindex="-1" aria-label="рад"
+                    aria-checked="false" ontap="">
+                    <div class="dcg-tooltip-hit-area-container dcg-do-not-blur dcg-tooltip-disabled dcg-cursor-default"
+                      handleevent="true" tabindex="-1" ontap="">
+                      <div class="dcg-segmented-control-interior">рад</div>
+                    </div>
+                  </div>
+                  <div class="dcg-segmented-control-btn dcg-selected" role="radio" tabindex="0" aria-label="град"
+                    aria-checked="true" ontap="">
+                    <div class="dcg-tooltip-hit-area-container dcg-do-not-blur dcg-tooltip-disabled dcg-cursor-default"
+                      handleevent="true" tabindex="-1" ontap="">
+                      <div class="dcg-segmented-control-interior">град</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="dcg-keypad-control-btn dcg-disabled" role="button" aria-disabled="true" aria-label="Отменить"
+                dcg-command="undo" ontap=""><i class="dcg-icon-undo" aria-hidden="true"></i></div>
+              <div class="dcg-keypad-control-btn dcg-disabled" role="button" aria-disabled="true" aria-label="Повторить"
+                dcg-command="redo" ontap=""><i class="dcg-icon-redo" aria-hidden="true"></i></div>
+              <div class="dcg-keypad-control-btn dcg-disabled" role="button" aria-disabled="true"
+                aria-label="стереть все" dcg-command="clearall" ontap="">стереть все</div>
+              <div class="dcg-popover-with-anchor dcg-basic-settings-container">
+                <div
+                  class="dcg-tooltip-hit-area-container dcg-display-block dcg-do-not-blur dcg-tooltip-disabled dcg-cursor-default"
+                  handleevent="true" tabindex="-1" ontap="">
+                  <div role="button" id="dcg-popover-anchor--60eaa643-4332-4419-92f0-687b32a2bb1e" tabindex="0"
+                    aria-label="настройки" aria-expanded="false" aria-haspopup="dialog"
+                    class="dcg-basic-settings-button dcg-keypad-control-btn dcg-popover-with-anchor__anchor" ontap=""><i
+                      class="dcg-icon-wrench" aria-hidden="true"></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="dcg-basic-keypad-container">
+            <div class="dcg-basic-keypad dcg-do-not-blur" role="region" aria-label="клавиатура">
+              <div class="dcg-keypad-row">
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="a^2" aria-label="В квадрате"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="055712a9-f9cd-4a4e-b9ae-69b735776ca8">"a"
+                            squared</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="055712a9-f9cd-4a4e-b9ae-69b735776ca8"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><var>a</var><span
+                            class="dcg-mq-supsub dcg-mq-non-leaf dcg-mq-sup-only"><span class="dcg-mq-sup"><span
+                                class="dcg-mq-digit">2</span></span></span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="a^b" aria-label="Надстрочный"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="f7494176-6be2-4b60-bd74-37e779769284">"a" Superscript, "b" ,
+                            Baseline</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="f7494176-6be2-4b60-bd74-37e779769284"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><var>a</var><span
+                            class="dcg-mq-supsub dcg-mq-non-leaf dcg-mq-sup-only"><span
+                              class="dcg-mq-sup"><var>b</var></span></span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="|a|" aria-label="Модуль" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="cac5c2f6-d2e2-4788-a49d-1ab5dab84c90">| "a" |</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="cac5c2f6-d2e2-4788-a49d-1ab5dab84c90" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span>|</span><var>a</var><span>|</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="7" aria-label="7" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="50b6ab73-783a-49b4-be55-80b1dd462995">7</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="50b6ab73-783a-49b4-be55-80b1dd462995" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">7</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="8" aria-label="8" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="dbc0ce1d-2f8c-4551-bd6d-9024cce2a8e5">8</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="dbc0ce1d-2f8c-4551-bd6d-9024cce2a8e5" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">8</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="9" aria-label="9" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="57fd1971-b509-4d09-8722-73804ab102d1">9</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="57fd1971-b509-4d09-8722-73804ab102d1" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">9</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="/" aria-label="Разделить" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="ffc0bdb9-6331-471e-87a9-c65cc7ea4a96">divided
+                            by</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="ffc0bdb9-6331-471e-87a9-c65cc7ea4a96"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><span
+                            class="dcg-mq-binary-operator">÷</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="%" aria-label="Процент от" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="69ab7e60-5f5f-413f-b0fa-6606c097e18d">%</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="69ab7e60-5f5f-413f-b0fa-6606c097e18d" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-nonSymbola">%</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="a/b" aria-label="A на B" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="65e5769f-0756-49b3-b45e-9bed576037aa">StartFraction, "a" Over
+                            "b" , EndFraction</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="65e5769f-0756-49b3-b45e-9bed576037aa"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><span
+                            class="dcg-mq-fraction dcg-mq-non-leaf"><span
+                              class="dcg-mq-numerator"><var>a</var></span><span
+                              class="dcg-mq-denominator"><var>b</var></span><span
+                              style="display:inline-block;width:0">​</span></span></span></div>
+                    </span></span></div>
+              </div>
+              <div class="dcg-keypad-row">
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="sqrt" aria-label="Квадратный корень"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="54bc02c6-fc4c-4e40-ba8d-3846b9804c7e">StartRoot, ,
+                            EndRoot</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="54bc02c6-fc4c-4e40-ba8d-3846b9804c7e"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><span
+                            class="dcg-mq-non-leaf dcg-mq-sqrt-container"><span
+                              class="dcg-mq-scaled dcg-mq-sqrt-prefix"><svg preserveAspectRatio="none"
+                                viewBox="0 0 32 54">
+                                <path d="M0 33 L7 27 L12.5 47 L13 47 L30 0 L32 0 L13 54 L11 54 L4.5 31 L0 33"></path>
+                              </svg></span><span
+                              class="dcg-mq-non-leaf dcg-mq-sqrt-stem dcg-mq-empty"></span></span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="nthroot" aria-label="Корень степени n"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="01fefc10-8e4a-4598-a80b-7dcf51b35658">Root Index "n" , Start
+                            Root, , End Root</span><textarea inputmode="none" autocorrect="off" autocapitalize="none"
+                            spellcheck="false" autocomplete="off" aria-labelledby="01fefc10-8e4a-4598-a80b-7dcf51b35658"
+                            tabindex="-1" aria-hidden="true"></textarea></span><span
+                          class="dcg-mq-root-block dcg-mq-show-grouping" aria-hidden="true"><span
+                            class="dcg-mq-nthroot-container dcg-mq-non-leaf"><sup
+                              class="dcg-mq-nthroot dcg-mq-non-leaf"><var>n</var></sup><span
+                              class="dcg-mq-scaled dcg-mq-sqrt-container"><span
+                                class="dcg-mq-sqrt-prefix dcg-mq-scaled"><svg preserveAspectRatio="none"
+                                  viewBox="0 0 32 54">
+                                  <path d="M0 33 L7 27 L12.5 47 L13 47 L30 0 L32 0 L13 54 L11 54 L4.5 31 L0 33"></path>
+                                </svg></span><span
+                                class="dcg-mq-sqrt-stem dcg-mq-non-leaf dcg-mq-empty"></span></span></span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="pi" aria-label="Пи" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="481aa621-fab2-47fa-8dc7-c24114aa6641">pi</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="481aa621-fab2-47fa-8dc7-c24114aa6641" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-nonSymbola">π</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="4" aria-label="4" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="6aa39a15-a670-49b8-85a5-313c3e4cdc92">4</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="6aa39a15-a670-49b8-85a5-313c3e4cdc92" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">4</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="5" aria-label="5" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="11e9be0c-0679-4f11-80c3-93e506155fb2">5</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="11e9be0c-0679-4f11-80c3-93e506155fb2" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">5</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="6" aria-label="6" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="0f86616c-6e3b-4ceb-af94-8dcf5cdf7c95">6</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="0f86616c-6e3b-4ceb-af94-8dcf5cdf7c95" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">6</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="*" aria-label="Умножить" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="d23bfa1d-ce69-4509-bb3e-e32950a85298">times</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="d23bfa1d-ce69-4509-bb3e-e32950a85298" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-binary-operator">×</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="left" aria-label="Стрелка влево"
+                    ontap=""><span class="dcg-keypad-btn-content"><i class="dcg-icon-arrow-left"
+                        aria-hidden="true"></i></span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="right" aria-label="Стрелка вправо"
+                    ontap=""><span class="dcg-keypad-btn-content"><i class="dcg-icon-arrow-right"
+                        aria-hidden="true"></i></span></span></div>
+              </div>
+              <div class="dcg-keypad-row">
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="sin" aria-label="Синус" ontap=""><span
+                      class="dcg-keypad-btn-content"><span class="dcg-mq-math-mode dcg-static-mathquill-view"><span
+                          class="dcg-mq-root-block"><span
+                            class="dcg-mq-operator-name">sin</span></span></span></span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="cos" aria-label="Косинус" ontap=""><span
+                      class="dcg-keypad-btn-content"><span class="dcg-mq-math-mode dcg-static-mathquill-view"><span
+                          class="dcg-mq-root-block"><span
+                            class="dcg-mq-operator-name">cos</span></span></span></span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="tan" aria-label="Тангенс" ontap=""><span
+                      class="dcg-keypad-btn-content"><span class="dcg-mq-math-mode dcg-static-mathquill-view"><span
+                          class="dcg-mq-root-block"><span
+                            class="dcg-mq-operator-name">tan</span></span></span></span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="1" aria-label="1" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="d89a5566-c10b-407a-b137-301e29f31050">1</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="d89a5566-c10b-407a-b137-301e29f31050" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">1</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="2" aria-label="2" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="37245ab5-ad78-47f9-9323-5f3d69188466">2</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="37245ab5-ad78-47f9-9323-5f3d69188466" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">2</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="3" aria-label="3" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="0121cfb1-a839-4313-b139-a252a5db5391">3</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="0121cfb1-a839-4313-b139-a252a5db5391" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">3</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="-" aria-label="Минус" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="8f164bf4-7309-419a-82c6-1d524dcd5411">negative</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="8f164bf4-7309-419a-82c6-1d524dcd5411" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="">−</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-half-width-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1.5"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="backspace" aria-label="Backspace"
+                    ontap=""><span class="dcg-keypad-btn-content"><i class="dcg-icon-delete"
+                        aria-hidden="true"></i></span></span></div>
+              </div>
+              <div class="dcg-keypad-row">
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="(" aria-label="Левая скобка"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="40e80577-24a3-4e9c-b526-3b786703c7fd">(</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="40e80577-24a3-4e9c-b526-3b786703c7fd" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span>(</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command=")" aria-label="Правая скобка"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="f37d4d36-91b1-4969-9264-52399d5aa45b">)</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="f37d4d36-91b1-4969-9264-52399d5aa45b" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span>)</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="," aria-label="," ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="1494d951-c6db-4ceb-8815-8f5ecb611e1d">,</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="1494d951-c6db-4ceb-8815-8f5ecb611e1d" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-comma">,</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="0" aria-label="0" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="62ac3011-a372-44e6-95ff-c8ec297e70f3">0</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="62ac3011-a372-44e6-95ff-c8ec297e70f3" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">0</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-dark-on-gray" dcg-command="." aria-label="Десятичная дробь"
+                    ontap=""><span class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="76f909c7-26fe-4542-aef2-63ea589ec72a">.</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="76f909c7-26fe-4542-aef2-63ea589ec72a" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="dcg-mq-digit">.</span></span></div>
+                    </span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="ans" aria-label="Ответ" ontap=""><span
+                      class="dcg-keypad-btn-content">ans</span></span></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:1"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-light-on-gray" dcg-command="+" aria-label="Плюс" ontap=""><span
+                      class="dcg-keypad-btn-content">
+                      <div class="dcg-mq-math-mode dcg-static-mathquill-view"><span class="dcg-mq-textarea"><span
+                            class="dcg-mq-mathspeak" id="c1aab63a-0d8c-4df0-853d-4e3f3077c86d">positive</span><textarea
+                            inputmode="none" autocorrect="off" autocapitalize="none" spellcheck="false"
+                            autocomplete="off" aria-labelledby="c1aab63a-0d8c-4df0-853d-4e3f3077c86d" tabindex="-1"
+                            aria-hidden="true"></textarea></span><span class="dcg-mq-root-block dcg-mq-show-grouping"
+                          aria-hidden="true"><span class="">+</span></span></div>
+                    </span></span></div>
+                <div class="dcg-partition-placeholder"></div>
+                <div class="dcg-keypad-btn-container" style="flex-grow:2"><span role="button"
+                    class="dcg-keypad-btn dcg-btn-blue" dcg-command="enter" aria-label="Ввод" ontap=""><span
+                      class="dcg-keypad-btn-content"><i class="dcg-icon-arrow-enter"
+                        aria-hidden="true"></i></span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="calculator_basic.js"></script>
+</body>
+
+</html>
