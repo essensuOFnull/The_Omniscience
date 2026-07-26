@@ -20,7 +20,7 @@ export default async function () {
         width,
         height,
         transparent:true,
-        backgroundColor:'#00000000',
+        backgroundColor:'#000000ff',
         resizable:true,
         show: true,
 
@@ -47,23 +47,6 @@ export default async function () {
             height: bounds.height
         });
     };
-
-    global.mainWindow.on('resize', () => {
-        sendWindowBounds(); // если нужно
-        if (global.tabBar && !global.isFullScreen) {
-            const [w] = global.mainWindow.getContentSize();
-            global.tabBar.setBounds({
-                x: 0, y: 0,
-                width: w,
-                height: global.config.tabBarHeight
-            });
-            // опционально: сообщить панели новые размеры окна
-            global.tabBar.webContents.send('window-resize', {
-                width: w,
-                height: global.mainWindow.getContentSize()[1]
-            });
-        }
-    });
 
     /* когда окно загрузится */
     await global.$.mainWindow_on_loaded();

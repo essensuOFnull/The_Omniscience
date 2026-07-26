@@ -1,73 +1,41 @@
-// Main.jsx
-import React, { useState, useEffect, useReducer, useMemo, useCallback } from 'react';
+import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import Background from './components/Background';
+import TabBar from './components/TabBar';
 import Desktop from './components/Desktop';
-import { initialState } from './state/initialState';
-import { windowManager, getNewId, getNewZ } from './state/windowManager';
-import windowAnimations from './themes/window_animations'; // <-- импорт анимаций
 
 const darkTheme = createTheme({
-  mode: 'dark',
-  background: { default: '#1a001a', paper: '#2a002a' },
-  primary: { main: '#6f42c1' },
+  palette: {
+    mode: 'dark',
+    background: { default: '#1a001a', paper: '#2a002a' },
+    primary: { main: '#6f42c1' },
+  },
 });
 
-function Main() {
-  const [config, setConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Создаём корни для каждого компонента
+const rootBackground = createRoot(document.getElementById('background-root'));
+const rootTabBar = createRoot(document.getElementById('tabbar-root'));
+const rootDesktop = createRoot(document.getElementById('desktop-root'));
 
-  const reducer = useCallback((state, action) => {
-    if (!config) return state;
-    const handler = windowManager[action.type];
-    if (!handler) return state;
-    // Передаём в хелперы также getNewId и getNewZ, но они уже импортированы
-    return handler(state, action.payload, { config, getNewId, getNewZ });
-  }, [config]);
+// Рендерим
+rootBackground.render(<Background />);
 
-  const [state, dispatch] = useReducer(reducer, initialState);
-
-  const actions = useMemo(() => {
-    const result = {};
-    for (const type of Object.keys(windowManager)) {
-      result[type] = (...payload) => dispatch({ type, payload });
-    }
-    return result;
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const cfg = await window.electronAPI?.getConfig?.() ?? { taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 };
-        if (!cancelled) {
-          setConfig(cfg);
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => { cancelled = true; };
-  }, []);
-
-  if (loading) {
-    return <div style={{ color: '#ccc', background: '#1a001a', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>Загрузка...</div>;
-  }
-
-  return (
+rootTabBar.render(
+  <React.StrictMode>
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Desktop state={state} actions={actions} config={config} animations={windowAnimations} />
+      <TabBar />
     </ThemeProvider>
-  );
-}
+  </React.StrictMode>
+);
 
-const root = createRoot(document.querySelector('main'));
-root.render(
+rootDesktop.render(
   <React.StrictMode>
-    <Main />
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Desktop />
+    </ThemeProvider>
   </React.StrictMode>
 );

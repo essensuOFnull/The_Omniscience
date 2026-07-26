@@ -21,14 +21,11 @@ export default function () {
         webappsDir: path.join(root, 'webapps'),
         componentappsDir: path.join(root, 'componentapps'),
 
-        backgroundHTML: pathToFileURL(path.join(root, 'background.html')).href,
-        tabBarHTML: pathToFileURL(path.join(root,'tabBar.html')).href,
-
-        desktopIndex: pathToFileURL(path.join(root,'dist','src','index.html')).href,
+        reactIndex: pathToFileURL(path.join(root,'dist','src','index.html')).href,
         xtermIndex: pathToFileURL(path.join(root,'xterm.html')).href,
         /*важно передавать просто абсолютный путь, а не по протоколу file*/
 	    xtermPreload:path.join(root, '.temp','xtermPreload.js'),
-        desktopPreload:path.join(root, '.temp','desktopPreload.js'),
+        reactPreload:path.join(root, '.temp','reactPreload.js'),
         webtabPreload:path.join(root, '.temp','webtabPreload.js'),
     };
 }

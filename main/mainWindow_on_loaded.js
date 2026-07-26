@@ -4,9 +4,8 @@ import { ipcMain, BrowserWindow } from 'electron'; // обязательно д�
 export default async function () {
 	global.mainWindow.maximize();
 
-	/* фон, панель вкладок, bounds, ивенты, ipc */
-	global.$.background_create();
-	global.$.tabBar_create();
+	global.mainWindow.loadURL(global.paths.reactIndex);
+
 	global.$.mainWindow_bounds_update();
 
 	global.mainWindow.on('resize', global.$.mainWindow_bounds_update);
