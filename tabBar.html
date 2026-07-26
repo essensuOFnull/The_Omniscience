@@ -1,35 +1,71 @@
 <!DOCTYPE html>
 <html>
+
 <head>
 	<meta charset="utf-8">
 	<style>
-		html, body {
+		html,
+		body {
 			margin: 0;
 			display: flex;
 			align-items: stretch;
 			font-family: sans-serif;
 			background: transparent;
 			width: 100%;
-			height: 100%;
+			height: 35px;
+			/* совпадает с titleBarOverlay.height */
 			user-select: none;
-		}
-
-		#tabs-container {
-			display: flex;
-			flex: 1;
 			overflow: hidden;
 		}
 
-		#tabs-scrollable {
-			flex: 1;
-			overflow-x: auto;
-			overflow-y: hidden;
+		#tabs-container {
+			position: relative;
+			/* теперь здесь будет слой для drag */
+			cursor: pointer;
+			/* убираем pointer с контейнера */
 			display: flex;
-			align-items: stretch;
+			height: 100%;
+			align-items: center;
+			justify-content: flex-start;
+			/* drag-регион вынесен в отдельный элемент */
 		}
-		/* когда редактируем URL, скрываем ленту вкладок */
-		#tabs-scrollable.hidden {
+
+		/* Новый невидимый слой ТОЛЬКО для перетаскивания окна */
+		#drag-region {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			-webkit-app-region: drag;
+			z-index: 0;
+			/* ниже всех элементов */
+		}
+
+		#tabs-scrollable,
+		#add-tab,
+		#url-editor {
+			position: relative;
+			z-index: 1;
+			/* выше drag-слоя */
+			-webkit-app-region: no-drag;
+		}
+
+		#tabs-scrollable {
+			flex-shrink: 1;
+			overflow-x: auto;
+			display: flex;
+			align-items: center;
+			height: 100%;
+			scrollbar-width: none;
+		}
+
+		#tabs-scrollable::-webkit-scrollbar {
 			display: none;
+		}
+
+		#tabs-scrollable.hidden {
+			display: none !important;
 		}
 
 		#url-editor {
@@ -39,11 +75,13 @@
 			background: #2d002d;
 			color: #fff;
 			font-family: monospace;
-			font-size: 16px;
+			font-size: 14px;
 			padding: 0 12px;
 			outline: none;
 			box-sizing: border-box;
+			height: 100%;
 		}
+
 		#url-editor.visible {
 			display: flex;
 		}
@@ -52,6 +90,7 @@
 			display: flex;
 			flex-shrink: 0;
 			align-items: stretch;
+			height: 100%;
 		}
 
 		.desktop-tab,
@@ -67,6 +106,9 @@
 			position: relative;
 			min-width: 40px;
 			box-shadow: 1px 0px 0px 0px #fff;
+			height: 100%;
+			box-sizing: border-box;
+			-webkit-app-region: no-drag;
 		}
 
 		.desktop-tab.active,
@@ -78,7 +120,7 @@
 
 		.desktop-tab {
 			width: var(--desktop-width);
-			height: 100vh;
+			height: 100%;
 		}
 
 		.web-tab .tab-title {
@@ -86,7 +128,6 @@
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
-			max-width: 25vw;
 			pointer-events: none;
 		}
 
@@ -100,7 +141,7 @@
 			color: #ccc;
 			cursor: pointer;
 			font-size: 20px;
-			margin-right: 1px;
+			height: 100%;
 		}
 
 		#add-tab:hover {
@@ -110,13 +151,17 @@
 		#popup-overlay {
 			display: none;
 			position: fixed;
-			top: 0; left: 0;
-			width: 100%; height: 100%;
-			background: rgba(0,0,0,0.5);
+			top: 0;
+			left: 0;
+			width: 100vw;
+			height: 100vh;
+			background: rgba(0, 0, 0, 0.5);
 			z-index: 100;
 			justify-content: center;
 			align-items: center;
+			-webkit-app-region: no-drag;
 		}
+
 		#popup-overlay.visible {
 			display: flex;
 		}
@@ -141,26 +186,35 @@
 			cursor: pointer;
 			font-size: 14px;
 		}
+
 		#popup-box button:hover {
 			background: #700070;
 		}
 	</style>
 </head>
+
 <body>
 	<div id="tabs-container">
+		<!-- Невидимый слой для перетаскивания окна -->
+		<div id="drag-region"></div>
+
 		<div id="tabs-scrollable">
 			<div id="tabs"></div>
 		</div>
+		<div id="window-controls"
+			style="display:flex; gap:8px; margin-left:auto; margin-right:8px; -webkit-app-region:no-drag; z-index:2;">
+			<button class="win-btn" id="add-tab" title="Добавить">+</button>
+			<button class="win-btn" id="min-btn" title="Свернуть">─</button>
+			<button class="win-btn" id="max-btn" title="Развернуть">☐</button>
+			<button class="win-btn" id="close-btn" title="Закрыть">✕</button>
+		</div>
 		<input id="url-editor" type="text" spellcheck="false" />
-		<div id="add-tab" title="Добавить">+</div>
 	</div>
 
-	<!-- шаблоны -->
 	<template id="desktop-tab-template">
-		<div class="desktop-tab" draggable="true">
-			<!-- содержимое рабочего стола не нужно -->
-		</div>
+		<div class="desktop-tab" draggable="true"></div>
 	</template>
+
 	<template id="web-tab-template">
 		<div class="web-tab" draggable="true">
 			<span class="tab-title"></span>
@@ -172,33 +226,61 @@
 			<button id="popup-desktop-btn">Рабочий стол</button>
 			<button id="popup-web-btn">Открыть ссылку</button>
 			<button id="popup-xterm-btn">Открыть терминал</button>
-			<button id="popup-cancel-btn" style="background:#333;">Отмена</button>
+			<button id="popup-cancel-btn" style="background:#333; border-color:#555;">Отмена</button>
 		</div>
 	</div>
 
 	<script>
 		(() => {
-			const container = document.getElementById('tabs');
+			const container = document.getElementById('tabs-container');
+			const tabsEl = document.getElementById('tabs');
 			const scrollable = document.getElementById('tabs-scrollable');
 			const addTabBtn = document.getElementById('add-tab');
 			const popupOverlay = document.getElementById('popup-overlay');
 			const urlEditor = document.getElementById('url-editor');
 
-			// прототипы из шаблонов
 			const desktopTmpl = document.getElementById('desktop-tab-template');
 			const webTmpl = document.getElementById('web-tab-template');
 
-			// текущее состояние (будет обновляться через IPC)
 			let tabsData = [];
 			let activeTabIndex = -1;
-			let editingTabIndex = -1; // какая вкладка редактируется
+			let editingTabIndex = -1;
 
 			function updateAspectRatio() {
-				document.documentElement.style.setProperty('--desktop-width',
-					`${window.mainWindowWidth / window.mainWindowHeight * 100}vh`);
+				if (!window.mainWindowWidth || !window.mainWindowHeight) return;
+				document.documentElement.style.setProperty(
+					'--desktop-width',
+					`${(window.mainWindowWidth / window.mainWindowHeight) * 100}vh`
+				);
 			}
 
-			// клонируем шаблон и наполняем данными
+			// ----- Динамическая геометрия под системные кнопки -----
+			function updateWindowControlsOverlay() {
+				if (navigator.windowControlsOverlay && navigator.windowControlsOverlay.visible) {
+					const rect = navigator.windowControlsOverlay.getTitlebarAreaRect();
+					container.style.marginLeft = rect.x + 'px';
+					container.style.width = rect.width + 'px';
+				} else {
+					container.style.marginLeft = '0';
+					container.style.width = '100%';
+				}
+			}
+
+			// Слушаем изменения WCO на уровне браузера
+			if (navigator.windowControlsOverlay) {
+				navigator.windowControlsOverlay.addEventListener('geometrychange', updateWindowControlsOverlay);
+			}
+
+			// Ресайз окна (приходит из main процесса)
+			if (window.electronAPI && window.electronAPI.on_window_resize) {
+				window.electronAPI.on_window_resize((bounds) => {
+					window.mainWindowWidth = bounds.width;
+					window.mainWindowHeight = bounds.height;
+					updateAspectRatio();
+					updateWindowControlsOverlay();
+				});
+			}
+
 			function createTabElement(tab, index) {
 				const tmpl = tab.type === 'desktop' ? desktopTmpl : webTmpl;
 				const el = tmpl.content.firstElementChild.cloneNode(true);
@@ -215,9 +297,8 @@
 
 				if (index === activeTabIndex) el.classList.add('active');
 
-				// общие события
 				el.addEventListener('click', () => {
-					if (editingTabIndex >= 0) return; // во время редактирования не переключаем
+					if (editingTabIndex >= 0) return;
 					window.electronAPI.tab_activate(index);
 				});
 
@@ -241,12 +322,16 @@
 			}
 
 			function renderTabs() {
-				container.innerHTML = '';
-				const sorted = [...tabsData.filter(t => t.type === 'desktop'), ...tabsData.filter(t => t.type !== 'desktop')];
+				tabsEl.innerHTML = '';
+				const sorted = [
+					...tabsData.filter(t => t.type === 'desktop'),
+					...tabsData.filter(t => t.type !== 'desktop')
+				];
 				sorted.forEach(tab => {
 					const originalIndex = tabsData.indexOf(tab);
-					container.appendChild(createTabElement(tab, originalIndex));
+					tabsEl.appendChild(createTabElement(tab, originalIndex));
 				});
+				updateWindowControlsOverlay();
 			}
 
 			function openUrlEditor(index) {
@@ -267,14 +352,11 @@
 				if (apply && newUrl !== oldUrl) {
 					window.electronAPI.tab_url_update(editingTabIndex, newUrl);
 				}
-				// возвращаем ленту вкладок
 				scrollable.classList.remove('hidden');
 				urlEditor.classList.remove('visible');
 				editingTabIndex = -1;
-				// возвращаем фокус активной вкладке, если нужно
 			}
 
-			// редактор: завершение по blur, Enter, Escape
 			urlEditor.addEventListener('blur', () => closeUrlEditor(true));
 			urlEditor.addEventListener('keydown', (e) => {
 				if (e.key === 'Enter') { e.preventDefault(); closeUrlEditor(true); }
@@ -291,7 +373,7 @@
 			popupOverlay.onclick = (e) => { if (e.target === popupOverlay) closePopup(); };
 			addTabBtn.onclick = openPopup;
 
-			// Приём обновлений от Electron
+			// Приём данных от Electron
 			window.electronAPI.tabs_on_update((data) => {
 				tabsData = data.tabsData || [];
 				activeTabIndex = data.activeTabIndex != null ? data.activeTabIndex : -1;
@@ -303,21 +385,35 @@
 				renderTabs();
 			});
 
-			// Команда начать редактирование URL (из контекстного меню)
+			// Редактирование URL из контекстного меню
 			window.electronAPI.tab_edit_url((index) => {
-				if (editingTabIndex >= 0) closeUrlEditor(true); // завершим предыдущее, если висело
+				if (editingTabIndex >= 0) closeUrlEditor(true);
 				openUrlEditor(index);
 			});
 
 			// Горизонтальная прокрутка колёсиком
 			scrollable.addEventListener('wheel', (e) => {
-				if (editingTabIndex >= 0) return; // когда редактор открыт, не скроллим
+				if (editingTabIndex >= 0) return;
 				e.preventDefault();
 				scrollable.scrollLeft += e.deltaY;
 			});
 
 			closePopup();
+			updateWindowControlsOverlay();
+
+			// Минимизация, максимизация, закрытие
+			document.getElementById('min-btn').addEventListener('click', () => {
+				window.electronAPI.window_minimize();
+			});
+			document.getElementById('max-btn').addEventListener('click', () => {
+				window.electronAPI.window_maximize();
+			});
+			document.getElementById('close-btn').addEventListener('click', () => {
+				window.electronAPI.window_close();
+			});
+
 		})();
 	</script>
 </body>
+
 </html>

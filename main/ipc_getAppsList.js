@@ -1,5 +1,6 @@
 import { readdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import electronPkg from 'electron';
 const{ipcMain}=electronPkg;
 
@@ -31,7 +32,7 @@ export default function () {
       id: 'xterm-window',
       type: 'xterm',
       title: 'Xterm',
-      url: `file:///${global.paths.xtermIndex}`,
+      url: global.paths.xtermIndex,
       icon: global.paths.icon,
       useShell: false,               // не важно, т.к. Window сам обрабатывает
     });
@@ -65,7 +66,7 @@ export default function () {
           type: 'componentapp',
           title: entry.name,
           // Путь к собранному HTML этого приложения
-          url: `file:///${join(distDir, 'componentapps', entry.name, 'index.html')}`,
+          url: pathToFileURL(join(distDir, 'componentapps', entry.name, 'index.html')).href,
           icon: iconDataUrl,
         });
       }
@@ -99,7 +100,7 @@ export default function () {
           id: entry.name,
           type: 'webapp',
           title: entry.name,
-          url: `file:///${join(distDir, 'webapps', entry.name, 'index.html')}`,
+          url: pathToFileURL(join(distDir, 'webapps', entry.name, 'index.html')).href,
           icon: iconDataUrl,
         });
       }

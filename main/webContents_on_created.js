@@ -7,8 +7,7 @@ export default function webContents_on_created() {
         if(type === 'webview'){
 	        global.$.applyContextMenu(wc);
         }
-        // BrowserView уже имеют preload, webview получит preload через сессию
-        if (type === 'browserView' || type === 'webview') return;
+        //if (type === 'webContentsView' || type === 'webview') return;
 
         wc.on('dom-ready', () => {
             wc.executeJavaScript(global._.theme_css_filter).catch(() => {});

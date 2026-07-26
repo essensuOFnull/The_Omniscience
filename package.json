@@ -3,8 +3,8 @@
   "version": "7.0.0",
   "type": "module",
   "scripts": {
-    "start": "electron --experimental-default-type=commonjs .",
-    "postinstall": "electron-rebuild --use-tmp-dir"
+    "start": "npx electron --experimental-default-type=commonjs .",
+    "postinstall": "npx electron-rebuild --use-tmp-dir"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

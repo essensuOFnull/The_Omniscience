@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const{ipcMain,BrowserView}=electronPkg;
+const { WebContentsView, ipcMain } = electronPkg;
 
 function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	if (global.windowContentViews[windowId]) {
@@ -12,14 +12,13 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 		return entry.view;
 	}
 
-	const view = new BrowserView({
+	const view = new WebContentsView({
 		webPreferences: {
-			preload,
+			preload:preload,
 			nodeIntegration: false,
 			contextIsolation: true,
 			transparent: true,
 			backgroundColor: '#00000000',
-			webviewTag: false,
 			sandbox: false,
 		},
 	});
@@ -30,9 +29,9 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	// Подписка на события для отправки в renderer
 	const webContents = view.webContents;
 
-	const sendNavigationUpdate = () => {
-		const canGoBack = webContents.canGoBack?.() || false;
-		const canGoForward = webContents.canGoForward?.() || false;
+	const sendNavigationUpdate = (errorInfo) => {
+		const canGoBack = webContents.navigationHistory.canGoBack?.() || false;
+		const canGoForward = webContents.navigationHistory.canGoForward?.() || false;
 		const isLoading = webContents.isLoading?.() || false;
 		const currentUrl = webContents.getURL?.() || '';
 		const title = webContents.getTitle?.() || '';
@@ -45,6 +44,7 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 				canGoBack,
 				canGoForward,
 				loading: isLoading,
+				error: errorInfo || null,   // <-- передаём ошибку, если есть
 			});
 		}
 	};
@@ -53,7 +53,6 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	webContents.on('did-navigate', sendNavigationUpdate);
 	webContents.on('did-navigate-in-page', sendNavigationUpdate);
 	webContents.on('did-start-loading', () => {
-		// можно отправлять отдельно с loading=true
 		sendNavigationUpdate();
 	});
 	webContents.on('did-stop-loading', sendNavigationUpdate);
@@ -61,8 +60,18 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 		sendNavigationUpdate();
 	});
 
+	// Обработка ошибок загрузки
+	webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+		sendNavigationUpdate({
+			errorCode,
+			errorDescription,
+			validatedURL,
+			isMainFrame,
+		});
+	});
+
 	// Добавляем к главному окну
-	global.mainWindow.addBrowserView(view);
+	global.mainWindow.contentView.addChildView(view);
 
 	const bounds = initialBounds || { x: 0, y: 0, width: 0, height: 0 };
 	view.setBounds(bounds);
@@ -78,10 +87,10 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	view._navListeners = [sendNavigationUpdate]; // можно потом отписаться
 
 	//пробуем костылями обернуть xterm
-	if(url==`file:///${global.paths.xtermIndex}`){
+	if (url == global.paths.xtermIndex) {
 		global.$.ipc_xterm(view);
 	}
-	
+
 	return view;
 }
 
@@ -107,7 +116,7 @@ function updateWindowContentView(windowId, { x, y, width, height, scale }) {
 function destroyWindowContentView(windowId) {
 	const entry = global.windowContentViews[windowId];
 	if (!entry) return;
-	global.mainWindow.removeBrowserView(entry.view);
+	global.mainWindow.contentView.removeChildView(entry.view);
 	entry.view.webContents.destroy();
 	delete global.windowContentViews[windowId];
 }
@@ -116,16 +125,16 @@ function setWindowContentZIndex(windowId, zIndex) {
 	const entry = global.windowContentViews[windowId];
 	if (!entry) return;
 	entry.zIndex = zIndex;
-	// Переупорядочиваем все BrowserView по zIndex
+
 	const entries = Object.entries(global.windowContentViews);
 	entries.sort((a, b) => (a[1].zIndex || 0) - (b[1].zIndex || 0));
 
 	// Удаляем все и добавляем заново в правильном порядке
 	for (const [, e] of entries) {
-		global.mainWindow.removeBrowserView(e.view);
+		global.mainWindow.contentView.removeChildView(e.view);
 	}
 	for (const [, e] of entries) {
-		global.mainWindow.addBrowserView(e.view);
+		global.mainWindow.contentView.addChildView(e.view);
 		e.view.setBounds(e.bounds); // восстанавливаем bounds
 	}
 }
@@ -218,8 +227,8 @@ export default function () {
 		return {
 			url: webContents.getURL?.() || '',
 			title: webContents.getTitle?.() || '',
-			canGoBack: webContents.canGoBack?.() || false,
-			canGoForward: webContents.canGoForward?.() || false,
+			canGoBack: webContents.navigationHistory.canGoBack?.() || false,
+			canGoForward: webContents.navigationHistory.canGoForward?.() || false,
 			loading: webContents.isLoading?.() || false,
 		};
 	});

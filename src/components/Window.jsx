@@ -147,7 +147,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		});
 	}, [windowId, win.minimized, win.closing, win.contentScale, desktopOffset]);
 
-	// --- Создание BrowserView ---
 	useEffect(() => {
 		if (win.closing) return;
 		const url = win.url || app?.url || 'about:blank';
@@ -451,7 +450,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
 					</Box>
 				)}
 
-				{/* Область контента – сюда будет накладываться BrowserView */}
 				<Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
 					<motion.div
 						ref={contentRef}

@@ -1,10 +1,11 @@
 import electronPkg from 'electron';
-const{BrowserView}=electronPkg;
+const { WebContentsView } = electronPkg;
 
 export default function (url, type, preload) {
-	const view = new BrowserView({
+	console.log(preload);
+	const view = new WebContentsView({
 		webPreferences: {
-			preload,
+			preload:preload,
 			backgroundColor: '#00000000',
 			transparent: true,
 			nodeIntegration: false,
@@ -14,9 +15,10 @@ export default function (url, type, preload) {
 			webSecurity: false,
 		},
 	});
-
-	global.mainWindow.addBrowserView(view);
+	
 	view.webContents.loadURL(url);
+
+	global.mainWindow.contentView.addChildView(view);
 
 	const tabData = {
 		id: view.webContents.id,

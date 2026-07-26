@@ -117,24 +117,10 @@ export default async function () {
     global._.theme_css_filter = finalFilterCode;
 
     // === Генерация preload-файлов ===
-    const textsDir = path.join(global.paths.projectRoot, 'texts');
-    const [desktopIpc, tabbarIpc, xtermIpc] = await Promise.all([
-        readFile(path.join(textsDir, 'desktop_ipc.js'), 'utf-8'),
-        readFile(path.join(textsDir, 'tabbar_ipc.js'), 'utf-8'),
-        readFile(path.join(textsDir, 'xterm_ipc.js'), 'utf-8'),
-    ]);
-
-    const desktopContent = `${global._.imports}\n\n${finalFilterCode}\n\n${desktopIpc}`;
-    const tabbarContent = `${global._.imports}\n\n${finalFilterCode}\n\n${tabbarIpc}`;
-    const webviewContent = `${global._.imports}\n\n${finalFilterCode}`;
-    const webtabContent = `${global._.imports}\n\n${finalFilterCode}`;
-    const xtermContent=`${global._.imports}\n\n${finalFilterCode}\n\n${xtermIpc}`;
-
     await Promise.all([
-        createPreload('desktopPreload', desktopContent, tmpDir),
-        createPreload('tabbarPreload', tabbarContent, tmpDir),
-        createPreload('webviewPreload', webviewContent, tmpDir),
-        createPreload('webtabPreload', webtabContent, tmpDir),
-        createPreload('xtermPreload', xtermContent, tmpDir),
+        createPreload('desktopPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.desktop_ipc}`, tmpDir),
+        createPreload('tabbarPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.tabbar_ipc}`, tmpDir),
+        createPreload('webtabPreload', `${global._.imports}\n\n${finalFilterCode}`, tmpDir),
+        createPreload('xtermPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.xterm_ipc}`, tmpDir),
     ]);
 }

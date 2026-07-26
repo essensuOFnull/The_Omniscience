@@ -1,8 +1,8 @@
 import electronPkg from 'electron';
-const{BrowserView}=electronPkg;
+const { WebContentsView } = electronPkg;
 
 export default function() {
-    global.tabBar = new BrowserView({
+    global.tabBar = new WebContentsView({
         webPreferences: {
             transparent:true,
             nodeIntegration: false,
@@ -12,9 +12,7 @@ export default function() {
         },
     });
     /*устанавливаем html, который будет в панели*/
-    global.tabBar.webContents.loadFile(global.paths.tabBarHTML);
+    global.tabBar.webContents.loadURL(global.paths.tabBarHTML);
     /*отображаем панель*/
-    global.mainWindow.addBrowserView(global.tabBar);
-    /*устанавливаем панель вкладок выше всего*/
-    global.mainWindow.setTopBrowserView(global.tabBar);
+    global.mainWindow.contentView.addChildView(global.tabBar);
 }
