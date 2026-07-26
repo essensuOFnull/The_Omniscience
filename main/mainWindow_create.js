@@ -32,7 +32,8 @@ export default async function () {
         webPreferences: {
             enableRemoteModule: false,
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            preload: global.paths.reactPreload,
         },
     });
 
