@@ -2,43 +2,70 @@ import electronPkg from 'electron';
 const { WebContentsView } = electronPkg;
 
 export default function (url, type, preload) {
-	console.log(preload);
-	const view = new WebContentsView({
-		webPreferences: {
-			preload:preload,
-			backgroundColor: '#00000000',
-			transparent: true,
-			nodeIntegration: false,
-			contextIsolation: true,
-			sandbox: false,
-			webviewTag: true,
-			webSecurity: false,
-		},
-	});
-	
-	view.webContents.loadURL(url);
+    // Убедимся, что global.tabs существует
+    if (!global.tabs) global.tabs = [];
+    if (global.desktopCounter === undefined) global.desktopCounter = 1;
 
-	global.mainWindow.contentView.addChildView(view);
+    // Генерируем уникальный ID (для всех типов строковый)
+    const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-	const tabData = {
-		id: view.webContents.id,
-		type,
-		url,
-		title: type === 'desktop' ? `Рабочий стол ${global.desktopCounter++}` : url,
-	};
-	view.tabData = tabData;
+    let view = null;
+    let tabData = {
+        id,
+        type,
+        url: url || '',
+        title: '',
+    };
 
-	global.tabs.push(view);
-	const newIndex = global.tabs.length - 1;
-	global.$.tab_on_didNavigate(view);
-	global.$.tab_activate(newIndex);
+    if (type === 'desktop') {
+        tabData.title = `Рабочий стол ${global.desktopCounter++}`;
+        // Для десктопа view = null
+    } else {
+        // Создаём WebContentsView
+        view = new WebContentsView({
+            webPreferences: {
+                preload: preload,
+                backgroundColor: '#00000000',
+                transparent: true,
+                nodeIntegration: false,
+                contextIsolation: true,
+                sandbox: false,
+                webviewTag: true,
+                webSecurity: false,
+            },
+        });
+        view.webContents.loadURL(url || 'about:blank');
 
-	/*применяем контекстное меню*/
-	global.$.applyContextMenu(view.webContents);
+        // Добавляем в окно
+        global.mainWindow.contentView.addChildView(view);
+        // Скрываем пока (нулевые размеры)
+        view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
 
-	if(type === 'xterm'){
-		global.$.ipc_xterm(view);
-	}
+        tabData.title = type === 'xterm' ? 'Терминал' : (url || 'Новая вкладка');
+        // Для веба и терминала сохраняем view
+        view.tabData = tabData;
 
-	return view;
+        // Подписки
+        global.$.tab_on_didNavigate(view);
+        global.$.applyContextMenu(view.webContents);
+        if (type === 'xterm') {
+            global.$.ipc_xterm(view);
+        }
+    }
+
+    // Добавляем в массив
+    global.tabs.push({ tabData, view });
+
+    // Отправляем обновление в renderer
+    if (global.$.sendTabsUpdate) {
+        global.$.sendTabsUpdate();
+    }
+
+    // Активируем новую вкладку (по индексу)
+    const newIndex = global.tabs.length - 1;
+    if (global.$.tab_activate) {
+        global.$.tab_activate(newIndex);
+    }
+
+    return { tabData, view };
 }

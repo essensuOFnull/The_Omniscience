@@ -272,7 +272,7 @@ const TabBar = () => {
             Рабочий стол
           </Button>
           <Button variant="contained" onClick={() => handlePopupAction('web')}>
-            Открыть ссылку
+            Ссылка
           </Button>
           <Button variant="contained" onClick={() => handlePopupAction('xterm')}>
             Терминал

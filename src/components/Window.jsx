@@ -1,4 +1,3 @@
-// Window.jsx
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
@@ -15,8 +14,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import HomeIcon from '@mui/icons-material/Home';
 import LanguageIcon from '@mui/icons-material/Language';
 
-export default function Window({ windowId, app, state, actions, config, animations }) {
-	const win = state.windows[windowId];
+export default function Window({ windowId, app, state, actions, config, animations, desktopId }) {
+	// Извлекаем окно из состояния конкретного десктопа
+	const win = state?.windows?.[windowId];
 	if (!win) return null;
 
 	const isFocused = state.focusedWindowId === windowId;
@@ -150,7 +150,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 	useEffect(() => {
 		if (win.closing) return;
 		const url = win.url || app?.url || 'about:blank';
-		const preload = app.type=='xterm' ? config?.xtermPreload || null : config?.windowPreload || null;
+		const preload = app?.type === 'xterm' ? config?.xtermPreload || null : config?.windowPreload || null;
 		window.electron_desktop_API.createWindowContentView({
 			windowId,
 			url,
@@ -196,37 +196,37 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		window.electron_desktop_API.setWindowContentZIndex({ windowId, zIndex });
 	}, [viewCreated, windowId, win.z]);
 
-	// --- Обработчики управления окном ---
+	// --- Обработчики управления окном (с передачей desktopId) ---
 	const closeWindow = useCallback(() => {
-		if (!win.closing) actions.closeWindow(windowId);
-	}, [windowId, actions, win.closing]);
+		if (!win.closing) actions.closeWindow(desktopId, windowId);
+	}, [desktopId, windowId, actions, win.closing]);
 
 	const toggleMinimize = useCallback(() => {
 		if (win.closing) return;
 		if (win.minimized) {
-			actions.unminimizeWindow(windowId);
+			actions.unminimizeWindow(desktopId, windowId);
 		} else {
 			const btn = document.querySelector(`[data-window-id="${windowId}"]`);
 			if (btn) {
 				const rect = btn.getBoundingClientRect();
-				actions.minimizeWindow(windowId, rect.left + rect.width / 2, rect.top + rect.height / 2);
+				actions.minimizeWindow(desktopId, windowId, rect.left + rect.width / 2, rect.top + rect.height / 2);
 			} else {
-				actions.minimizeWindow(windowId);
+				actions.minimizeWindow(desktopId, windowId);
 			}
 		}
-	}, [windowId, actions, win]);
+	}, [desktopId, windowId, actions, win]);
 
 	const handleMaximize = useCallback(() => {
 		if (win.closing) return;
-		if (isGrid) actions.closeOverview();
-		if (win.maximized) actions.unmaximizeWindow(windowId);
-		else actions.maximizeWindow(windowId);
-	}, [windowId, actions, win, isGrid]);
+		if (isGrid) actions.closeOverview(desktopId);
+		if (win.maximized) actions.unmaximizeWindow(desktopId, windowId);
+		else actions.maximizeWindow(desktopId, windowId);
+	}, [desktopId, windowId, actions, win, isGrid]);
 
 	const handleTitleMouseDown = useCallback((e) => {
 		if (isGrid || win.maximized || win.closing) return;
 		e.preventDefault();
-		if (!isFocused) actions.focusWindow(windowId);
+		if (!isFocused) actions.focusWindow(desktopId, windowId);
 		if (contentRef.current) contentRef.current.style.pointerEvents = 'none';
 
 		const startX = e.clientX, startY = e.clientY;
@@ -234,6 +234,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 
 		const onMove = (ev) => {
 			actions.setWindowRect(
+				desktopId,
 				windowId,
 				startCX + ev.clientX - startX,
 				startCY + ev.clientY - startY,
@@ -248,13 +249,13 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		};
 		document.addEventListener('mousemove', onMove);
 		document.addEventListener('mouseup', onUp);
-	}, [windowId, actions, isGrid, isFocused, win]);
+	}, [desktopId, windowId, actions, isGrid, isFocused, win]);
 
 	const onResizeMouseDown = useCallback((direction) => (e) => {
 		if (win.maximized || win.closing) return;
 		e.preventDefault();
 		e.stopPropagation();
-		if (!isFocused) actions.focusWindow(windowId);
+		if (!isFocused) actions.focusWindow(desktopId, windowId);
 		if (contentRef.current) contentRef.current.style.pointerEvents = 'none';
 
 		const startX = e.clientX, startY = e.clientY;
@@ -280,7 +281,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 				newH = Math.min(Math.max(startH - dy, 1), bottom);
 				newCY = bottom - newH / 2;
 			}
-			actions.setWindowRect(windowId, newCX, newCY, newW, newH);
+			actions.setWindowRect(desktopId, windowId, newCX, newCY, newW, newH);
 		};
 		const onUp = () => {
 			if (contentRef.current) contentRef.current.style.pointerEvents = '';
@@ -289,12 +290,12 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		};
 		document.addEventListener('mousemove', onMove);
 		document.addEventListener('mouseup', onUp);
-	}, [windowId, actions, isFocused, win, state.viewport]);
+	}, [desktopId, windowId, actions, isFocused, win, state.viewport]);
 
 	const onAnimationComplete = useCallback(() => {
-		actions.animationComplete(windowId);
+		actions.animationComplete(desktopId, windowId);
 		sendUpdate();
-	}, [actions, windowId, sendUpdate]);
+	}, [desktopId, actions, windowId, sendUpdate]);
 
 	// --- Позиционирование и анимация ---
 	const topOffset = (isGrid && state.gridViewport) ? (state.gridViewport.top - overviewScrollTop) : 0;
@@ -340,8 +341,8 @@ export default function Window({ windowId, app, state, actions, config, animatio
 			onClick={(e) => {
 				if (isGrid && !win.closing) {
 					e.stopPropagation();
-					actions.closeOverview();
-					actions.focusWindow(windowId);
+					actions.closeOverview(desktopId);
+					actions.focusWindow(desktopId, windowId);
 				}
 			}}
 		>

@@ -21,10 +21,6 @@
 		setWindowContentZIndex: (data) => ipcRenderer.send('set-window-content-zindex', data),
 
 		getDesktopViewBounds: () => ipcRenderer.invoke('get-desktop-view-bounds'),
-		onDesktopViewBoundsChanged: (callback) => {
-			ipcRenderer.on('desktop-view-bounds-changed', (event, bounds) => callback(bounds));
-			return () => ipcRenderer.removeListener('desktop-view-bounds-changed', callback);
-		},
 
 		// Навигация
 		goBack: (windowId) => ipcRenderer.send('window-go-back', windowId),
@@ -41,5 +37,7 @@
 			ipcRenderer.on('window-navigation-update', (event, data) => callback(data));
 			return () => ipcRenderer.removeListener('window-navigation-update', callback);
 		},
+		setWebViewBounds: (id, bounds) => ipcRenderer.send('set-webview-bounds', { id, bounds }),
+		onRequestWebViewBounds: (callback) => ipcRenderer.on('request-webview-bounds', (event, id) => callback(id)),
 	});
 })();

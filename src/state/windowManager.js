@@ -1,314 +1,302 @@
-import { clampRect } from './clampRect';
+// windowManager.js
+import { initialState as baseInitialState } from './initialState';
 
-let idCounter = 0;
-let zCounter = 100;
+// Начальное состояние для одного рабочего стола
+const getDefaultDesktopState = () => ({
+  windows: {},
+  isOverviewOpened: false,
+  overviewTab: 0,
+  gridTotalHeight: 0,
+  overviewScrollTop: 0,
+  viewport: null,
+  gridViewport: null,
+});
 
-export const resetCounters = () => {
-  idCounter = 0;
-  zCounter = 100;
-};
+export const windowManager = {
+  // Действия, которые принимают desktopId в payload
+  createWindow(state, payload, { config, getNewId, getNewZ }) {
+    const { desktopId, appId, cx, cy, width, height, url, extra } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    const id = getNewId();
+    const z = getNewZ(desktop.windows);
+    const newWindow = {
+      id,
+      appId,
+      x: cx - width / 2,
+      y: cy - height / 2,
+      width,
+      height,
+      z,
+      minimized: false,
+      url: url || null,
+      extra: extra || {},
+      title: extra?.app?.title || 'Окно',
+    };
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: { ...desktop.windows, [id]: newWindow },
+        },
+      },
+    };
+  },
 
-export const getNewId = () => `win-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-export const getNewZ = () => ++zCounter;
+  closeWindow(state, payload) {
+    const { desktopId, windowId } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    const newWindows = { ...desktop.windows };
+    delete newWindows[windowId];
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: newWindows,
+        },
+      },
+    };
+  },
 
-const updateWindow = (state, windowId, updater) => {
-  const win = state.windows[windowId];
-  if (!win) return state;
-  return {
-    ...state,
-    windows: {
-      ...state.windows,
-      [windowId]: updater(win),
-    },
-  };
-};
-
-// --- Окна ---
-
-export const createWindow = (state, payload, helpers) => {
-  const [options] = payload;
-  const { config, getNewId, getNewZ } = helpers;
-  const { appId, cx, cy, width, height, url, extra } = options || {};
-  const windowId = getNewId();
-  const vp = state.viewport;
-  const clamped = clampRect(cx || vp.centerX, cy || vp.centerY, width || 800, height || 600, vp);
-
-  let newWindows = { ...state.windows };
-  if (state.focusedWindowId) {
-    const prev = newWindows[state.focusedWindowId];
-    if (prev) {
-      newWindows[state.focusedWindowId] = { ...prev, animationVariant: 'unfocus' };
+  focusWindow(state, payload) {
+    const { desktopId, windowId } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    if (windowId === null) {
+      // Снять фокус со всех окон
+      return state;
     }
-  }
+    const win = desktop.windows[windowId];
+    if (!win) return state;
+    const maxZ = Math.max(0, ...Object.values(desktop.windows).map(w => w.z || 0)) + 1;
+    const updatedWindows = {
+      ...desktop.windows,
+      [windowId]: { ...win, z: maxZ, minimized: false },
+    };
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: updatedWindows,
+        },
+      },
+    };
+  },
 
-  newWindows[windowId] = {
-    appId,
-    id: windowId,
-    ghost: { centerX: clamped.cx, centerY: clamped.cy, width: clamped.w, height: clamped.h },
-    minimized: false,
-    maximized: false,
-    closing: false,
-    url: url || (appId === 'browser' ? config.homepageUrl || 'about:blank' : null),
-    z: getNewZ(),
-    contentScale: 1,
-    animationVariant: 'create',
-    completedAnimation: null,
-    ...extra,
-  };
+  minimizeWindow(state, payload) {
+    const { desktopId, windowId } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    const win = desktop.windows[windowId];
+    if (!win) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: {
+            ...desktop.windows,
+            [windowId]: { ...win, minimized: !win.minimized },
+          },
+        },
+      },
+    };
+  },
 
-  return {
-    ...state,
-    windows: newWindows,
-    focusedWindowId: windowId,
-  };
-};
+  moveWindow(state, payload) {
+    const { desktopId, windowId, x, y } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    const win = desktop.windows[windowId];
+    if (!win) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: {
+            ...desktop.windows,
+            [windowId]: { ...win, x, y },
+          },
+        },
+      },
+    };
+  },
 
-export const closeWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const win = state.windows[windowId];
-  if (!win || win.closing) return state;
-  return updateWindow(state, windowId, (w) => ({ ...w, closing: true, animationVariant: 'closing' }));
-};
+  resizeWindow(state, payload) {
+    const { desktopId, windowId, width, height } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    const win = desktop.windows[windowId];
+    if (!win) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          windows: {
+            ...desktop.windows,
+            [windowId]: { ...win, width, height },
+          },
+        },
+      },
+    };
+  },
 
-export const deleteWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const newWindows = { ...state.windows };
-  delete newWindows[windowId];
-  let focused = state.focusedWindowId;
-  if (focused === windowId) focused = null;
-  return { ...state, windows: newWindows, focusedWindowId: focused };
-};
+  openOverview(state, payload) {
+    const { desktopId } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          isOverviewOpened: true,
+        },
+      },
+    };
+  },
 
-export const animationComplete = (state, windowId) => {
-  const win = state.windows[windowId];
-  if (!win) return state;
-  if (win.closing) {
-    return deleteWindow(state, windowId);
-  }
-  return updateWindow(state, windowId, (w) => ({
-    ...w,
-    completedAnimation: w.animationVariant,
-  }));
-};
+  closeOverview(state, payload) {
+    const { desktopId } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          isOverviewOpened: false,
+        },
+      },
+    };
+  },
 
-export const focusWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const { getNewZ } = helpers;
-  if (windowId === state.focusedWindowId) return state;
-  let newWindows = { ...state.windows };
-  if (state.focusedWindowId) {
-    const prev = newWindows[state.focusedWindowId];
-    if (prev) newWindows[state.focusedWindowId] = { ...prev, animationVariant: 'unfocus' };
-  }
-  if (windowId === null) {
-    return { ...state, windows: newWindows, focusedWindowId: null };
-  }
-  const win = newWindows[windowId];
-  if (!win || win.closing) return state;
-  newWindows[windowId] = { ...win, z: getNewZ(), animationVariant: 'focus' };
-  return { ...state, windows: newWindows, focusedWindowId: windowId };
-};
+  setOverviewTab(state, payload) {
+    const { desktopId, tab } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          overviewTab: tab,
+        },
+      },
+    };
+  },
 
-export const minimizeWindow = (state, payload, helpers) => {
-  const [windowId, cx, cy] = payload;
-  const { getNewZ } = helpers;
-  const win = state.windows[windowId];
-  if (!win || win.closing || win.minimized) return state;
-  const vp = state.viewport;
-  const targetCX = cx ?? vp.centerX;
-  const targetCY = cy ?? vp.height;
-  const currentGhost = { ...win.ghost, scale: 1 };
-  const newGhost = { ...currentGhost, centerX: targetCX, centerY: targetCY, scale: 0 };
+  setGridViewport(state, payload) {
+    const { desktopId, rect } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          gridViewport: rect,
+        },
+      },
+    };
+  },
 
-  const newState = updateWindow(state, windowId, (w) => ({
-    ...w,
-    unminimizeGhost: currentGhost,
-    ghost: newGhost,
-    minimized: true,
-    animationVariant: 'minimize',
-    z: getNewZ(),
-  }));
-  return { ...newState, focusedWindowId: null };
-};
+  setOverviewScrollTop(state, payload) {
+    const { desktopId, scrollTop } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          overviewScrollTop: scrollTop,
+        },
+      },
+    };
+  },
 
-export const unminimizeWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const { config, getNewZ } = helpers;
-  const win = state.windows[windowId];
-  if (!win || win.closing || !win.minimized) return state;
-  const restoreGhost = win.unminimizeGhost || win.initialGhost;
-  if (!restoreGhost) return state;
-  const ghost = { ...restoreGhost, scale: 0 };
+  recalcOverviewGrid(state, payload) {
+    // Заглушка – можно вычислить высоту сетки
+    return state;
+  },
 
-  let newState = updateWindow(state, windowId, (w) => ({
-    ...w,
-    ghost,
-    minimized: false,
-    animationVariant: 'unminimize',
-    z: getNewZ(),
-  }));
-  newState = { ...newState, focusedWindowId: windowId };
+  setViewport(state, payload) {
+    const { desktopId, rect } = payload;
+    const desktop = state.desktops[desktopId];
+    if (!desktop) return state;
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: {
+          ...desktop,
+          viewport: rect,
+        },
+      },
+    };
+  },
 
-  if (newState.isOverviewOpened && newState.overviewTab === 1) {
-    // TODO: recalcOverviewGrid
-  }
-  return newState;
-};
+  // Новые действия для управления десктопами
+  createDesktop(state, payload) {
+    const { desktopId } = payload;
+    if (state.desktops[desktopId]) return state; // уже есть
+    return {
+      ...state,
+      desktops: {
+        ...state.desktops,
+        [desktopId]: getDefaultDesktopState(),
+      },
+      activeDesktopId: desktopId,
+    };
+  },
 
-export const maximizeWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const { getNewZ } = helpers;
-  const win = state.windows[windowId];
-  if (!win || win.closing) return state;
-  const vp = state.viewport;
-  return updateWindow(state, windowId, (w) => ({
-    ...w,
-    unmaximizeGhost: { ...w.ghost },
-    ghost: { centerX: vp.centerX, centerY: vp.centerY, width: vp.width, height: vp.height, scale: 1, opacity: 1 },
-    maximized: true,
-    animationVariant: 'maximize',
-    z: getNewZ(),
-  }));
-};
-
-export const unmaximizeWindow = (state, payload, helpers) => {
-  const [windowId] = payload;
-  const { getNewZ } = helpers;
-  const win = state.windows[windowId];
-  if (!win || win.closing) return state;
-  return updateWindow(state, windowId, (w) => ({
-    ...w,
-    ghost: { ...w.unmaximizeGhost },
-    maximized: false,
-    animationVariant: 'unmaximize',
-    z: getNewZ(),
-  }));
-};
-
-export const setWindowRect = (state, payload, helpers) => {
-  const [windowId, cx, cy, width, height] = payload;
-  const win = state.windows[windowId];
-  if (!win || win.closing) return state;
-  const vp = state.viewport;
-  const clamped = clampRect(cx, cy, width, height, vp);
-  return updateWindow(state, windowId, (w) => ({
-    ...w,
-    ghost: { ...w.ghost, centerX: clamped.cx, centerY: clamped.cy, width: clamped.w, height: clamped.h },
-    animationVariant: 'setRect',
-  }));
-};
-
-export const setViewport = (state, payload, helpers) => {
-  const [rect] = payload;
-  const { left, top, right, bottom, width, height } = rect;
-  const newViewport = { left, top, right, bottom, width, height, centerX: width / 2, centerY: height / 2 };
-  let newWindows = { ...state.windows };
-  for (const id in newWindows) {
-    const win = newWindows[id];
-    if (win.closing) continue;
-    if (win.maximized) {
-      newWindows[id] = {
-        ...win,
-        ghost: { centerX: newViewport.centerX, centerY: newViewport.centerY, width: newViewport.width, height: newViewport.height, scale: 1, opacity: 1 },
-      };
-    } else if (!win.minimized) {
-      const clamped = clampRect(win.ghost.centerX, win.ghost.centerY, win.ghost.width, win.ghost.height, newViewport);
-      newWindows[id] = {
-        ...win,
-        ghost: { ...win.ghost, centerX: clamped.cx, centerY: clamped.cy, width: clamped.w, height: clamped.h },
-      };
+  closeDesktop(state, payload) {
+    const { desktopId } = payload;
+    const newDesktops = { ...state.desktops };
+    delete newDesktops[desktopId];
+    // Если удаляем активный, переключаем на другой
+    let newActive = state.activeDesktopId;
+    if (state.activeDesktopId === desktopId) {
+      const keys = Object.keys(newDesktops);
+      newActive = keys.length > 0 ? keys[0] : null;
     }
-  }
-  return { ...state, viewport: newViewport, windows: newWindows };
+    return {
+      ...state,
+      desktops: newDesktops,
+      activeDesktopId: newActive,
+    };
+  },
+
+  switchDesktop(state, payload) {
+    const { desktopId } = payload;
+    if (!state.desktops[desktopId]) return state;
+    return {
+      ...state,
+      activeDesktopId: desktopId,
+    };
+  },
 };
 
-// --- Overview ---
-
-export const openOverview = (state, payload, helpers) => {
-  if (state.isOverviewOpened) return state;
-  return { ...state, isOverviewOpened: true };
+// Инициализация: в initialState будет пустой объект desktops
+export const initialState = {
+  desktops: {},
+  activeDesktopId: null,
 };
-
-export const closeOverview = (state, payload, helpers) => {
-  if (!state.isOverviewOpened) return state;
-  let newState = { ...state, isOverviewOpened: false, gridViewport: null, gridTotalHeight: 0 };
-  if (state.overviewTab === 1) {
-    const windows = { ...newState.windows };
-    for (const id in windows) {
-      const win = windows[id];
-      if (!win.closing && !win.minimized && win.ungridGhost) {
-        windows[id] = { ...win, ghost: { ...win.ungridGhost }, contentScale: 1, animationVariant: 'setContentScale' };
-      }
-    }
-    newState.windows = windows;
-  }
-  return newState;
-};
-
-export const setOverviewTab = (state, payload, helpers) => {
-  const [tab] = payload;
-  if (tab === state.overviewTab) return state;
-  let newState = { ...state, overviewTab: tab };
-  if (tab === 1) {
-    const windows = { ...newState.windows };
-    for (const id in windows) {
-      const win = windows[id];
-      if (!win.closing && !win.minimized) windows[id] = { ...win, ungridGhost: { ...win.ghost } };
-    }
-    newState.windows = windows;
-  } else if (state.overviewTab === 1) {
-    const windows = { ...newState.windows };
-    for (const id in windows) {
-      const win = windows[id];
-      if (!win.closing && !win.minimized && win.ungridGhost) {
-        windows[id] = { ...win, ghost: { ...win.ungridGhost }, contentScale: 1, animationVariant: 'setContentScale' };
-      }
-    }
-    newState.windows = windows;
-    newState.gridViewport = null;
-    newState.gridTotalHeight = 0;
-  }
-  return newState;
-};
-
-export const setGridViewport = (state, payload, helpers) => {
-  const [rect] = payload;
-  return { ...state, gridViewport: rect };
-};
-
-export const setOverviewScrollTop = (state, payload, helpers) => {
-  const [scrollTop] = payload;
-  if (state.overviewScrollTop === scrollTop) return state;
-  return { ...state, overviewScrollTop: scrollTop };
-};
-
-export const recalcOverviewGrid = (state, payload, helpers) => {
-  // заглушка
-  return state;
-};
-
-// Экспорт объекта для использования в Main.jsx
-const windowManager = {
-  createWindow,
-  closeWindow,
-  deleteWindow,
-  animationComplete,
-  focusWindow,
-  minimizeWindow,
-  unminimizeWindow,
-  maximizeWindow,
-  unmaximizeWindow,
-  setWindowRect,
-  setViewport,
-  openOverview,
-  closeOverview,
-  setOverviewTab,
-  setGridViewport,
-  setOverviewScrollTop,
-  recalcOverviewGrid,
-  getNewId,
-  getNewZ
-};
-
-export default windowManager;
-export { windowManager };
