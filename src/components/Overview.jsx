@@ -49,7 +49,6 @@ function TabPanel({ children, value, index }) {
 export default function Overview({ state, actions, config, apps }) {
 	if (!state) return null;
 	const { isOverviewOpened, overviewTab } = state;
-	const taskbarHeight = config?.taskbarHeight || 40;
 	const [search, setSearch] = useState('');
 
 	const tabs = [
@@ -94,11 +93,11 @@ export default function Overview({ state, actions, config, apps }) {
 			animate={{ opacity: isOverviewOpened ? 1 : 0, scale: isOverviewOpened ? 1 : 0.95 }}
 			transition={{ duration: 0.2, ease: 'easeInOut' }}
 			style={{
-				position: 'fixed',
+				position: 'absolute',
 				top: 0,
 				left: 0,
 				right: 0,
-				bottom: taskbarHeight,
+				bottom: 0,
 				zIndex: config?.overviewZIndex || 1000,
 				backgroundColor: 'rgba(0,0,0,0.75)',
 				backdropFilter: 'blur(12px)',

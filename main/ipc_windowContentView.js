@@ -14,7 +14,7 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 
 	const view = new WebContentsView({
 		webPreferences: {
-			preload:preload,
+			preload: preload,
 			nodeIntegration: false,
 			contextIsolation: true,
 			transparent: true,
@@ -50,12 +50,13 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	};
 
 	// События, после которых обновляем статус
-	webContents.on('did-navigate', sendNavigationUpdate);
-	webContents.on('did-navigate-in-page', sendNavigationUpdate);
+	// вместо прямого присоединения sendNavigationUpdate оборачиваем
+	webContents.on('did-navigate', () => sendNavigationUpdate());
+	webContents.on('did-navigate-in-page', () => sendNavigationUpdate());
 	webContents.on('did-start-loading', () => {
 		sendNavigationUpdate();
 	});
-	webContents.on('did-stop-loading', sendNavigationUpdate);
+	webContents.on('did-stop-loading', () => sendNavigationUpdate());
 	webContents.on('page-title-updated', (e, title) => {
 		sendNavigationUpdate();
 	});
