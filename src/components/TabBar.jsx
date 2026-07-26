@@ -29,8 +29,8 @@ const TabBar = () => {
       setTabs(data.tabsData || []);
       setActiveTabIndex(data.activeTabIndex != null ? data.activeTabIndex : -1);
     };
-    if (window.electronAPI?.tabs_on_update) {
-      window.electronAPI.tabs_on_update(updateHandler);
+    if (window.electron_tabBar_API?.tabs_on_update) {
+      window.electron_tabBar_API.tabs_on_update(updateHandler);
     }
     return () => {
       // (опционально) если есть метод отписки, вызвать его
@@ -40,12 +40,12 @@ const TabBar = () => {
   // Обработчики
   const handleTabClick = (index) => {
     if (editingIndex >= 0) return;
-    window.electronAPI?.tab_activate?.(index);
+    window.electron_tabBar_API?.tab_activate?.(index);
   };
 
   const handleTabContextMenu = (index, e) => {
     e.preventDefault();
-    window.electronAPI?.tab_context_menu?.(index, e.clientX, e.clientY);
+    window.electron_tabBar_API?.tab_context_menu?.(index, e.clientX, e.clientY);
   };
 
   const handleTabDragStart = (e, index) => {
@@ -56,7 +56,7 @@ const TabBar = () => {
     e.preventDefault();
     const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
     if (!isNaN(from) && from !== targetIndex) {
-      window.electronAPI?.tab_move?.(from, targetIndex);
+      window.electron_tabBar_API?.tab_move?.(from, targetIndex);
     }
   };
 
@@ -70,9 +70,9 @@ const TabBar = () => {
   const handlePopupAction = (type) => {
     setShowPopup(false);
     setPopupAnchorEl(null);
-    if (type === 'desktop') window.electronAPI?.desktop_create?.();
-    else if (type === 'web') window.electronAPI?.tab_create?.();
-    else if (type === 'xterm') window.electronAPI?.xterm_create?.();
+    if (type === 'desktop') window.electron_tabBar_API?.desktop_create?.();
+    else if (type === 'web') window.electron_tabBar_API?.tab_create?.();
+    else if (type === 'xterm') window.electron_tabBar_API?.xterm_create?.();
   };
 
   const handlePopupClose = () => {
@@ -90,7 +90,7 @@ const TabBar = () => {
   const handleFinishEdit = (apply = true) => {
     if (editingIndex >= 0 && apply) {
       const newUrl = editUrl;
-      window.electronAPI?.tab_url_update?.(editingIndex, newUrl);
+      window.electron_tabBar_API?.tab_url_update?.(editingIndex, newUrl);
     }
     setEditingIndex(-1);
     setEditUrl('');
@@ -106,9 +106,9 @@ const TabBar = () => {
     }
   };
 
-  const handleMinimize = () => window.electronAPI?.window_minimize?.();
-  const handleMaximize = () => window.electronAPI?.window_maximize?.();
-  const handleClose = () => window.electronAPI?.window_close?.();
+  const handleMinimize = () => window.electron_tabBar_API?.window_minimize?.();
+  const handleMaximize = () => window.electron_tabBar_API?.window_maximize?.();
+  const handleClose = () => window.electron_tabBar_API?.window_close?.();
 
   const handleWheel = (e) => {
     if (editingIndex >= 0) return;

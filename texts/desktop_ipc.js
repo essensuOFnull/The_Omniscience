@@ -1,5 +1,5 @@
 (function () {
-	contextBridge.exposeInMainWorld('electronAPI', {
+	contextBridge.exposeInMainWorld('electron_desktop_API', {
 		getConfig: () => ipcRenderer.invoke('get-config'),
 		getAppsList: () => ipcRenderer.invoke('get-apps-list'),
 		registerWebview: (webContentsId, appId, windowId) =>

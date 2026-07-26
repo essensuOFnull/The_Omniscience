@@ -1,5 +1,5 @@
 (function () {
-    contextBridge.exposeInMainWorld('electronAPI', {
+    contextBridge.exposeInMainWorld('electron_tabBar_API', {
         tabs_on_update: (callback) => ipcRenderer.on('tabs_on_update', (event, data) => callback(data)),
         tab_create: () => ipcRenderer.send('tab_create'),
         desktop_create: () => ipcRenderer.send('desktop_create'),

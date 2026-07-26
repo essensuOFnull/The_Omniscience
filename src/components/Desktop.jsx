@@ -35,7 +35,7 @@ export default function Desktop() {
     let cancelled = false;
     const load = async () => {
       try {
-        const cfg = await window.electronAPI?.getConfig?.() ?? { taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 };
+        const cfg = await window.electron_desktop_API?.getConfig?.() ?? { taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 };
         if (!cancelled) {
           setConfig(cfg);
           setLoading(false);
@@ -52,7 +52,7 @@ export default function Desktop() {
   const [apps, setApps] = useState([]);
 
   useEffect(() => {
-    window.electronAPI?.getAppsList?.().then(setApps).catch(() => {});
+    window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => {});
   }, []);
 
   useLayoutEffect(() => {

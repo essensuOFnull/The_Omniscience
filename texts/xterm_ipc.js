@@ -1,5 +1,5 @@
 (function () {
-	contextBridge.exposeInMainWorld('electronTerminal', {
+	contextBridge.exposeInMainWorld('electron_terminal_API', {
 		createTerminal: (containerId) => {
 			const el = document.getElementById(containerId);
 			if (!el) return;

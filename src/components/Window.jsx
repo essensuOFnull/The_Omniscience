@@ -45,8 +45,8 @@ export default function Window({ windowId, app, state, actions, config, animatio
 				setDesktopOffset({ x: bounds.x, y: bounds.y });
 			}
 		};
-		window.electronAPI.getDesktopViewBounds().then(updateOffset);
-		unsubscribe = window.electronAPI.onDesktopViewBoundsChanged(updateOffset);
+		window.electron_desktop_API.getDesktopViewBounds().then(updateOffset);
+		unsubscribe = window.electron_desktop_API.onDesktopViewBoundsChanged(updateOffset);
 		return () => {
 			if (unsubscribe) unsubscribe();
 		};
@@ -57,7 +57,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		let unsubscribe = null;
 
 		// Получаем начальное состояние (Promise)
-		window.electronAPI.getWindowNavState(windowId).then((state) => {
+		window.electron_desktop_API.getWindowNavState(windowId).then((state) => {
 			if (state) {
 				setCurrentUrl(state.url);
 				setPageTitle(state.title);
@@ -68,7 +68,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		});
 
 		// Подписываемся на обновления — onWindowNavigationUpdate возвращает функцию отписки
-		unsubscribe = window.electronAPI.onWindowNavigationUpdate((data) => {
+		unsubscribe = window.electron_desktop_API.onWindowNavigationUpdate((data) => {
 			if (data.windowId === windowId) {
 				setCurrentUrl(data.url);
 				setPageTitle(data.title);
@@ -94,19 +94,19 @@ export default function Window({ windowId, app, state, actions, config, animatio
 				processedUrl = `https://www.google.com/search?q=${encodeURIComponent(processedUrl)}`;
 			}
 		}
-		window.electronAPI.loadUrl(windowId, processedUrl);
+		window.electron_desktop_API.loadUrl(windowId, processedUrl);
 	}, [windowId]);
 
 	const goBack = useCallback(() => {
-		window.electronAPI.goBack(windowId);
+		window.electron_desktop_API.goBack(windowId);
 	}, [windowId]);
 
 	const goForward = useCallback(() => {
-		window.electronAPI.goForward(windowId);
+		window.electron_desktop_API.goForward(windowId);
 	}, [windowId]);
 
 	const reload = useCallback(() => {
-		window.electronAPI.reload(windowId);
+		window.electron_desktop_API.reload(windowId);
 	}, [windowId]);
 
 	const toggleBrowserMode = useCallback(() => {
@@ -120,7 +120,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		const rect = el.getBoundingClientRect();
 
 		if (win.minimized || win.closing) {
-			window.electronAPI.updateWindowContentView({
+			window.electron_desktop_API.updateWindowContentView({
 				windowId,
 				x: 0,
 				y: 0,
@@ -137,7 +137,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		const height = Math.round(rect.height);
 		const scale = win.contentScale || 1;
 
-		window.electronAPI.updateWindowContentView({
+		window.electron_desktop_API.updateWindowContentView({
 			windowId,
 			x,
 			y,
@@ -151,7 +151,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		if (win.closing) return;
 		const url = win.url || app?.url || 'about:blank';
 		const preload = app.type=='xterm' ? config?.xtermPreload || null : config?.windowPreload || null;
-		window.electronAPI.createWindowContentView({
+		window.electron_desktop_API.createWindowContentView({
 			windowId,
 			url,
 			preload,
@@ -160,7 +160,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		setViewCreated(true);
 
 		return () => {
-			window.electronAPI.destroyWindowContentView({ windowId });
+			window.electron_desktop_API.destroyWindowContentView({ windowId });
 		};
 	}, [windowId, win.url, app?.url, config, win.closing]);
 
@@ -193,7 +193,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 	useEffect(() => {
 		if (!viewCreated) return;
 		const zIndex = win.z || 0;
-		window.electronAPI.setWindowContentZIndex({ windowId, zIndex });
+		window.electron_desktop_API.setWindowContentZIndex({ windowId, zIndex });
 	}, [viewCreated, windowId, win.z]);
 
 	// --- Обработчики управления окном ---
