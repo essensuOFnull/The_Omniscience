@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useReducer, useMemo, useCallback, useRef } from 'react';
 import { Box } from '@mui/material';
 import DesktopWorkspace from './DesktopWorkspace';
-import { initialState, windowManager } from '../state/windowManager';
-import { getNewId, getNewZ } from '../state/windowManagerHelpers'; // предположим, что есть
+import { initialState } from '../state/windowManager/initialState';
+import { windowManager } from '../state/windowManager';
+const {getNewId, getNewZ}=windowManager;
 
 const TAB_BAR_HEIGHT = 35;
 
