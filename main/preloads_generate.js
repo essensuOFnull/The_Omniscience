@@ -3,7 +3,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 async function createPreload(key, content, tmpDir) {
-    const fileName = `${key}.js`;
+    const fileName = `${key}.cjs`;
     const filePath = path.join(tmpDir, fileName);
     await writeFile(filePath, content, 'utf-8');
     global.paths[key] = filePath.replace(/\\/g, '/');
