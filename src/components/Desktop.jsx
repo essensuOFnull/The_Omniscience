@@ -6,6 +6,23 @@ const {getNewId, getNewZ}=windowManager;
 
 const TAB_BAR_HEIGHT = 35;
 
+// Соответствие позиционных аргументов вызовов actions именам полей payload
+const ACTION_ARG_NAMES = {
+	setViewport: ['rect'],
+	setGridViewport: ['rect'],
+	setOverviewScrollTop: ['scrollTop'],
+	setOverviewTab: ['tab'],
+	focusWindow: ['windowId'],
+	closeWindow: ['windowId'],
+	deleteWindow: ['windowId'],
+	animationComplete: ['windowId'],
+	unminimizeWindow: ['windowId'],
+	maximizeWindow: ['windowId'],
+	unmaximizeWindow: ['windowId'],
+	minimizeWindow: ['windowId', 'cx', 'cy'],
+	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height'],
+};
+
 export default function Desktop() {
 	const [config, setConfig] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
 	const [tabs, setTabs] = useState([]);
@@ -19,12 +36,23 @@ export default function Desktop() {
 		return handler(state, action.payload, { config, getNewId, getNewZ });
 	}, [config]);
 
-	const [state, dispatch] = useReducer(reducer, initialState);
+	const [state, dispatch] = useReducer(reducer, undefined, initialState);
+
+	// Всегда актуальное состояние для обработчика обновления вкладок
+	const stateRef = useRef(state);
+	stateRef.current = state;
 
 	// Действия – обёртка, добавляющая desktopId
 	const actions = useMemo(() => {
 		const createAction = (type) => (desktopId, ...args) => {
-			dispatch({ type, payload: { desktopId, ...args[0] } });
+			const argNames = ACTION_ARG_NAMES[type];
+			const payload = { desktopId };
+			if (argNames) {
+				argNames.forEach((name, i) => { payload[name] = args[i]; });
+			} else if (args[0] && typeof args[0] === 'object') {
+				Object.assign(payload, args[0]);
+			}
+			dispatch({ type, payload });
 		};
 		const result = {};
 		for (const type of Object.keys(windowManager)) {
@@ -43,21 +71,21 @@ export default function Desktop() {
 				.filter(tab => tab.type === 'desktop')
 				.map(tab => tab.id);
 			// Удаляем состояния для отсутствующих десктопов
-			Object.keys(state.desktops).forEach(id => {
+			Object.keys(stateRef.current.desktops).forEach(id => {
 				if (!newDesktopIds.includes(id)) {
 					actions.closeDesktop(id);
 				}
 			});
 			// Создаём состояния для новых десктопов
 			newDesktopIds.forEach(id => {
-				if (!state.desktops[id]) {
+				if (!stateRef.current.desktops[id]) {
 					actions.createDesktop(id);
 				}
 			});
 			// Если активная вкладка – desktop, переключаем активный десктоп
 			const activeTab = data.tabsData[data.activeTabIndex];
 			if (activeTab && activeTab.type === 'desktop') {
-				if (state.activeDesktopId !== activeTab.id) {
+				if (stateRef.current.activeDesktopId !== activeTab.id) {
 					actions.switchDesktop(activeTab.id);
 				}
 			} else {
@@ -71,7 +99,7 @@ export default function Desktop() {
 		return () => {
 			// отписка (если есть)
 		};
-	}, [actions, state.desktops, state.activeDesktopId]);
+	}, [actions]);
 
 	// Получение списка приложений
 	useEffect(() => {

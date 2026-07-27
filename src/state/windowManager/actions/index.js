@@ -16,3 +16,5 @@ export { setGridViewport } from './setGridViewport';
 export { setOverviewScrollTop } from './setOverviewScrollTop';
 export { recalcOverviewGrid } from './recalcOverviewGrid';
 export { createDesktop } from './createDesktop';
+export { switchDesktop } from './switchDesktop';
+export { closeDesktop } from './closeDesktop';

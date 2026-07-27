@@ -46,7 +46,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 			}
 		};
 		window.electron_desktop_API.getDesktopViewBounds().then(updateOffset);
-		unsubscribe = window.electron_desktop_API.onDesktopViewBoundsChanged(updateOffset);
+		unsubscribe = window.electron_desktop_API.onDesktopViewBoundsChanged?.(updateOffset);
 		return () => {
 			if (unsubscribe) unsubscribe();
 		};
@@ -196,7 +196,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 		window.electron_desktop_API.setWindowContentZIndex({ windowId, zIndex });
 	}, [viewCreated, windowId, win.z]);
 
-	// --- Обработчики управления окном (с передачей desktopId) ---
+	// --- Обработчики управления окном (с передаче�� desktopId) ---
 	const closeWindow = useCallback(() => {
 		if (!win.closing) actions.closeWindow(desktopId, windowId);
 	}, [desktopId, windowId, actions, win.closing]);

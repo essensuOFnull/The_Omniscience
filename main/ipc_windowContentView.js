@@ -177,11 +177,11 @@ export default function () {
 	});
 
 	ipcMain.handle('get-desktop-view-bounds', () => {
-		const view = global.tabs?.[global.activeTabIndex];
-		if (!view) {
+		const item = global.tabs?.[global.activeTabIndex];
+		if (!item || !item.view) {
 			return { x: 0, y: 0, width: 0, height: 0 };
 		}
-		const bounds = view.getBounds();
+		const bounds = item.view.getBounds();
 		return bounds;
 	});
 
