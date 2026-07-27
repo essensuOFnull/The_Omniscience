@@ -123,7 +123,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
           <motion.div
-            ref={contentRef}
             style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               transformOrigin: 'top left',
@@ -134,7 +133,18 @@ export default function Window({ windowId, app, state, actions, config, animatio
             animate={{ scale: contentScale }}
             transition={animations?.setContentScale?.animate?.transition || { duration: 0.3 }}
           >
-            <Box sx={{ flex: 1 }} />
+            <Box
+				ref={contentRef}
+				sx={{
+					minWidth:'100%',
+					width: '100%',
+					maxWidth: '100%',
+					minHeight:'100%',
+					height: '100%',
+					maxHeight: '100%',
+					overflow: 'hidden',
+				}}
+			/>
           </motion.div>
         </Box>
 

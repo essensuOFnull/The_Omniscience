@@ -26,13 +26,6 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     if (!el || !viewCreated) return;
     const rect = el.getBoundingClientRect();
 
-    if (win.minimized || win.closing) {
-      window.electron_desktop_API.updateWindowContentView({
-        windowId, x: 0, y: 0, width: 0, height: 0, scale: 1,
-      });
-      return;
-    }
-
     const x = Math.round(rect.left + desktopOffset.x);
     const y = Math.round(rect.top + desktopOffset.y);
     const width = Math.round(rect.width);
