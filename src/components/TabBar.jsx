@@ -129,11 +129,8 @@ const TabBar = () => {
 
   return (
     <AppBar
-      position="fixed"
+      position="absolute"
       sx={{
-        top: 0,
-        left: 0,
-        right: 0,
         height: 35,
         bgcolor: 'rgba(0,0,0,0.85)',
         backdropFilter: 'blur(12px)',

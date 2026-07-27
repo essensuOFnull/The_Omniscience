@@ -17,31 +17,5 @@ export default async function () {
 
 	global.$.ipc_setup();
 
-	// -------------------------------------------------------
-	// Обработчики управления окном – свернуть/развернуть/закрыть
-	// -------------------------------------------------------
-	ipcMain.on('window_minimize', (event) => {
-		const win = BrowserWindow.fromWebContents(event.sender);
-		if (win) win.minimize();
-	});
-
-	ipcMain.on('window_maximize', (event) => {
-		const win = BrowserWindow.fromWebContents(event.sender);
-		if (!win) return;
-		win.isMaximized() ? win.unmaximize() : win.maximize();
-	});
-
-	ipcMain.on('window_close', (event) => {
-		const win = BrowserWindow.fromWebContents(event.sender);
-		if (win) win.close();
-	});
-
-	ipcMain.on('set-webview-bounds', (event, { id, bounds }) => {
-		const tab = global.tabs.find(item => item.tabData.id === id);
-		if (tab && tab.view) {
-			tab.view.setBounds(bounds);
-		}
-	});
-
 	global.$.tabs_send_updated();
 }

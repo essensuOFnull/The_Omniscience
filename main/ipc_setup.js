@@ -1,4 +1,5 @@
 export default function(){
+	global.$.ipc_mainWindow();
 	global.$.ipc_tabs();
 	global.$.ipc_windowContentView();
 	global.$.ipc_getAppsList();

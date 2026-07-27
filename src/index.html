@@ -1,49 +1,180 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: transparent;
-      }
-      #background-root {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: -1;
-      }
-      #tabbar-root {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 35px;
-        z-index: 1000;
-        pointer-events: auto;
-      }
-      #desktop-root {
-        position: fixed;
-        top: 35px;
-        left: 0;
-        width: 100vw;
-        bottom: 0;
-        z-index: 1;
-        pointer-events: auto;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="background-root"></div>
-    <div id="tabbar-root"></div>
-    <div id="desktop-root"></div>
-    <script type="module" src="./Main.jsx"></script>
-  </body>
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<style>
+		:root {
+			--frame-size: 5px;
+			/* толщина рамки (изменяется из JS) */
+			--frame-color: #f0f;
+			/* цвет рамки */
+			--frame-cursor: default;
+			/* базовый курсор для ручек */
+		}
+
+		html,
+		body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			background: transparent;
+		}
+
+		/* Сетка 3×3 */
+		body {
+			display: grid;
+			grid-template-rows: var(--frame-size) 1fr var(--frame-size);
+			grid-template-columns: var(--frame-size) 1fr var(--frame-size);
+			grid-template-areas:
+				"top-left     top          top-right"
+				"left         center       right"
+				"bottom-left  bottom       bottom-right";
+		}
+
+		/* Все 8 ручек */
+		.frame-handle {
+			background: var(--frame-color);
+			pointer-events: auto;
+			z-index: 10000;
+			/* выше всех элементов */
+		}
+
+		/* Назначение имён областей */
+		.frame-handle.top-left {
+			grid-area: top-left;
+		}
+
+		.frame-handle.top {
+			grid-area: top;
+		}
+
+		.frame-handle.top-right {
+			grid-area: top-right;
+		}
+
+		.frame-handle.left {
+			grid-area: left;
+		}
+
+		.frame-handle.right {
+			grid-area: right;
+		}
+
+		.frame-handle.bottom-left {
+			grid-area: bottom-left;
+		}
+
+		.frame-handle.bottom {
+			grid-area: bottom;
+		}
+
+		.frame-handle.bottom-right {
+			grid-area: bottom-right;
+		}
+
+		/* Контейнер для контента занимает центральную ячейку */
+		#content-container {
+			grid-area: center;
+			position: relative;
+			/* для абсолютного позиционирования вложенных элементов */
+			overflow: hidden;
+		}
+
+		/* Существующая структура теперь вкладывается в #content-container */
+		#background-root {
+			position: absolute;
+			top: 0;
+			left: 0;
+			right:0;
+			bottom:0;
+			width: 100%;
+			height: 100%;
+			z-index: -1;
+		}
+
+		#tabbar-root {
+			position: absolute;
+			top: 0;
+			left: 0;
+			right:0;
+			width: 100%;
+			height: 35px;
+			z-index: 1000;
+			pointer-events: auto;
+		}
+
+		#desktop-root {
+			position: absolute;
+			top: 35px;
+			left: 0;
+			right:0;
+			bottom:0;
+			width: 100%;
+			bottom: 0;
+			z-index: 1;
+			pointer-events: auto;
+		}
+
+		.frame-handle[data-resize="top"] {
+			cursor: n-resize;
+		}
+
+		.frame-handle[data-resize="bottom"] {
+			cursor: s-resize;
+		}
+
+		.frame-handle[data-resize="left"] {
+			cursor: w-resize;
+		}
+
+		.frame-handle[data-resize="right"] {
+			cursor: e-resize;
+		}
+
+		.frame-handle[data-resize="top-left"] {
+			cursor: nw-resize;
+		}
+
+		.frame-handle[data-resize="top-right"] {
+			cursor: ne-resize;
+		}
+
+		.frame-handle[data-resize="bottom-left"] {
+			cursor: sw-resize;
+		}
+
+		.frame-handle[data-resize="bottom-right"] {
+			cursor: se-resize;
+		}
+	</style>
+</head>
+
+<body>
+	<!-- Ручки рамки -->
+	<div class="frame-handle top-left" data-resize="top-left"></div>
+	<div class="frame-handle top" data-resize="top"></div>
+	<div class="frame-handle top-right" data-resize="top-right"></div>
+	<div class="frame-handle left" data-resize="left"></div>
+	<div class="frame-handle right" data-resize="right"></div>
+	<div class="frame-handle bottom-left" data-resize="bottom-left"></div>
+	<div class="frame-handle bottom" data-resize="bottom"></div>
+	<div class="frame-handle bottom-right" data-resize="bottom-right"></div>
+
+	<!-- Центральный контейнер со всем старым содержимым -->
+	<div id="content-container">
+		<div id="background-root"></div>
+		<div id="tabbar-root"></div>
+		<div id="desktop-root"></div>
+	</div>
+
+	<!-- Новый скрытый корень для хуков -->
+  <div id="frame-root"></div>
+
+	<script type="module" src="./Main.jsx"></script>
+</body>
+
 </html>

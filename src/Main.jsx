@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Background from './components/Background';
 import TabBar from './components/TabBar';
 import Desktop from './components/Desktop';
+import FrameHandler from './components/FrameHandler';
 
 const darkTheme = createTheme({
   palette: {
@@ -14,10 +15,11 @@ const darkTheme = createTheme({
   },
 });
 
-// Создаём корни для каждого компонента
+// Создаём корни
 const rootBackground = createRoot(document.getElementById('background-root'));
 const rootTabBar = createRoot(document.getElementById('tabbar-root'));
 const rootDesktop = createRoot(document.getElementById('desktop-root'));
+const rootFrame = createRoot(document.getElementById('frame-root'));
 
 // Рендерим
 rootBackground.render(<Background />);
@@ -37,5 +39,12 @@ rootDesktop.render(
       <CssBaseline />
       <Desktop />
     </ThemeProvider>
+  </React.StrictMode>
+);
+
+// Рендерим FrameHandler (не требует темы)
+rootFrame.render(
+  <React.StrictMode>
+    <FrameHandler />
   </React.StrictMode>
 );
