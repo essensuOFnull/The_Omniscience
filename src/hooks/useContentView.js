@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export default function useContentView(windowId, win, app, config, contentRef, desktopOffset, isGrid, overviewScrollTop) {
   const [viewCreated, setViewCreated] = useState(false);
+  const rafIdRef = useRef(null);
+  const isActiveRef = useRef(false);
 
-  // Создание WebContents один раз при монтировании или при закрытии
+  // Создание WebContents один раз при монтировании (или при смене windowId)
   useEffect(() => {
     if (!win || win.closing) return;
     if (viewCreated) return;
@@ -19,12 +21,19 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     return () => {
       window.electron_desktop_API.destroyWindowContentView({ windowId });
     };
-  }, [windowId, win?.closing]); // Пересоздавать только при смене окна или его закрытии
+  }, [windowId, win?.closing]); // пересоздаётся только при смене окна или его закрытии
 
   const sendUpdate = useCallback(() => {
     const el = contentRef.current;
     if (!el || !viewCreated) return;
     const rect = el.getBoundingClientRect();
+
+    if (win.minimized || win.closing) {
+      window.electron_desktop_API.updateWindowContentView({
+        windowId, x: 0, y: 0, width: 0, height: 0, scale: 1,
+      });
+      return;
+    }
 
     const x = Math.round(rect.left + desktopOffset.x);
     const y = Math.round(rect.top + desktopOffset.y);
@@ -37,31 +46,28 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     });
   }, [windowId, win, desktopOffset, contentRef, viewCreated]);
 
-  // Обновление при изменении геометрии
+  // Непрерывный цикл синхронизации через requestAnimationFrame
   useEffect(() => {
     if (!viewCreated) return;
-    sendUpdate();
-  }, [sendUpdate, viewCreated, win.ghost, win.contentScale, win.minimized, win.closing, isGrid, overviewScrollTop]);
+    isActiveRef.current = true;
 
-  // Отслеживание ресайза и скролла
-  useEffect(() => {
-    if (!viewCreated) return;
-    const el = contentRef.current;
-    if (!el) return;
+    const loop = () => {
+      if (!isActiveRef.current) return;
+      sendUpdate();
+      rafIdRef.current = requestAnimationFrame(loop);
+    };
 
-    const observer = new ResizeObserver(() => sendUpdate());
-    observer.observe(el);
-    window.addEventListener('scroll', sendUpdate);
-    window.addEventListener('resize', sendUpdate);
+    rafIdRef.current = requestAnimationFrame(loop);
 
     return () => {
-      observer.disconnect();
-      window.removeEventListener('scroll', sendUpdate);
-      window.removeEventListener('resize', sendUpdate);
+      isActiveRef.current = false;
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
     };
-  }, [viewCreated, sendUpdate, contentRef]);
+  }, [viewCreated, sendUpdate]);
 
-  // Обновление z-index
+  // Дополнительно обновляем z-index при изменении
   useEffect(() => {
     if (!viewCreated) return;
     window.electron_desktop_API.setWindowContentZIndex({ windowId, zIndex: win.z || 0 });
