@@ -13,6 +13,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
+import FilterNoneIcon from '@mui/icons-material/FilterNone';
 
 const TabBar = () => {
   const [tabs, setTabs] = useState([]);
@@ -21,6 +22,7 @@ const TabBar = () => {
   const [editUrl, setEditUrl] = useState('');
   const [showPopup, setShowPopup] = useState(false);
   const [popupAnchorEl, setPopupAnchorEl] = useState(null);
+  const [isMaximized, setIsMaximized] = useState(true);
   const tabsContainerRef = useRef(null);
 
   // Подписка на обновления вкладок из main процесса
@@ -35,6 +37,16 @@ const TabBar = () => {
     return () => {
       // (опционально) если есть метод отписки, вызвать его
     };
+  }, []);
+
+  // Подписка на изменения состояния окна (maximize/fullscreen)
+  useEffect(() => {
+    if (window.electron_mainWindow_API?.onWindowStateChange) {
+      const unsubscribe = window.electron_mainWindow_API.onWindowStateChange((state) => {
+        setIsMaximized(state.maximized);
+      });
+      return unsubscribe;
+    }
   }, []);
 
   // Обработчики
@@ -249,7 +261,11 @@ const TabBar = () => {
             <MinimizeIcon fontSize="small" />
           </IconButton>
           <IconButton size="small" onClick={handleMaximize} sx={{ color: '#ccc' }}>
-            <CropSquareIcon fontSize="small" />
+            {isMaximized ? (
+              <FilterNoneIcon fontSize="small" />
+            ) : (
+              <CropSquareIcon fontSize="small" />
+            )}
           </IconButton>
           <IconButton size="small" onClick={handleClose} sx={{ color: '#ccc' }}>
             <CloseIcon fontSize="small" />

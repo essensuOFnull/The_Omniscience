@@ -2,8 +2,6 @@
 import { ipcMain, BrowserWindow } from 'electron'; // обязательно добавьте этот импорт, если его нет
 
 export default async function () {
-	global.mainWindow.maximize();
-
 	global.mainWindow.loadURL(global.paths.reactIndex);
 
 	global.$.mainWindow_bounds_update();
@@ -18,4 +16,6 @@ export default async function () {
 	global.$.ipc_setup();
 
 	global.$.tabs_send_updated();
+
+	global.mainWindow.maximize();
 }
