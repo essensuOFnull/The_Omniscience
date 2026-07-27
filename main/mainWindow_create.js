@@ -30,6 +30,7 @@ export default async function () {
 
         icon: global.paths.icon,
         webPreferences: {
+            webviewTag: true,
             enableRemoteModule: false,
             nodeIntegration: false,
             contextIsolation: true,

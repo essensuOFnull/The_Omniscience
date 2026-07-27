@@ -2,6 +2,9 @@ import React, { useState, useEffect, useReducer, useMemo, useCallback, useRef } 
 import { Box } from '@mui/material';
 import DesktopWorkspace from './DesktopWorkspace';
 import { windowManager,initialState } from '../state/windowManager';
+
+import VoidPoem from './VoidPoem';
+
 const {getNewId, getNewZ}=windowManager;
 
 const TAB_BAR_HEIGHT = 35;
@@ -182,7 +185,7 @@ export default function Desktop() {
 				<Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>
 					{activeTab && activeTab.type === 'web' && <div>Веб-вкладка: {activeTab.url}</div>}
 					{activeTab && activeTab.type === 'xterm' && <div>Терминал</div>}
-					{!activeTab && <div>Нет активной вкладки</div>}
+					{!activeTab && <VoidPoem />}
 				</Box>
 			)}
 		</Box>
