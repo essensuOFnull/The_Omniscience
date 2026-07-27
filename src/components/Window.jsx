@@ -14,6 +14,8 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import HomeIcon from '@mui/icons-material/Home';
 import LanguageIcon from '@mui/icons-material/Language';
 
+import BaseWindowButtons from './BaseWindowButtons';
+
 export default function Window({ windowId, app, state, actions, config, animations, desktopId }) {
 	// Извлекаем окно из состояния конкретного десктопа
 	const win = state?.windows?.[windowId];
@@ -386,15 +388,12 @@ export default function Window({ windowId, app, state, actions, config, animatio
 									<LanguageIcon fontSize="small" />
 								</IconButton>
 							)}
-							<IconButton size="small" onClick={toggleMinimize} disabled={win.closing} sx={{ color: 'text.secondary' }}>
-								<MinimizeIcon fontSize="small" />
-							</IconButton>
-							<IconButton size="small" onClick={handleMaximize} disabled={win.closing} sx={{ color: 'text.secondary' }}>
-								{win.maximized ? <CheckBoxIcon fontSize="small" /> : <CheckBoxOutlineBlankIcon fontSize="small" />}
-							</IconButton>
-							<IconButton size="small" onClick={closeWindow} sx={{ color: 'text.secondary' }}>
-								<CloseIcon fontSize="small" />
-							</IconButton>
+							<BaseWindowButtons
+								onMinimize={toggleMinimize}
+								onMaximize={handleMaximize}
+								onClose={closeWindow}
+								isMaximized={win.maximized}
+							/>
 						</Box>
 					</Toolbar>
 				</AppBar>
