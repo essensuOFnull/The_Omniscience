@@ -1,6 +1,6 @@
-import * as allActions from './actions/index';
-import * as helpers from './helpers';
-import { initialState } from './initialState';
+import * as allActions from './windowManager/actions/index';
+import * as helpers from './windowManager/helpers';
+import { initialState } from './windowManager/initialState';
 
 // Собираем объект windowManager из всех экшенов
 const windowManager = {

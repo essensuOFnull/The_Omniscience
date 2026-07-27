@@ -7,6 +7,8 @@ const initialState = () => ({
   overviewScrollTop: 0,
   viewport: null,   // будет установлен при первом ресайзе
   gridViewport: null,
+  desktops: {},
+  activeDesktopId: null,
 });
 export default initialState;
-export {initialState};
+export { initialState };

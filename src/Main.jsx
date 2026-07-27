@@ -15,36 +15,47 @@ const darkTheme = createTheme({
   },
 });
 
-// Создаём корни
-const rootBackground = createRoot(document.getElementById('background-root'));
-const rootTabBar = createRoot(document.getElementById('tabbar-root'));
-const rootDesktop = createRoot(document.getElementById('desktop-root'));
-const rootFrame = createRoot(document.getElementById('frame-root'));
+// Ждём полной загрузки DOM, прежде чем создавать корни и рендерить
+document.addEventListener('DOMContentLoaded', () => {
+  // Проверяем наличие контейнеров (опционально)
+  const bgEl = document.getElementById('background-root');
+  const tabEl = document.getElementById('tabbar-root');
+  const desktopEl = document.getElementById('desktop-root');
+  const frameEl = document.getElementById('frame-root');
 
-// Рендерим
-rootBackground.render(<Background />);
+  if (!bgEl || !tabEl || !desktopEl || !frameEl) {
+    console.error('Не найдены все необходимые контейнеры в DOM');
+    return;
+  }
 
-rootTabBar.render(
-  <React.StrictMode>
-    <ThemeProvider theme={darkTheme}>
-      <CssBaseline />
-      <TabBar />
-    </ThemeProvider>
-  </React.StrictMode>
-);
+  const rootBackground = createRoot(bgEl);
+  const rootTabBar = createRoot(tabEl);
+  const rootDesktop = createRoot(desktopEl);
+  const rootFrame = createRoot(frameEl);
 
-rootDesktop.render(
-  <React.StrictMode>
-    <ThemeProvider theme={darkTheme}>
-      <CssBaseline />
-      <Desktop />
-    </ThemeProvider>
-  </React.StrictMode>
-);
+  rootBackground.render(<Background />);
 
-// Рендерим FrameHandler (не требует темы)
-rootFrame.render(
-  <React.StrictMode>
-    <FrameHandler />
-  </React.StrictMode>
-);
+  rootTabBar.render(
+    <React.StrictMode>
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <TabBar />
+      </ThemeProvider>
+    </React.StrictMode>
+  );
+
+  rootDesktop.render(
+    <React.StrictMode>
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <Desktop />
+      </ThemeProvider>
+    </React.StrictMode>
+  );
+
+  rootFrame.render(
+    <React.StrictMode>
+      <FrameHandler />
+    </React.StrictMode>
+  );
+});
