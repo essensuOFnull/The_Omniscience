@@ -28,22 +28,13 @@ export default function () {
       useShell: false,               // не важно, т.к. Window сам обрабатывает
     });
 
-    apps.push({
-      id: 'xterm-window',
-      type: 'xterm',
-      title: 'Xterm',
-      url: global.paths.xtermIndex,
-      icon: global.paths.icon,
-      useShell: false,               // не важно, т.к. Window сам обрабатывает
-    });
-
     // 1. Компонентные приложения (React)
     if (existsSync(componentappsDir)) {
       const entries = readdirSync(componentappsDir, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const appDir = join(componentappsDir, entry.name);
-        const componentPath = join(appDir, 'App.jsx');
+        const componentPath = join(appDir, 'Index.jsx');
         if (!existsSync(componentPath)) continue;
 
         let iconDataUrl = null;
@@ -63,7 +54,7 @@ export default function () {
 
         const preloadPath = join(appDir, 'preload.js');
         const hasPreload = existsSync(preloadPath);
-        
+
         apps.push({
           id: entry.name,
           type: 'componentapp',

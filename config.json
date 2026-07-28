@@ -11,7 +11,6 @@
 
 	"minWindowZ": 5,
 	"taskbarHeight": "48px",
-	"tabBarHeight": 48,
 	"overviewColumns": 3,
 	"overviewGap": "16px",
 	"overviewZIndex": 1000,

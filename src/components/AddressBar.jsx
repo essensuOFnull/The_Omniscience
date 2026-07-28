@@ -40,7 +40,7 @@ export default function AddressBar({
       {loading ? (
         <CircularProgress size={16} sx={{ flexShrink: 0 }} />
       ) : (
-        <IconButton size="small" onClick={() => navigateTo(app?.homeUrl || 'about:blank')}>
+        <IconButton size="small" onClick={() => navigateTo(app?.initialUrl || 'about:blank')}>
           <HomeIcon fontSize="small" />
         </IconButton>
       )}

@@ -10,7 +10,7 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     if (!win || win.closing) return;
     if (viewCreated) return;
 
-    const url = win.url || app?.url || 'about:blank';
+    const url = win.url || app?.url || app?.initialUrl || 'about:blank';
     const preload = app?.type === 'xterm' ? config?.xtermPreload || null : config?.windowPreload || null;
     window.electron_desktop_API.createWindowContentView({
       windowId, url, preload,
