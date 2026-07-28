@@ -1,56 +1,43 @@
-import * as os from 'node:os';
-import pty from 'node-pty';
-import electronPkg from 'electron';
-const { ipcMain } = electronPkg;
+import { ipcMain } from 'electron';
+import { spawn } from 'node-pty';
 
-export default function (targetWindowOrView) {
-	if (!targetWindowOrView || !targetWindowOrView.webContents) return;
+let ptyProcess = null;
 
-	// Определяем системную оболочку (по умолчанию bash для Linux)
-	const shellExecutable = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-
-	// Создаем честный PTY-процесс
-	const ptyProcess = pty.spawn(shellExecutable, ['-i'], {
-		name: 'xterm-256color',
-		cols: 80, // Стартовые дефолтные размеры
-		rows: 24,
-		cwd: process.env.HOME,
-		env: {
-			...process.env,
-			TERM: 'xterm-256color',
-			FORCE_COLOR: 'true'
+export default function () {
+	ipcMain.on('terminal-start', (event) => {
+		if (ptyProcess) {
+			// уже запущен
+			return;
 		}
+
+		// Выбираем shell в зависимости от ОС
+		const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+		ptyProcess = spawn(shell, [], {
+			name: 'xterm-color',
+			cols: 80,
+			rows: 30,
+			cwd: process.cwd(),
+			env: process.env
+		});
+
+		ptyProcess.on('data', (data) => {
+			event.sender.send('terminal-data', data);
+		});
+
+		ptyProcess.on('exit', () => {
+			ptyProcess = null;
+		});
 	});
 
-	// ptyProcess отдает единый поток данных (включая stderr и TUI-графику)
-	ptyProcess.onData((data) => {
-		if (targetWindowOrView.webContents && !targetWindowOrView.webContents.isDestroyed()) {
-			targetWindowOrView.webContents.send('terminal-incoming-data', data);
-		}
-	});
-
-	// Перехват ввода из xterm.js (теперь \r проходит нативно, без подмен)
-	ipcMain.on('terminal-out-data', (event, data) => {
+	ipcMain.on('terminal-input', (event, data) => {
 		if (ptyProcess) {
 			ptyProcess.write(data);
 		}
 	});
 
-	// Идеальный ресайз одной нативной командой
-	ipcMain.on('terminal-resize', (event, size) => {
-		if (ptyProcess && size && size.cols && size.rows) {
-			try {
-				ptyProcess.resize(size.cols, size.rows);
-			} catch (err) {
-				console.error('Ошибка изменения размера PTY:', err);
-			}
+	ipcMain.on('terminal-resize', (event, { cols, rows }) => {
+		if (ptyProcess) {
+			ptyProcess.resize(cols, rows);
 		}
-	});
-
-	// Очистка при уничтожении окна/вью, чтобы не плодить зомби-процессы
-	targetWindowOrView.webContents.on('destroyed', () => {
-		try {
-			ptyProcess.kill();
-		} catch (e) {}
 	});
 }
