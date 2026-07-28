@@ -2,7 +2,7 @@ import { readdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 import electronPkg from 'electron';
-const{ipcMain}=electronPkg;
+const { ipcMain } = electronPkg;
 
 const FAVICON_EXTS = ['.png', '.jpg', '.jpeg', '.svg', '.ico'];
 const MIME_MAP = {
@@ -61,13 +61,16 @@ export default function () {
           }
         }
 
+        const preloadPath = join(appDir, 'preload.js');
+        const hasPreload = existsSync(preloadPath);
+        
         apps.push({
           id: entry.name,
           type: 'componentapp',
           title: entry.name,
-          // Путь к собранному HTML этого приложения
           url: pathToFileURL(join(distDir, 'componentapps', entry.name, 'index.html')).href,
           icon: iconDataUrl,
+          preloadPath: hasPreload ? preloadPath : null, // или undefined
         });
       }
     }

@@ -13,8 +13,8 @@ const TerminalComponent = () => {
     const term = new Terminal({
       cursorBlink: true,
       theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
+        background: '#000000',
+        foreground: '#ffffff',
       },
     });
 
@@ -30,22 +30,22 @@ const TerminalComponent = () => {
     fitAddonRef.current = fitAddon;
 
     // --- Настройка связи с бэкендом через preload ---
-    // Пример: если в preload проброшен window.electron_terminal_API
-    if (window.electron_terminal_API) {
+    // Пример: если в preload проброшен window.electron_componentapp_xterm_API
+    if (window.electron_componentapp_xterm_API) {
       // Получаем данные от основного процесса (например, вывод команды)
-      window.electron_terminal_API.on('terminal-data', (data) => {
+      window.electron_componentapp_xterm_API.on('terminal-data', (data) => {
         term.write(data);
       });
 
       // Отправляем ввод пользователя в основной процесс
       term.onData((data) => {
-        window.electron_terminal_API.send('terminal-input', data);
+        window.electron_componentapp_xterm_API.send('terminal-input', data);
       });
 
       // Запрос на запуск оболочки (bash/cmd) после инициализации
-      window.electron_terminal_API.send('terminal-start');
+      window.electron_componentapp_xterm_API.send('terminal-start');
     } else {
-      console.warn('electron_terminal_API не найден — возможно, preload не настроен');
+      console.warn('electron_componentapp_xterm_API не найден — возможно, preload не настроен');
       // Для локального теста можно вывести приветствие
       term.writeln('Добро пожаловать в терминал!');
       term.writeln('(Для полноценной работы настройте preload)');

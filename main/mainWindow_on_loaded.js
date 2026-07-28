@@ -15,6 +15,8 @@ export default async function () {
 
 	global.$.ipc_setup();
 
+	await global.$.loadComponentIpc();
+
 	global.$.tabs_send_updated();
 
 	global.mainWindow.maximize();

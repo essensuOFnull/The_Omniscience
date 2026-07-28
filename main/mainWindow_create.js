@@ -35,7 +35,8 @@ export default async function () {
             nodeIntegration: false,
             contextIsolation: true,
             preload: global.paths.reactPreload,
-            autoplayPolicy: "no-user-gesture-required"
+            autoplayPolicy: "no-user-gesture-required",
+            webSecurity: false,
         },
     });
 

@@ -27,6 +27,7 @@ export const createWindow = (state, payload, helpers) => {
     maximized: false,
     closing: false,
     url: url || (appId === 'browser' ? config.homepageUrl || 'about:blank' : null),
+    preload: extra?.preload || null,
     z: getNewZ(),
     contentScale: 1,
     animationVariant: 'create',

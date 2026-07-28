@@ -19,7 +19,7 @@ export default async function () {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const appDir = path.join(componentappsDir, entry.name);
-      const componentFile = path.join(appDir, 'App.jsx');
+      const componentFile = path.join(appDir, 'Index.jsx');
       if (!fs.existsSync(componentFile)) continue;
 
       const htmlPath = path.join(appDir, 'index.html');
@@ -35,14 +35,14 @@ export default async function () {
   <script>
     window.__APP_WINDOW_ID__ = new URLSearchParams(window.location.search).get('windowId') || '';
   </script>
-  <script type="module" src="./main.jsx"></script>
+  <script type="module" src="./Index.jsx"></script>
 </body>
 </html>`;
         // Исправлено: передаём путь и данные
         fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
       }
 
-      const mainJsxPath = path.join(appDir, 'main.jsx');
+      const mainJsxPath = path.join(appDir, 'Index.jsx');
       if (!fs.existsSync(mainJsxPath)) {
         const mainContent = `import React from 'react';
 import ReactDOM from 'react-dom/client';

@@ -120,6 +120,5 @@ export default async function () {
     await Promise.all([
         createPreload('reactPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.mainWindow_ipc}\n\n${global._.tabbar_ipc}\n\n${global._.desktop_ipc}\n\n${global._.xterm_ipc}`, tmpDir),
         createPreload('webtabPreload', `${global._.imports}\n\n${finalFilterCode}`, tmpDir),
-        createPreload('xtermPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.xterm_ipc}`, tmpDir),
     ]);
 }
