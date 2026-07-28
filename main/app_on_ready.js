@@ -3,7 +3,6 @@ const{app}=electronPkg;
 
 export default async function() {
   await app.whenReady();
-  global.tabs = [];
   global.desktopCounter = 0;
   global.$.theme_app_setFromConfig();
   global.$.userAgent_change();

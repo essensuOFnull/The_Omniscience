@@ -21,6 +21,19 @@
     // Завершение ресайза
     endResize: () => {
       ipcRenderer.send('resize-end');
+    },
+
+    // Управление окном
+    window_minimize: () => {
+      ipcRenderer.send('window_minimize');
+    },
+
+    window_maximize: () => {
+      ipcRenderer.send('window_maximize');
+    },
+
+    window_close: () => {
+      ipcRenderer.send('window_close');
     }
   });
 })();

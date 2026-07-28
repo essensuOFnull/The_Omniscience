@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useReducer, useMemo, useCallback, useRef } from 'react';
 import { Box } from '@mui/material';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
 import DesktopWorkspace from './DesktopWorkspace';
+import DesktopBar from './DesktopBar';
 import { windowManager,initialState } from '../state/windowManager';
 
 import VoidPoem from './VoidPoem';
@@ -26,10 +29,8 @@ const ACTION_ARG_NAMES = {
 	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height'],
 };
 
-export default function Desktop() {
+export default function Desktop({ rootBar }) {
 	const [config, setConfig] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
-	const [tabs, setTabs] = useState([]);
-	const [activeTabIndex, setActiveTabIndex] = useState(-1);
 	const [apps, setApps] = useState([]);
 
 	// Редуктор для управления всеми десктопами
@@ -64,98 +65,73 @@ export default function Desktop() {
 		return result;
 	}, []);
 
-	// Подписка на обновление вкладок из main процесса
+	// Инициализация первого рабочего стола
 	useEffect(() => {
-		const updateHandler = (data) => {
-			setTabs(data.tabsData || []);
-			setActiveTabIndex(data.activeTabIndex ?? -1);
-			// Синхронизация десктопов: создаём/удаляем состояния
-			const newDesktopIds = data.tabsData
-				.filter(tab => tab.type === 'desktop')
-				.map(tab => tab.id);
-			// Удаляем состояния для отсутствующих десктопов
-			Object.keys(stateRef.current.desktops).forEach(id => {
-				if (!newDesktopIds.includes(id)) {
-					actions.closeDesktop(id);
-				}
-			});
-			// Создаём состояния для новых десктопов
-			newDesktopIds.forEach(id => {
-				if (!stateRef.current.desktops[id]) {
-					actions.createDesktop(id);
-				}
-			});
-			// Если активная вкладка – desktop, переключаем активный десктоп
-			const activeTab = data.tabsData[data.activeTabIndex];
-			if (activeTab && activeTab.type === 'desktop') {
-				if (stateRef.current.activeDesktopId !== activeTab.id) {
-					actions.switchDesktop(activeTab.id);
-				}
-			} else {
-				// Если активная вкладка не desktop, сбрасываем активный десктоп (или оставляем последний)
-				// Можно оставить последний активный, чтобы не терять состояние
-			}
-		};
-		if (window.electron_tabBar_API?.tabs_on_update) {
-			window.electron_tabBar_API.tabs_on_update(updateHandler);
+		// Создаём первый рабочий стол при загрузке компонента
+		if (Object.keys(stateRef.current.desktops).length === 0) {
+			const desktopId = getNewId();
+			actions.createDesktop(desktopId);
+			actions.switchDesktop(desktopId);
 		}
-		return () => {
-			// отписка (если есть)
-		};
 	}, [actions]);
+
+	// Управление DesktopBar: обновляем его при изменении десктопов
+	useEffect(() => {
+		const desktopsArray = Object.entries(state.desktops).map(([id, desktop], index) => ({
+			id,
+			index: index + 1,
+			desktop,
+		}));
+
+		if (rootBar) {
+			const barElement = (
+				<DesktopBar
+					desktops={desktopsArray}
+					activeDesktopId={state.activeDesktopId}
+					onCreateDesktop={() => {
+						const newId = getNewId();
+						actions.createDesktop(newId);
+						actions.switchDesktop(newId);
+					}}
+					onSwitchDesktop={(desktopId) => {
+						actions.switchDesktop(desktopId);
+					}}
+					onDeleteDesktop={(desktopId) => {
+						if (desktopsArray.length > 1) {
+							const nextId = desktopsArray.find(d => d.id !== desktopId)?.id;
+							if (state.activeDesktopId === desktopId && nextId) {
+								actions.switchDesktop(nextId);
+							}
+							actions.closeDesktop(desktopId);
+						}
+					}}
+				/>
+			);
+			rootBar.render(
+				<React.StrictMode>
+					<ThemeProvider theme={createTheme({
+						palette: {
+							mode: 'dark',
+							background: { default: '#1a001a', paper: '#2a002a' },
+							primary: { main: '#6f42c1' },
+						},
+					})}>
+						<CssBaseline />
+						{barElement}
+					</ThemeProvider>
+				</React.StrictMode>
+			);
+		}
+	}, [state.desktops, state.activeDesktopId, actions, rootBar]);
 
 	// Получение списка приложений
 	useEffect(() => {
 		window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => { });
 	}, []);
 
-	// Добавим useEffect для синхронизации размеров при активной веб/терминальной вкладке
-	useEffect(() => {
-		const activeTab = tabs[activeTabIndex];
-		if (!activeTab || activeTab.type === 'desktop') {
-			return;
-		}
-		const updateBounds = () => {
-			const container = document.getElementById('web-content-container');
-			if (!container) return;
-			const rect = container.getBoundingClientRect();
-			window.electron_desktop_API.setWebViewBounds(activeTab.id, {
-				x: rect.left,
-				y: rect.top,
-				width: rect.width,
-				height: rect.height,
-			});
-		};
-		updateBounds();
-		const observer = new ResizeObserver(updateBounds);
-		const container = document.getElementById('web-content-container');
-		if (container) observer.observe(container);
-		return () => observer.disconnect();
-	}, [activeTabIndex, tabs]);
 
-	useEffect(() => {
-		const handler = (id) => {
-			const container = document.getElementById('web-content-container');
-			if (!container) return;
-			const rect = container.getBoundingClientRect();
-			window.electron_desktop_API.setWebViewBounds(id, {
-				x: rect.left,
-				y: rect.top,
-				width: rect.width,
-				height: rect.height,
-			});
-		};
-		window.electron_desktop_API.onRequestWebViewBounds(handler);
-		return () => {
-			// отписка
-		};
-	}, []);
 
-	// Определяем, какая вкладка активна
-	const activeTab = tabs[activeTabIndex] || null;
-	const isDesktopActive = activeTab && activeTab.type === 'desktop';
-
-	// Рендерим все десктопы (скрывая неактивные) и активный контент для web
+	// Рендерим все десктопы (скрывая неактивные)
 	return (
 		<Box
 			sx={{
@@ -181,12 +157,6 @@ export default function Desktop() {
 					active={state.activeDesktopId === desktopId}
 				/>
 			))}
-			{!isDesktopActive && (
-				<Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>
-					{activeTab && activeTab.type === 'web' && <div>Веб-вкладка: {activeTab.url}</div>}
-					{!activeTab && <VoidPoem />}
-				</Box>
-			)}
 		</Box>
 	);
 }

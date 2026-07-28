@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Background from './components/Background';
-import TabBar from './components/TabBar';
+import DesktopBar from './components/DesktopBar';
 import Desktop from './components/Desktop';
 import FrameHandler from './components/FrameHandler';
 
@@ -15,40 +15,38 @@ const darkTheme = createTheme({
   },
 });
 
+// Компонент-обёртка для управления Bar и Desktop
+function DesktopManager({ rootBar }) {
+  return (
+    <Desktop rootBar={rootBar} />
+  );
+}
+
 // Ждём полной загрузки DOM, прежде чем создавать корни и рендерить
 document.addEventListener('DOMContentLoaded', () => {
   // Проверяем наличие контейнеров (опционально)
   const bgEl = document.getElementById('background-root');
-  const tabEl = document.getElementById('tabbar-root');
+  const barEl = document.getElementById('desktopbar-root');
   const desktopEl = document.getElementById('desktop-root');
   const frameEl = document.getElementById('frame-root');
 
-  if (!bgEl || !tabEl || !desktopEl || !frameEl) {
+  if (!bgEl || !barEl || !desktopEl || !frameEl) {
     console.error('Не найдены все необходимые контейнеры в DOM');
     return;
   }
 
   const rootBackground = createRoot(bgEl);
-  const rootTabBar = createRoot(tabEl);
+  const rootBar = createRoot(barEl);
   const rootDesktop = createRoot(desktopEl);
   const rootFrame = createRoot(frameEl);
 
   rootBackground.render(<Background />);
 
-  rootTabBar.render(
-    <React.StrictMode>
-      <ThemeProvider theme={darkTheme}>
-        <CssBaseline />
-        <TabBar />
-      </ThemeProvider>
-    </React.StrictMode>
-  );
-
   rootDesktop.render(
     <React.StrictMode>
       <ThemeProvider theme={darkTheme}>
         <CssBaseline />
-        <Desktop />
+        <DesktopManager rootBar={rootBar} />
       </ThemeProvider>
     </React.StrictMode>
   );

@@ -173,12 +173,7 @@ export default function () {
 	});
 
 	ipcMain.handle('get-desktop-view-bounds', () => {
-		const item = global.tabs?.[global.activeTabIndex];
-		if (!item || !item.view) {
-			return { x: 0, y: 0, width: 0, height: 0 };
-		}
-		const bounds = item.view.getBounds();
-		return bounds;
+		return { x: 0, y: 0, width: 0, height: 0 };
 	});
 
 	ipcMain.on('window-go-back', (event, windowId) => {

@@ -60,23 +60,11 @@ export default async function() {
 		// 3. Резолвер сессии
 		setSessionPartitionResolver(() => defaultSession);
 
-		// 4. Менеджер расширений
+		// 4. Менеджер расширений (tab mode disabled - desktop-only mode)
 		const extensionManager = new ElectronChromeExtensions({
 			license: 'GPL-3.0',
 			session: defaultSession,
-			injectWebview: true,
-			createTab: async (details) => {
-				const view = global.$.tab_create(details.url || 'about:blank', 'webtab', undefined);
-				return [view.webContents, global.mainWindow];
-			},
-			selectTab: (webContents) => {
-				const idx = global.tabs.findIndex(t => t.webContents.id === webContents.id);
-				if (idx !== -1) global.$.tab_activate(idx);
-			},
-			removeTab: (webContents) => {
-				const idx = global.tabs.findIndex(t => t.webContents.id === webContents.id);
-				if (idx !== -1) global.$.tab_close(idx);
-			}
+			injectWebview: true
 		});
 
 		global.extensionManager = extensionManager;

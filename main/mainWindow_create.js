@@ -6,9 +6,6 @@ export default async function () {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
 
-    /* пока никакая вкладка не активна */
-    global.activeTabIndex = null;
-
     /* генерируем preload'ы */
     await global.$.texts_load();
     await global.$.preloads_generate();

@@ -91,11 +91,4 @@ export default function () {
 		const win = BrowserWindow.fromWebContents(event.sender);
 		if (win) win.close();
 	});
-
-	ipcMain.on('set-webview-bounds', (event, { id, bounds }) => {
-		const tab = global.tabs.find(item => item.tabData.id === id);
-		if (tab && tab.view) {
-			tab.view.setBounds(bounds);
-		}
-	});
 }

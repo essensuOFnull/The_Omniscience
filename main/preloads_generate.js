@@ -118,7 +118,6 @@ export default async function () {
 
     // === Генерация preload-файлов ===
     await Promise.all([
-        createPreload('reactPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.mainWindow_ipc}\n\n${global._.tabbar_ipc}\n\n${global._.desktop_ipc}`, tmpDir),
-        createPreload('webtabPreload', `${global._.imports}\n\n${finalFilterCode}`, tmpDir),
+        createPreload('reactPreload', `${global._.imports}\n\n${finalFilterCode}\n\n${global._.mainWindow_ipc}\n\n${global._.desktop_ipc}`, tmpDir),
     ]);
 }
