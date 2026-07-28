@@ -8,7 +8,7 @@ import useWindowNavigation from '../hooks/useWindowNavigation';
 import useContentView from '../hooks/useContentView';
 import useWindowDragResize from '../hooks/useWindowDragResize';
 
-export default function Window({ windowId, app, state, actions, config, animations, desktopId }) {
+export default function Window({ windowId, app, state, actions, config, animations, desktopId, active }) {
   const win = state?.windows?.[windowId];
   if (!win) return null;
 
@@ -25,7 +25,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
     useWindowNavigation(windowId, win.url, app?.url);
 
   const { viewCreated, sendUpdate } = useContentView(
-    windowId, win, app, config, contentRef, desktopOffset, isGrid, overviewScrollTop
+    windowId, win, app, config, contentRef, desktopOffset, isGrid, overviewScrollTop, active
   );
 
   const { handleTitleMouseDown, onResizeMouseDown } = useWindowDragResize(

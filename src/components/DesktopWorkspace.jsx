@@ -13,12 +13,17 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
   useLayoutEffect(() => {
     const el = viewportRef.current;
     if (!el || !actions.setViewport) return;
-    const update = () => actions.setViewport(desktopId, el.getBoundingClientRect());
+    const update = () => {
+      if (!active) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      actions.setViewport(desktopId, rect);
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [desktopId, actions]);
+  }, [desktopId, actions, active]);
 
   const toggleOverview = useCallback(() => {
     if (isOverviewOpened) actions.closeOverview(desktopId);
@@ -58,6 +63,7 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
               config={config}
               animations={windowAnimations}
               desktopId={desktopId}
+              active={active}
             />
           );
         })}

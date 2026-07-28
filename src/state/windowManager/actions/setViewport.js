@@ -7,6 +7,7 @@ export const setViewport = (state, payload, helpers) => {
   if (!desktop) return state;
 
   const { left, top, right, bottom, width, height } = rect;
+  if (width <= 0 || height <= 0) return state;
   const newViewport = {
     left,
     top,
