@@ -156,7 +156,7 @@ export default function Desktop({ rootBar }) {
 				/>
 			))}
 			{Object.keys(state.desktops).length === 0 && (
-				<VoidPoem message="Нет доступных рабочих столов. Создайте новый рабочий стол." />
+				<VoidPoem/>
 			)}
 		</Box>
 	);
