@@ -2,7 +2,6 @@ import React, { useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Box } from '@mui/material';
 import TitleBar from './TitleBar';
-import AddressBar from './AddressBar';
 import ResizeHandles from './ResizeHandles';
 import useDesktopOffset from '../hooks/useDesktopOffset';
 import useWindowNavigation from '../hooks/useWindowNavigation';
@@ -105,12 +104,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
           pageTitle={pageTitle}
           currentUrl={currentUrl}
           onTitleMouseDown={handleTitleMouseDown}
-        />
 
-        <AddressBar
-          win={win}
-          app={app}
-          currentUrl={currentUrl}
           setCurrentUrl={setCurrentUrl}
           navigateTo={navigateTo}
           goBack={goBack}

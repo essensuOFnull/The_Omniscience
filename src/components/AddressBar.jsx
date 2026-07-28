@@ -9,13 +9,7 @@ export default function AddressBar({
   win, app, currentUrl, setCurrentUrl, navigateTo,
   goBack, goForward, reload, loading, canGoBack, canGoForward
 }) {
-  // Показываем только если окно в режиме браузера (определяется в TitleBar, но здесь надо знать)
-  // Режим браузера хранится в TitleBar, поэтому передадим пропсом show
-  // Можно перенести browserMode в общее состояние или передавать show пропсом.
-  // Для простоты пока будем считать, что AddressBar всегда отображается, если передан пропс show.
-  // Но в исходном коде он условный: {browserMode && (...)}. Поэтому добавим пропс show.
-  if (!win.showAddressBar) return null; // или используем show из пропсов
-
+  
   const handleSubmit = (e) => {
     e.preventDefault();
     navigateTo(currentUrl);
