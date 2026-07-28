@@ -88,11 +88,6 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 
 	view._navListeners = [sendNavigationUpdate]; // можно потом отписаться
 
-	//пробуем костылями обернуть xterm
-	if (url == global.paths.xtermIndex) {
-		global.$.ipc_xterm(view);
-	}
-
 	return view;
 }
 

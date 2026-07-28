@@ -3,7 +3,6 @@
         tabs_on_update: (callback) => ipcRenderer.on('tabs_on_update', (event, data) => callback(data)),
         tab_create: () => ipcRenderer.send('tab_create'),
         desktop_create: () => ipcRenderer.send('desktop_create'),
-        xterm_create: () => ipcRenderer.send('xterm_create'),
         tab_activate: (index) => ipcRenderer.send('tab_activate', index),
         tab_close: (index) => ipcRenderer.send('tab_close', index),
         tab_url_update: (index, newUrl) => ipcRenderer.send('tab_url_update', index, newUrl),

@@ -155,7 +155,7 @@ export default function Desktop() {
 	const activeTab = tabs[activeTabIndex] || null;
 	const isDesktopActive = activeTab && activeTab.type === 'desktop';
 
-	// Рендерим все десктопы (скрывая неактивные) и активный контент для web/xterm
+	// Рендерим все десктопы (скрывая неактивные) и активный контент для web
 	return (
 		<Box
 			sx={{
@@ -184,7 +184,6 @@ export default function Desktop() {
 			{!isDesktopActive && (
 				<Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#fff' }}>
 					{activeTab && activeTab.type === 'web' && <div>Веб-вкладка: {activeTab.url}</div>}
-					{activeTab && activeTab.type === 'xterm' && <div>Терминал</div>}
 					{!activeTab && <VoidPoem />}
 				</Box>
 			)}

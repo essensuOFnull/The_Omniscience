@@ -82,7 +82,6 @@ const TabBar = () => {
 		setPopupAnchorEl(null);
 		if (type === 'desktop') window.electron_tabBar_API?.desktop_create?.();
 		else if (type === 'web') window.electron_tabBar_API?.tab_create?.();
-		else if (type === 'xterm') window.electron_tabBar_API?.xterm_create?.();
 	};
 
 	const handlePopupClose = () => {
@@ -133,7 +132,6 @@ const TabBar = () => {
 		if (tab.type === 'web') {
 			return tab.title ? `${tab.title} | ${tab.url}` : (tab.url || 'Новая вкладка');
 		}
-		if (tab.type === 'xterm') return '📟';
 		return '📄';
 	};
 
@@ -275,9 +273,6 @@ const TabBar = () => {
 					</Button>
 					<Button variant="contained" onClick={() => handlePopupAction('web')}>
 						Ссылка
-					</Button>
-					<Button variant="contained" onClick={() => handlePopupAction('xterm')}>
-						Терминал
 					</Button>
 					<Button variant="outlined" onClick={handlePopupClose}>
 						Отмена

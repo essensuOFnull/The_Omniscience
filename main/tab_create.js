@@ -41,16 +41,13 @@ export default function (url, type, preload) {
         // Скрываем пока (нулевые размеры)
         view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
 
-        tabData.title = type === 'xterm' ? 'Терминал' : (url || 'Новая вкладка');
-        // Для веба и терминала сохраняем view
+        tabData.title =(url || 'Новая вкладка');
+        
         view.tabData = tabData;
 
         // Подписки
         global.$.tab_on_didNavigate(view);
         global.$.applyContextMenu(view.webContents);
-        if (type === 'xterm') {
-            global.$.ipc_xterm(view);
-        }
     }
 
     // Добавляем в массив
