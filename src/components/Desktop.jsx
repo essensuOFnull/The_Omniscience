@@ -97,13 +97,11 @@ export default function Desktop({ rootBar }) {
 						actions.switchDesktop(desktopId);
 					}}
 					onDeleteDesktop={(desktopId) => {
-						if (desktopsArray.length > 1) {
-							const nextId = desktopsArray.find(d => d.id !== desktopId)?.id;
-							if (state.activeDesktopId === desktopId && nextId) {
-								actions.switchDesktop(nextId);
-							}
-							actions.closeDesktop(desktopId);
+						const nextId = desktopsArray.find(d => d.id !== desktopId)?.id;
+						if (state.activeDesktopId === desktopId && nextId) {
+							actions.switchDesktop(nextId);
 						}
+						actions.closeDesktop(desktopId);
 					}}
 				/>
 			);
@@ -146,7 +144,7 @@ export default function Desktop({ rootBar }) {
 				overflow: 'hidden',
 			}}
 		>
-			{Object.keys(state.desktops).map(desktopId => (
+			{Object.keys(state.desktops).length>0&&Object.keys(state.desktops).map(desktopId => (
 				<DesktopWorkspace
 					key={desktopId}
 					desktopId={desktopId}
@@ -157,6 +155,9 @@ export default function Desktop({ rootBar }) {
 					active={state.activeDesktopId === desktopId}
 				/>
 			))}
+			{Object.keys(state.desktops).length === 0 && (
+				<VoidPoem message="Нет доступных рабочих столов. Создайте новый рабочий стол." />
+			)}
 		</Box>
 	);
 }

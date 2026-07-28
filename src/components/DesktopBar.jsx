@@ -30,10 +30,7 @@ const DesktopBar = ({ desktops, activeDesktopId, onCreateDesktop, onSwitchDeskto
 
 	const handleDesktopContextMenu = (desktopId, e) => {
 		e.preventDefault();
-		// Простое меню удаления (можно заменить на полноценный context menu)
-		if (desktops.length > 1) {
-			onDeleteDesktop(desktopId);
-		}
+		onDeleteDesktop(desktopId);
 	};
 
 	const handleAddDesktop = () => {
