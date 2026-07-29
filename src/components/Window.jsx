@@ -50,13 +50,22 @@ export default function Window({ windowId, app, state, actions, config, animatio
     width: initialGhost.width,
     height: initialGhost.height,
   };
+  const hiddenInOverview = state.isOverviewOpened && !isGrid;
+  const viewportWidth = state.viewport?.width || window.innerWidth;
+  const viewportHeight = state.viewport?.height || window.innerHeight;
+  const viewportCenterX = state.viewport?.centerX ?? viewportWidth / 2;
+  const hideDistance = Math.max(win.ghost.height, viewportHeight) * -1;
+  const offscreenGhost = hiddenInOverview
+    ? { ...ghost, centerX: viewportCenterX, centerY: hideDistance }
+    : ghost;
+
   const baseAnimate = {
-    left: ghost.centerX,
-    top: ghost.centerY + topOffset,
+    left: offscreenGhost.centerX,
+    top: offscreenGhost.centerY + topOffset,
     x: '-50%',
     y: '-50%',
-    width: ghost.width,
-    height: ghost.height,
+    width: offscreenGhost.width,
+    height: offscreenGhost.height,
   };
 
   const variant = win.animationVariant || 'create';
