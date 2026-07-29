@@ -26,7 +26,7 @@ const ACTION_ARG_NAMES = {
 	maximizeWindow: ['windowId'],
 	unmaximizeWindow: ['windowId'],
 	minimizeWindow: ['windowId', 'cx', 'cy'],
-	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height'],
+	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height', 'snap'],
 };
 
 export default function Desktop({ rootBar }) {

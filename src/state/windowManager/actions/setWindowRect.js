@@ -2,7 +2,7 @@ import { clampRect } from '../../clampRect';
 import { getDesktop, getWindow, updateDesktop, updateWindow } from '../helpers';
 
 export const setWindowRect = (state, payload, helpers) => {
-  const { desktopId, windowId, cx, cy, width, height } = payload;
+  const { desktopId, windowId, cx, cy, width, height, snap } = payload;
   const desktop = getDesktop(state, desktopId);
   if (!desktop) return state;
   const win = getWindow(desktop, windowId);
@@ -10,6 +10,7 @@ export const setWindowRect = (state, payload, helpers) => {
 
   const vp = desktop.viewport || { width: 800, height: 600 };
   const clamped = clampRect(cx, cy, width, height, vp);
+  const snapPayload = snap !== undefined ? snap : win.snapped;
 
   const updatedDesktop = updateWindow(desktop, windowId, (w) => ({
     ...w,
@@ -20,6 +21,7 @@ export const setWindowRect = (state, payload, helpers) => {
       width: clamped.w,
       height: clamped.h,
     },
+    ...(snap !== undefined ? { snapped: snapPayload } : {}),
     animationVariant: 'setRect',
   }));
 
