@@ -20,7 +20,8 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 			transparent: true,
 			backgroundColor: '#00000000',
 			sandbox: false,
-			webSecurity: false,
+			webSecurity: true,
+			webviewTag: false
 		},
 	});
 

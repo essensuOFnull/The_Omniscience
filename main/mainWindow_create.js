@@ -27,13 +27,13 @@ export default async function () {
 
         icon: global.paths.icon,
         webPreferences: {
-            webviewTag: true,
             enableRemoteModule: false,
             nodeIntegration: false,
             contextIsolation: true,
             preload: global.paths.reactPreload,
             autoplayPolicy: "no-user-gesture-required",
-            webSecurity: false,
+            webSecurity: true,
+            webviewTag: false,
         },
     });
 
