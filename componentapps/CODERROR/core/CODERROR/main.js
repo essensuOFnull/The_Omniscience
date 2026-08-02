@@ -14,7 +14,7 @@ window.addEventListener('blur', function() {
 	window.has_focus = false;
 });
 /**получение манифеста*/
-f.fetch_json('manifest.json').then(manifest=>{
+f.fetch_json('../../../componentapps/CODERROR/manifest.json').then(manifest=>{
 	/**манифест расширения*/
 	d.manifest=manifest;
 });

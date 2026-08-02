@@ -7,7 +7,7 @@ window.stylesFactory = function (t) {
 		'@global': {
 			'@font-face': {
 				fontFamily: 'CODERROR',
-				src: 'url("fonts/CODERROR16x16GNUUnifont.ttf") format("truetype")'
+				src: 'url("../../../componentapps/CODERROR/fonts/CODERROR16x16GNUUnifont.ttf") format("truetype")'
 			},
 			'@keyframes message_fade_out': {
 				'0%': { opacity: 1 },

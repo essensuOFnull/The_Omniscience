@@ -2127,32 +2127,32 @@ set_cursor(cursor_folder_path){
 		console.error('Ошибка при загрузке конфигурации курсора:', error);
 	});
 },
-change_title(title){
-	window.message_bus.send('change_title',{title}).then(()=>{});
+change_title(title) {
+    return window.CODERROR_API.changeTitle(title);
 },
-init_file_access(){
-	return window.message_bus.send('init_file_access',{});
+init_file_access() {
+    return window.CODERROR_API.fileAPI.initFileAccess();
 },
-file_exists(relPath){
-	return window.message_bus.send('file_exists',{relPath});
+file_exists(relPath) {
+    return window.CODERROR_API.fileAPI.fileExists(relPath);
 },
 read_file(relPath, asText = true) {
-    return window.message_bus.send('read_file', { relPath, asText });
+    return window.CODERROR_API.fileAPI.readFile(relPath, asText);
 },
 write_file(relPath, content) {
-    return window.message_bus.send('write_file', {relPath, content});
+    return window.CODERROR_API.fileAPI.writeFile(relPath, content);
 },
-create_directory(relPath){
-	return window.message_bus.send('create_directory',{relPath});
+create_directory(relPath) {
+    return window.CODERROR_API.fileAPI.createDirectory(relPath);
 },
-remove_file(relPath){
-	return window.message_bus.send('remove_file',{relPath});
+remove_file(relPath) {
+    return window.CODERROR_API.fileAPI.removeFile(relPath);
 },
-remove_directory(relPath){
-	return window.message_bus.send('remove_directory',{relPath});
+remove_directory(relPath) {
+    return window.CODERROR_API.fileAPI.removeDirectory(relPath);
 },
-list_files(relPath=""){
-	return window.message_bus.send('list_files',{relPath});
+list_files(relPath = "") {
+    return window.CODERROR_API.fileAPI.listFiles(relPath);
 },
 /**текущая функция логики комнаты (physics цикл)*/
 current_room_physics(){
@@ -2163,22 +2163,24 @@ current_room_render(){
 	// Функция переопределяется в change_room
 },
 /**получает информацию о системе*/
-get_system_info(){
-	window.message_bus.send('get_system_info',{}).then(system_info=>{
-		d.system_info=system_info;
-	});
+get_system_info() {
+    return window.CODERROR_API.fileAPI.getSystemInfo().then(systemInfo => {
+        window.CODERROR.__originals__.data.system_info = systemInfo;
+        return systemInfo;
+    });
 },
-/**получает список названий midi-устройств*/
-get_midi_inputs(){
-	window.message_bus.send('get_midi_inputs',{}).then(midi_inputs=>{
-		d.midi_inputs=midi_inputs;
-		console.log('Доступные MIDI входы:',d.midi_inputs);
-	});
+get_midi_inputs() {
+    return window.CODERROR_API.fileAPI.getMidiInputs().then(midiInputs => {
+        window.CODERROR.__originals__.data.midi_inputs = midiInputs;
+        console.log('Доступные MIDI входы:', window.CODERROR.__originals__.data.midi_inputs);
+        return midiInputs;
+    });
 },
 get_midi_outputs() {
-    window.message_bus.send('get_midi_outputs', {}).then(outputs => {
-        d.midi_outputs = outputs;
-        console.log('Доступные MIDI выходы:',d.midi_outputs);
+    return window.CODERROR_API.fileAPI.getMidiOutputs().then(outputs => {
+        window.CODERROR.__originals__.data.midi_outputs = outputs;
+        console.log('Доступные MIDI выходы:', window.CODERROR.__originals__.data.midi_outputs);
+        return outputs;
     });
 },
 /**
@@ -2186,13 +2188,12 @@ get_midi_outputs() {
  * @param {Uint8Array|ArrayBuffer} byteArray - содержимое .mid файла
  * @param {string} deviceId - идентификатор выходного MIDI-устройства
  */
-play_midi(byteArray, deviceId){
-    window.message_bus.send('play_midi',{byteArray,deviceId})
-        .catch(err=>console.error('Ошибка при запуске MIDI:',err));
+play_midi(byteArray, deviceId) {
+    // deviceId пока игнорируется – при необходимости можно расширить API
+    return window.CODERROR_API.midiAPI.play(byteArray);
 },
-/**Остановить текущее воспроизведение MIDI*/
-stop_midi(){
-    window.message_bus.send('stop_midi',{}).catch(err => console.error('Ошибка при остановке MIDI:', err));
+stop_midi() {
+    return window.CODERROR_API.midiAPI.stop();
 },
 /** Определяет тип GPU с улучшенной логикой */
 determine_GPU_type(systemInfo) {
