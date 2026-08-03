@@ -7,7 +7,7 @@ import jssPresetDefault from 'jss-preset-default';
 // ====== Асинхронная инициализация ======
 (async () => {
 	await import('./core/api.js');
-	// 1. JSS и стили
+
 	window.jssInstance = create(jssPresetDefault());
 	await import('./core/styles.js'); // этот модуль должен определить window.stylesFactory и window.styleTokens
 	// после выполнения импорта они уже доступны
@@ -15,19 +15,15 @@ import jssPresetDefault from 'jss-preset-default';
 		window.stylesFactory(window.styleTokens)
 	).attach();
 
-	// 2. Остальные модули в строгом порядке
-	await import('./core/index/data.js');
-	await import('./core/index/functions.js');
-	await import('./core/general/functions.js');
-	await import('./core/index/main.js');
+	await import('./core/preinit.js');
 
-	// 3. Модули CODERROR (если они должны быть загружены до рендера)
-	await import('./core/CODERROR/preinit.js');
-	await import('./core/CODERROR/data.js');
-	await import('./core/CODERROR/functions.js');
+	await import('./core/data.js');
+	await import('./core/functions.js');
+
 	//await import('./core/CODERROR/sound_console.js');
 	await import('./core/CODERROR/initial_settings.js');
-	await import('./core/CODERROR/main.js');
+
+	await import('./core/main.js');
 
 	// ====== Рендер React ======
 	const root = ReactDOM.createRoot(document.getElementById('root'));
