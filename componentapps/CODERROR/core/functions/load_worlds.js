@@ -1,7 +1,8 @@
+import list_files from './list_files';
 export default async function(){
 	try{
 		d.worlds=[];
-		const files=await f.list_files('YOUR_DATA/worlds');
+		const files=await list_files('YOUR_DATA/worlds');
 		const worldPromises=files.map(file=>
 			this.load_world(file)
 		);

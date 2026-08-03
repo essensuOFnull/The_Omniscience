@@ -1,8 +1,9 @@
+import read_file from './read_file';
 export default function() {
     return new Promise((resolve, reject) => {
         const infoPath = `CACHE/symbols_atlases/${d.symbol_size}/info.json`;
         
-        f.read_file(infoPath).then(infoData => {
+        read_file(infoPath).then(infoData => {
             const info = JSON.parse(infoData);
             
             d.symbols_atlases = [];

@@ -1,5 +1,6 @@
+import init_midi from './init_midi';
 export default async function() {
-    await f.init_midi();
+    await init_midi();
     if (!d.midi_access) return {};
     let outputs = {};
     for (let output of d.midi_access.outputs.values()) {

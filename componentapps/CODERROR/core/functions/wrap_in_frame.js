@@ -1,5 +1,7 @@
+import create_element_from_HTML from './create_element_from_HTML';
+import increment_z_index from './increment_z_index';
 export default function(content,container_type='<button/>',removable=false) {
-	let button = f.create_element_from_HTML(container_type);
+	let button = create_element_from_HTML(container_type);
 	button.style.position='relative';
 	button.style.overflow='hidden';
 	let grid=document.createElement('div');
@@ -15,20 +17,20 @@ export default function(content,container_type='<button/>',removable=false) {
 	/*Создание элементов с правильными областями*/
 	let b;
 	if(removable){
-		b=f.create_element_from_HTML(`<pre><button style='color:inherit'>X</button></pre>`);/*костыль*/
+		b=create_element_from_HTML(`<pre><button style='color:inherit'>X</button></pre>`);/*костыль*/
 		b.addEventListener('click',()=>{
 			button.remove();
 		});
 	}
 	else{
-		b=f.create_element_from_HTML(`<pre>.</pre>`);
+		b=create_element_from_HTML(`<pre>.</pre>`);
 	}
 	let elements={
-		a:f.create_element_from_HTML(`<pre>+</pre>`),
+		a:create_element_from_HTML(`<pre>+</pre>`),
 		b:b,
 		c:document.createElement('div'),
-		d:f.create_element_from_HTML(`<pre>\`</pre>`),
-		e:f.create_element_from_HTML(`<pre>'</pre>`)
+		d:create_element_from_HTML(`<pre>\`</pre>`),
+		e:create_element_from_HTML(`<pre>'</pre>`)
 	};
 	/*Настройка центрального элемента*/
 	elements.c.appendChild(content);
@@ -45,19 +47,19 @@ export default function(content,container_type='<button/>',removable=false) {
 		b.style.color='#f00'
 	}
 	button.appendChild(grid);
-	f.increment_z_index(grid);
+	increment_z_index(grid);
 	let horizontal=`<pre style="position:absolute;white-space:nowrap;color:inherit;">${'-'.repeat(666)}</pre>`
 	let vertical=`<pre style="position:absolute;white-space:nowrap;color:inherit;">${'|<br>'.repeat(444)}</pre>`
-	let top=f.create_element_from_HTML(horizontal);
+	let top=create_element_from_HTML(horizontal);
 	top.style.top=0;
 	top.style.left=0;
-	let bottom=f.create_element_from_HTML(horizontal);
+	let bottom=create_element_from_HTML(horizontal);
 	bottom.style.bottom=0;
 	bottom.style.left=0;
-	let left=f.create_element_from_HTML(vertical);
+	let left=create_element_from_HTML(vertical);
 	left.style.top=0;
 	left.style.left=0;
-	let right=f.create_element_from_HTML(vertical);
+	let right=create_element_from_HTML(vertical);
 	right.style.top=0;
 	right.style.right=0;
 	button.appendChild(top);

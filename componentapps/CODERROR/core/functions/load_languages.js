@@ -1,5 +1,6 @@
+import list_files from './list_files';
 export default function(){
-	return f.list_files('languages').then(files=>{
+	return list_files('languages').then(files=>{
 		let languages_div=document.getElementById('languages_div');
 		languages_div.innerHTML='';
 		// Создаем массив промисов для каждого скрипта

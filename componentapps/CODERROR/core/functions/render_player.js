@@ -1,3 +1,6 @@
+import focus_camera_on_player from './focus_camera_on_player';
+import print_text_to_symbols_grid from './print_text_to_symbols_grid';
+import logical_to_screen from './logical_to_screen';
 export default function(player=_.get(d,['save','player'])){
     let basePath=['save','world','players',player.nickname],
     player_nickname=_.get(player,['nickname']);
@@ -13,13 +16,13 @@ export default function(player=_.get(d,['save','player'])){
         }
         const player_skin=(fractional[0]?(fractional[1]?'▗▖\n▝▘':'▐▌'):(fractional[1]?'▄\n▀':'█'));
         /*отрисовка игрока*/
-        f.focus_camera_on_player();
+        focus_camera_on_player();
         const coord0=_.get(d,[...basePath,'position','coordinates',0]);
         const coord1=_.get(d,[...basePath,'position','coordinates',1]);
-        let rendering_coordinates=[f.logical_to_screen(coord0)-(_.get(d,['save','temp','camera',0])||d.save.temp.camera&&d.save.temp.camera[0]||0),f.logical_to_screen(coord1)-(_.get(d,['save','temp','camera',1])||d.save.temp.camera&&d.save.temp.camera[1]||0)];
+        let rendering_coordinates=[logical_to_screen(coord0)-(_.get(d,['save','temp','camera',0])||d.save.temp.camera&&d.save.temp.camera[0]||0),logical_to_screen(coord1)-(_.get(d,['save','temp','camera',1])||d.save.temp.camera&&d.save.temp.camera[1]||0)];
         if(fractional[0]) rendering_coordinates[0]--;
         if(fractional[1]) rendering_coordinates[1]--;
-        f.print_text_to_symbols_grid(player_skin,rendering_coordinates[0]/d.symbol_size,rendering_coordinates[1]/d.symbol_size);
+        print_text_to_symbols_grid(player_skin,rendering_coordinates[0]/d.symbol_size,rendering_coordinates[1]/d.symbol_size);
     }
     //Ник над персонажем — создаётся один раз и потом только перемещается
     if(!d.nickname_labels)d.nickname_labels=new Map();
@@ -29,8 +32,8 @@ export default function(player=_.get(d,['save','player'])){
     y=_.get(d,[...collider,0,1]);
     //Переводим в экранные пиксели
     let camera=['save','temp','camera'],
-    screen_x=Math.round(f.logical_to_screen(x)-_.get(d,[...camera,0],0)),
-    screen_y=Math.round(f.logical_to_screen(y)-_.get(d,[...camera,1],0));
+    screen_x=Math.round(logical_to_screen(x)-_.get(d,[...camera,0],0)),
+    screen_y=Math.round(logical_to_screen(y)-_.get(d,[...camera,1],0));
     //Смещаем надпись над головой на расстояние d.symbol_size
     screen_y-=d.symbol_size;
 

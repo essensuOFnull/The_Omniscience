@@ -1,3 +1,4 @@
+import update_activated_actions from './update_activated_actions';
 export default function(){
 	let getKey=(e)=>{
 		if(e.type.startsWith('key')){
@@ -16,7 +17,7 @@ export default function(){
 		}else{
 			d.pressed.delete(key);
 		}
-		f.update_activated_actions();
+		update_activated_actions();
 	};
 	document.addEventListener('keydown',handleEvent);
 	document.addEventListener('keyup',handleEvent);

@@ -1,3 +1,5 @@
+import read_file from './read_file';
+import print_to_chat from './print_to_chat';
 export default function(room,preparation=true,reset_overlay=true){
     _.set(d,['save','world','players',d.save.player.nickname,'position','room_id'],room);
     _.set(d,['save','temp','room','preparation'],preparation);
@@ -11,7 +13,7 @@ export default function(room,preparation=true,reset_overlay=true){
         d.current_room_render = `()=>{}`;
         
         // Загружаем physics функцию комнаты
-        const physicsPromise = f.read_file(`rooms/physics/${room}.js`).then(content => {
+        const physicsPromise = read_file(`rooms/physics/${room}.js`).then(content => {
             if(content){
                 try {
                     d.current_room_physics=content;
@@ -26,7 +28,7 @@ export default function(room,preparation=true,reset_overlay=true){
         });
         
         // Загружаем render функцию комнаты
-        const renderPromise = f.read_file(`rooms/render/${room}.js`).then(content => {
+        const renderPromise = read_file(`rooms/render/${room}.js`).then(content => {
             if(content){
                 try {
                     d.current_room_render=content;
@@ -43,7 +45,7 @@ export default function(room,preparation=true,reset_overlay=true){
         // Устанавливаем флаг ТОЛЬКО после того, как оба файла загружены
         Promise.all([physicsPromise, renderPromise]).then(() => {
             d.room_files_loaded = room;
-            f.print_to_chat(d.language.notifications.current_room(room));
+            print_to_chat(d.language.notifications.current_room(room));
         });
     }
 }

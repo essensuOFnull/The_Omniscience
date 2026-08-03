@@ -1,3 +1,5 @@
+import save_atlas_as_PNG from './save_atlas_as_PNG';
+import write_file from './write_file';
 export default function() {
     if (!d.symbols_atlases || d.symbols_atlases.length === 0) {
         console.warn('No atlases to save');
@@ -22,14 +24,14 @@ export default function() {
             rows: atlas.rows
         });
         
-        return f.save_atlas_as_PNG(atlas.canvas, index, fileName);
+        return save_atlas_as_PNG(atlas.canvas, index, fileName);
     });
     
     // Сохраняем информацию об атласах
     const infoPath = `CACHE/symbols_atlases/${d.symbol_size}/info.json`;
     const infoJson = JSON.stringify(atlasInfo, null, 2);
     
-    savePromises.push(f.write_file(infoPath, infoJson));
+    savePromises.push(write_file(infoPath, infoJson));
     
     Promise.all(savePromises).then(() => {
         console.log('All atlases and info saved successfully');

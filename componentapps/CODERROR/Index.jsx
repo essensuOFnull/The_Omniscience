@@ -16,7 +16,6 @@ import jssPresetDefault from 'jss-preset-default';
 	await import('./core/preinit.js');
 
 	await import('./core/data.js');
-	await import('./core/functions.js');
 
 	await import('./core/api.js');
 

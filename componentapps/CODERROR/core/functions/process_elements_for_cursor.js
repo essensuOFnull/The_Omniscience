@@ -1,3 +1,5 @@
+import get_inherited_cursor from './get_inherited_cursor';
+import get_auto_cursor from './get_auto_cursor'; //спасибо копилол
 export default function(root){
 	// Получаем все элементы, включая сам root
 	const elements = [root, ...root.querySelectorAll('*')];
@@ -15,10 +17,10 @@ export default function(root){
 		// Обрабатываем специальные случаи
 		if(cursor_type === 'inherit') {
 			// Для inherit находим родительский data-cursor
-			cursor_type = f.get_inherited_cursor(element);
+			cursor_type = get_inherited_cursor(element);
 		} else if(cursor_type === 'auto') {
 			// Для auto используем логику браузера
-			cursor_type = f.get_auto_cursor(element);
+			cursor_type = get_auto_cursor(element);
 		}
 		
 		// Сохраняем в data-атрибут

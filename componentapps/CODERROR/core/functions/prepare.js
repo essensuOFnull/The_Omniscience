@@ -1,5 +1,6 @@
+import finish_preparation from './finish_preparation';
 export default function(preparation_func){
 	if(!d.save.temp.room.preparation)return
 	preparation_func();
-	f.finish_preparation();
+	finish_preparation();
 }

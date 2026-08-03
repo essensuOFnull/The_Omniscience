@@ -1,3 +1,4 @@
+import get_random_element from './get_random_element';
 export default function(){
-	d.splash=f.get_random_element(d.language.splashes);
+	d.splash=get_random_element(d.language.splashes);
 }

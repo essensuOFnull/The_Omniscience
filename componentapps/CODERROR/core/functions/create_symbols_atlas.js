@@ -1,6 +1,8 @@
+import init_printable_symbols from './init_printable_symbols';
+import save_atlases_to_disk from './save_atlases_to_disk';
 export default function() {
     if (!d.printable_symbols || d.printable_symbols.length === 0) {
-        f.init_printable_symbols();
+        init_printable_symbols();
     }
     
     // Если printable_symbols - строка, преобразуем в массив символов
@@ -100,5 +102,5 @@ export default function() {
         return;
     }
 
-    f.save_atlases_to_disk();
+    save_atlases_to_disk();
 }

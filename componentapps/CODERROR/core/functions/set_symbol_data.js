@@ -1,3 +1,5 @@
+import get_symbol_texture from './get_symbol_texture';
+import mark_symbol_dirty from'./mark_symbol_dirty';
 export default function(x, y, char, textColor = 0xFFFFFF, bgColor = 0x000000, bgAlpha = 0) {
     let container = _.get(d, ['symbols_grid', y, x]),
     data = _.get(d, ['symbols_grid_data', y, x]);
@@ -19,7 +21,7 @@ export default function(x, y, char, textColor = 0xFFFFFF, bgColor = 0x000000, bg
 	
 	// Обновляем символ
 	if(char && char !== '') {
-		const texture = f.get_symbol_texture(char);
+		const texture = get_symbol_texture(char);
 		if(texture) {
 			symbol.texture = texture;
 			symbol.tint = textColor;
@@ -31,5 +33,5 @@ export default function(x, y, char, textColor = 0xFFFFFF, bgColor = 0x000000, bg
 		symbol.alpha = 0;
 	}
     
-    f.mark_symbol_dirty(x, y);
+    mark_symbol_dirty(x, y);
 }

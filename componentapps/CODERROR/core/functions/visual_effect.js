@@ -1,3 +1,8 @@
+import get_random_color from './get_random_color';
+import set_symbol_data from './set_symbol_data';
+import get_random_char from './get_random_char';
+import visual_effect from './visual_effect';
+import set_symbol_data from './set_symbol_data';
 export default function(number){
 	/*заполняет случайными символами*/
 	if(number==0){
@@ -6,10 +11,10 @@ export default function(number){
 		offset_x=Math.round(Math.random()*step);
 		for(let y=offset_y;y<d.rows;y+=step){
 			for(let x=offset_x;x<d.columns;x+=step){
-				f.set_symbol_data(x, y, f.get_random_char(), f.get_random_color(),f.get_random_color(),0.5);
+				set_symbol_data(x, y, get_random_char(), get_random_color(),get_random_color(),0.5);
 			}
 		}
-		f.visual_effect(3);
+		visual_effect(3);
 	}
 	/*случайно поворачивает символы*/
 	if(number==1){
@@ -72,7 +77,7 @@ export default function(number){
 					let data = d.symbols_grid_data[y] && d.symbols_grid_data[y][x];
 					if(data) bgColor = data.bgColor || bgColor;
 					// Устанавливаем пустой символ и вычислённую прозрачность фона
-					f.set_symbol_data(x, y, '', 0xFFFFFF, bgColor, alpha);
+					set_symbol_data(x, y, '', 0xFFFFFF, bgColor, alpha);
 				}
 			}
 		}

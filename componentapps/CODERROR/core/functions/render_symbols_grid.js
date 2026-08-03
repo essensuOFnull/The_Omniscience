@@ -1,3 +1,4 @@
+import get_symbol_texture from './get_symbol_texture';
 export default function(){
     // CPU режим - используем оптимизированный рендеринг с атласами
     if(d.symbols_dirty_cells && d.symbols_dirty_cells.size > 0){
@@ -17,7 +18,7 @@ export default function(){
             if(textElement._lastChar !== data.char) {
                 textElement._lastChar = data.char;
                 if(data.char && data.char !== '') {
-                    const texture = f.get_symbol_texture(data.char);
+                    const texture = get_symbol_texture(data.char);
                     if(texture) {
                         textElement.texture = texture;
                         textElement.alpha = 1;

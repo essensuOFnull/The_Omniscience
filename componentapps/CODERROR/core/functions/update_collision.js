@@ -1,5 +1,6 @@
+import update_player_collider from './update_player_collider';
 export default function(ground_collider=d.save.temp.ground.collider){
-	f.update_player_collider();
+	update_player_collider();
 	let nickname=d.save.player.nickname,
 	position=['save','world','players',nickname,'position'],
 	touch_wall=[...position,'touch_wall'],

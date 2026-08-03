@@ -1,5 +1,6 @@
+import fetch_json from './fetch_json';
 export default function(cursor_folder_path){
-	f.fetch_json(`${cursor_folder_path}/cursor_config.json`).then(config => {
+	fetch_json(`${cursor_folder_path}/cursor_config.json`).then(config => {
 		if(!config || typeof config !== 'object'){
 			console.error('Неверный формат конфигурации курсора');
 			return;

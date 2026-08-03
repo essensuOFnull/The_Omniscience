@@ -1,5 +1,7 @@
+import save_world from './save_world'; 
+import update_worlds_list from './update_worlds_list';
 export default function(world){
-	f.save_world(world);
+	save_world(world);
 	d.worlds.unshift(world);
-	f.update_worlds_list();
+	update_worlds_list();
 }

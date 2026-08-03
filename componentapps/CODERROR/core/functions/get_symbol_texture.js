@@ -1,13 +1,14 @@
+import get_symbol_texture from './get_symbol_texture';
 export default function(char) {
     const info = d.symbols_atlas_map[char];
     if (!info) {
-        return f.get_symbol_texture(' ');
+        return get_symbol_texture(' ');
     }
     
     const atlas = d.symbols_atlases[info.atlasIndex];
     if (!atlas) {
         console.warn(`Atlas ${info.atlasIndex} not found for char: ${char}`);
-        return f.get_symbol_texture(' ');
+        return get_symbol_texture(' ');
     }
     
     const size = d.symbol_size;

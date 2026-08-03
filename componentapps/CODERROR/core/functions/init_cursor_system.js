@@ -1,3 +1,4 @@
+import init_cursor_data_attributes from './init_cursor_data_attributes';
 export default function(){
 	/**контейнер для кастомного курсора*/
 	d.cursor = document.getElementById('cursor');
@@ -7,5 +8,5 @@ export default function(){
 	d.cursor_type = null;
 	
 	/**обработчик для копирования cursor в data-атрибуты*/
-	f.init_cursor_data_attributes();
+	init_cursor_data_attributes();
 }

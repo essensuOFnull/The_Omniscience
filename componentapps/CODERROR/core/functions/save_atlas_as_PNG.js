@@ -1,3 +1,4 @@
+import write_file from './write_file';
 export default function(canvas, index, fileName = null) {
     if (!fileName) {
         fileName = `CACHE/symbols_atlases/${d.symbol_size}/${index}.png`;
@@ -15,7 +16,7 @@ export default function(canvas, index, fileName = null) {
                 uint8Array[i] = binaryString.charCodeAt(i);
             }
             
-            f.write_file(fileName, uint8Array)
+            write_file(fileName, uint8Array)
                 .then(() => {
                     console.log(`Atlas ${index} saved: ${fileName}`);
                     resolve();

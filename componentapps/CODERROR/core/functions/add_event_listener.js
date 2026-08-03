@@ -1,6 +1,8 @@
+import remove_event_listener from './remove_event_listener';
+import jsons_to_dict_list from './jsons_to_dict_list';
 export default function(name,element,function_part){
     /*Удаляем старые обработчики перед добавлением новых*/
-    f.remove_event_listener(name,element);
+    remove_event_listener(name,element);
     let handlers={
         drop:null,
         click:null,
@@ -16,7 +18,7 @@ export default function(name,element,function_part){
         let dropHandler=async(e)=>{
             e.preventDefault();
             try{
-                let dicts=await f.jsons_to_dict_list(e.dataTransfer.files);
+                let dicts=await jsons_to_dict_list(e.dataTransfer.files);
                 let merged=_.merge({},...dicts);
                 function_part(merged);
             }catch(error){
@@ -31,7 +33,7 @@ export default function(name,element,function_part){
         let changeHandler=async(e)=>{
             try{
                 let files=Array.from(e.target.files);
-                let dicts=await f.jsons_to_dict_list(files);
+                let dicts=await jsons_to_dict_list(files);
                 let merged=_.merge({},...dicts);
                 function_part(merged);
                 jsonInput.value='';

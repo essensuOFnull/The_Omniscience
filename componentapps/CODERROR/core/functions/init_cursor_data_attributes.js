@@ -1,13 +1,14 @@
+import process_elements_for_cursor from './process_elements_for_cursor';
 export default function(){
 	// Обрабатываем существующие элементы
-	f.process_elements_for_cursor(document.documentElement);
+	process_elements_for_cursor(document.documentElement);
 	
 	// Наблюдаем за новыми элементами
 	const observer = new MutationObserver((mutations) => {
 		for(let mutation of mutations){
 			for(let node of mutation.addedNodes){
 				if(node.nodeType === Node.ELEMENT_NODE){
-					f.process_elements_for_cursor(node);
+					process_elements_for_cursor(node);
 				}
 			}
 		}

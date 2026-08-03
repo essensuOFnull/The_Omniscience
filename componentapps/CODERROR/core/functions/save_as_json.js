@@ -1,6 +1,7 @@
+import object_to_string from './object_to_string';
 export default function(data,filename){
 	/*Преобразуем объект в JSON строку*/
-	let jsonString=f.object_to_string(data);
+	let jsonString=object_to_string(data);
 	/*Создаем Blob из JSON строки*/
 	let blob=new Blob([jsonString],{type:"application/json"});
 	/*Создаем ссылку на объект Blob*/

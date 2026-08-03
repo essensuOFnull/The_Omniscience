@@ -1,3 +1,4 @@
+import create_skybox_materials from './create_skybox_materials';
 export default function(path_part,extension,is_sphere=false) {
     let new_sky_path=`${path_part}/.${extension}`;
     if(new_sky_path==d.current_sky_path)return
@@ -22,7 +23,7 @@ export default function(path_part,extension,is_sphere=false) {
     /*Создаем новые материалы с обработкой ошибок*/
     try{
         let geometry=new THREE.BoxGeometry(5, 5, 5);
-        let materials=f.create_skybox_materials(path_part,extension,is_sphere);
+        let materials=create_skybox_materials(path_part,extension,is_sphere);
         d.skybox=new THREE.Mesh(geometry, materials);
         d.three_scene.add(d.skybox);
     }catch(error){

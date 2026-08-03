@@ -1,15 +1,17 @@
+import file_exists from './file_exists';
+import read_file from './read_file';
 export default function() {
     return new Promise((resolve, reject) => {
         const infoPath = `CACHE/symbols_atlases/${d.symbol_size}/info.json`;
         
-        f.file_exists(infoPath).then(exists => {
+        file_exists(infoPath).then(exists => {
             if (!exists) {
                 resolve(false);
                 return;
             }
             
             // Читаем информацию о кэше
-            f.read_file(infoPath).then(infoData => {
+            read_file(infoPath).then(infoData => {
                 try {
                     const info = JSON.parse(infoData);
                     
@@ -21,7 +23,7 @@ export default function() {
                     
                     // Проверяем существование всех файлов атласов
                     const checkPromises = info.atlases.map(atlasInfo => 
-                        f.file_exists(atlasInfo.filename)
+                        file_exists(atlasInfo.filename)
                     );
                     
                     Promise.all(checkPromises).then(results => {

@@ -1,5 +1,7 @@
+import create_element_from_HTML from './create_element_from_HTML';
+import update_active_hotbar_slot_frame from './update_active_hotbar_slot_frame';
 export default function(player=d.save.player,functional=true){
-	let hotbar=f.create_element_from_HTML(`<div class="row"></div>`);
+	let hotbar=create_element_from_HTML(`<div class="row"></div>`);
 	if(functional){
 		hotbar.id='hotbar';
 	}
@@ -10,7 +12,7 @@ export default function(player=d.save.player,functional=true){
 		if(functional){
 			slot.addEventListener('click',function(e){
 				player.interface.hotbar.active_slot_index=this.dataset.index;
-				f.update_active_hotbar_slot_frame();
+				update_active_hotbar_slot_frame();
 			});
 		}
 		hotbar.appendChild(slot);
