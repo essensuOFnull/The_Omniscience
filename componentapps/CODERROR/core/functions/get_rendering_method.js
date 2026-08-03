@@ -1,6 +1,7 @@
+import determine_GPU_type from './determine_GPU_type';
 export default function(systemInfo) {
     try {
-        const gpuType = this.determine_GPU_type(systemInfo);
+        const gpuType = determine_GPU_type(systemInfo);
         
         console.log('Detected GPU type:', gpuType);
         

@@ -2,7 +2,7 @@ export default function(path_part,extension,is_sphere) {
     let sides = ['right','left','top','bottom','front','back'];
     if(is_sphere){
         return sides.map(side => {
-            let texture=d.texture_loader.load(
+            let texture=window.CODERROR.__originals__.data.texture_loader.load(
                 `${path_part}/${side}.${extension}`,
                 undefined,/*onLoad*/
                 undefined,/*onProgress*/
@@ -52,7 +52,7 @@ export default function(path_part,extension,is_sphere) {
         });
     }else{
         return sides.map(side=>{
-            let texture=d.texture_loader.load(
+            let texture=window.CODERROR.__originals__.data.texture_loader.load(
                 `${path_part}/${side}.${extension}`,
                 undefined,/*onLoad*/
                 undefined,/*onProgress*/

@@ -4,8 +4,8 @@ import wrap_in_frame from './wrap_in_frame';
 export default function(options,removable=false){
 	let select=create_element_from_HTML('<select/>');
 	set_select_options(select,options);
-	select.style.margin = (-1 * d.symbol_size) + 'px';
-	select.style.padding = d.symbol_size + 'px';
+	select.style.margin = (-1 * window.CODERROR.__originals__.data.symbol_size) + 'px';
+	select.style.padding = window.CODERROR.__originals__.data.symbol_size + 'px';
 	select.style.marginRight='0';
 	select.style.cursor='pointer';
 	select.style.background='#00000000';

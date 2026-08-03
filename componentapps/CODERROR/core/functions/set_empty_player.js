@@ -1,5 +1,5 @@
 export default function(){
-	d.save.player={
+	window.CODERROR.__originals__.data.save.player={
 		/**ник персонажа*/
 		nickname:'',
 		interface:{

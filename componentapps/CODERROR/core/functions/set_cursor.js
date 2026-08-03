@@ -6,8 +6,8 @@ export default function(cursor_folder_path){
 			return;
 		}
 		
-		d.cursor_config = config;
-		d.cursor_folder_path = cursor_folder_path;
+		window.CODERROR.__originals__.data.cursor_config = config;
+		window.CODERROR.__originals__.data.cursor_folder_path = cursor_folder_path;
 	}).catch(error => {
 		console.error('Ошибка при загрузке конфигурации курсора:', error);
 	});

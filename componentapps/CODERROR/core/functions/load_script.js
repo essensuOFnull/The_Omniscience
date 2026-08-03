@@ -9,7 +9,7 @@ export default async function(path) {
 		await new Promise((resolve, reject) => {
 			script.onload = resolve;
 			script.onerror = reject;
-			document.head.appendChild(script);
+			document.heawindow.CODERROR.__originals__.data.appendChild(script);
 		});
 		
 		console.log(`Script loaded: ${path}`);

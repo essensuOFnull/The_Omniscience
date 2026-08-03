@@ -1,7 +1,7 @@
 import list_files from './list_files';
 export default async function(){
 	try{
-		d.characters=[];
+		window.CODERROR.__originals__.data.characters=[];
 		const files=await list_files('YOUR_DATA/characters');
 		// Загружаем всех персонажей параллельно
 		const characterPromises=files.map(file=>
@@ -9,7 +9,7 @@ export default async function(){
 		);
 		const characters=await Promise.all(characterPromises);
 		// Добавляем всех персонажей в массив
-		d.characters.unshift(...characters);
+		window.CODERROR.__originals__.data.characters.unshift(...characters);
 		return characters;
 	}catch(error){
 		console.error('Ошибка загрузки персонажей:', error);

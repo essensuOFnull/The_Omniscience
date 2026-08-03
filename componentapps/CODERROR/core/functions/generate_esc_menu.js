@@ -6,15 +6,15 @@ import set_empty_player from './set_empty_player';
 import change_room from './change_room';
 export default function(){
 	let esc_menu=create_element_from_HTML(`<div id="esc_menu"></div>`);
-	let button_to_main_menu=create_button_from_text(d.language.interface.buttons.to_main_menu);
+	let button_to_main_menu=create_button_from_text(window.CODERROR.__originals__.data.language.interface.buttons.to_main_menu);
 	button_to_main_menu.addEventListener('click',()=>{
-		save_character(d.save.player);
-		save_world(d.save.world);
+		save_character(window.CODERROR.__originals__.data.save.player);
+		save_world(window.CODERROR.__originals__.data.save.world);
 		set_empty_player();
 		change_room('main_menu');
 	});
 	button_to_main_menu.id='button_to_main_menu';
-	d.button_to_main_menu=button_to_main_menu;
+	window.CODERROR.__originals__.data.button_to_main_menu=button_to_main_menu;
 	esc_menu.appendChild(button_to_main_menu);
 	return esc_menu;
 }

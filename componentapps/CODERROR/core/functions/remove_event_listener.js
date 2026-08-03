@@ -1,13 +1,13 @@
 export default function(name,element){
-	let stored=d.event_handlers.get(element);
-	if(!stored||stored.name!==name)return
+	let stored=window.CODERROR.__originals__.data.event_handlers.get(element);
+	if(!stored||storewindow.CODERROR.__originals__.data.name!==name)return
 	/*Удаляем все обработчики событий*/
-	element.removeEventListener('drop',stored.handlers.drop);
-	element.removeEventListener('click',stored.handlers.click);
-	stored.elements.jsonInput.removeEventListener('change',stored.handlers.change);
+	element.removeEventListener('drop',storewindow.CODERROR.__originals__.data.handlers.drop);
+	element.removeEventListener('click',storewindow.CODERROR.__originals__.data.handlers.click);
+	storewindow.CODERROR.__originals__.data.elements.jsonInput.removeEventListener('change',storewindow.CODERROR.__originals__.data.handlers.change);
 	/*Удаляем созданный input из DOM если был добавлен*/
-	if(document.body.contains(stored.elements.jsonInput)){
-		document.body.removeChild(stored.elements.jsonInput);
+	if(document.body.contains(storewindow.CODERROR.__originals__.data.elements.jsonInput)){
+		document.body.removeChild(storewindow.CODERROR.__originals__.data.elements.jsonInput);
 	}
-	d.event_handlers.delete(element);
+	window.CODERROR.__originals__.data.event_handlers.delete(element);
 }

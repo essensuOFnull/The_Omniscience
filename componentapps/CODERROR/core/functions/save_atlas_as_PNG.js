@@ -1,7 +1,7 @@
 import write_file from './write_file';
 export default function(canvas, index, fileName = null) {
     if (!fileName) {
-        fileName = `CACHE/symbols_atlases/${d.symbol_size}/${index}.png`;
+        fileName = `CACHE/symbols_atlases/${window.CODERROR.__originals__.data.symbol_size}/${index}.png`;
     }
     
     return new Promise((resolve, reject) => {

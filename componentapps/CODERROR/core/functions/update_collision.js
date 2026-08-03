@@ -1,7 +1,7 @@
 import update_player_collider from './update_player_collider';
-export default function(ground_collider=d.save.temp.ground.collider){
+export default function(ground_collider=window.CODERROR.__originals__.data.save.temp.grounwindow.CODERROR.__originals__.data.collider){
 	update_player_collider();
-	let nickname=d.save.player.nickname,
+	let nickname=window.CODERROR.__originals__.data.save.player.nickname,
 	position=['save','world','players',nickname,'position'],
 	touch_wall=[...position,'touch_wall'],
 	collider=[...position,'collider'];

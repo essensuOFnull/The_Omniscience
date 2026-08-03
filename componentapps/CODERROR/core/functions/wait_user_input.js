@@ -1,13 +1,13 @@
 export default function(){
 	return new Promise((resolve)=>{
 		let handler=(e)=>{
-			if(d.ignored_keys.includes(e.code))return
+			if(window.CODERROR.__originals__.data.ignored_keys.includes(e.code))return
 			e.preventDefault();
 			document.removeEventListener('keydown',handler);
 			document.removeEventListener('mousedown',handler);
 			document.removeEventListener('wheel',handler);
 			if(e.type==='keydown'){
-				if(d.settings.control.bind_to_layout){
+				if(window.CODERROR.__originals__.data.settings.control.bind_to_layout){
 					resolve(e.key);
 				}else{
 					resolve(e.code);

@@ -20,17 +20,17 @@ export default function(){
 				// Проверим права
 				verify_permission(storedHandle,true).then(ok=>{
 					if(!ok)console.warn('Нет прав на выбранную папку или пользователь отозвал доступ.');
-					d.directory_handle=storedHandle;
+					window.CODERROR.__originals__.data.directory_handle=storedHandle;
 					resolve();
 				}).catch(e=>{
-					console.warn(e);d.directory_handle=storedHandle;resolve();
+					console.warn(e);window.CODERROR.__originals__.data.directory_handle=storedHandle;resolve();
 				});
 				return;
 			}
 			// Нет сохранённого дескриптора — уведомим пользователя и пометим, что требуется вмешательство пользователя
 			alert('Для работы игре требуется доступ к своим же файлам. Выберите папку, которую вы использовали для загрузки расширения, или папку, в которой игра на самом деле хранится. Сейчас будет произведён запрос доступа.');
 			// Помечаем, что для получения дескриптора требуется пользовательский жест (например, нажатие кнопки)
-			d.need_directory_permission=true;
+			window.CODERROR.__originals__.data.need_directory_permission=true;
 			request_directory_via_user_gesture().then(handle=>{
 				return resolve();
 			});

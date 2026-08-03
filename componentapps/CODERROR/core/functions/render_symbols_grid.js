@@ -1,13 +1,13 @@
 import get_symbol_texture from './get_symbol_texture';
 export default function(){
     // CPU режим - используем оптимизированный рендеринг с атласами
-    if(d.symbols_dirty_cells && d.symbols_dirty_cells.size > 0){
-        for(let cellKey of d.symbols_dirty_cells){
+    if(window.CODERROR.__originals__.data.symbols_dirty_cells && window.CODERROR.__originals__.data.symbols_dirty_cells.size > 0){
+        for(let cellKey of window.CODERROR.__originals__.data.symbols_dirty_cells){
             const [y, x] = cellKey.split(',').map(Number);
-            if(y < 0 || y >= d.rows || x < 0 || x >= d.columns) continue;
+            if(y < 0 || y >= window.CODERROR.__originals__.data.rows || x < 0 || x >= window.CODERROR.__originals__.data.columns) continue;
             
-            let container = d.symbols_grid[y][x];
-            let data = d.symbols_grid_data[y][x];
+            let container = window.CODERROR.__originals__.data.symbols_grid[y][x];
+            let data = window.CODERROR.__originals__.data.symbols_grid_data[y][x];
             
             if(!container || !data) continue;
             
@@ -35,11 +35,11 @@ export default function(){
             }
             
             // Обновляем фон (просто меняем tint и alpha спрайта)
-            if(background.tint !== data.bgColor || background.alpha !== data.bgAlpha) {
-                background.tint = data.bgColor;
-                background.alpha = data.bgAlpha;
+            if(backgrounwindow.CODERROR.__originals__.data.tint !== data.bgColor || backgrounwindow.CODERROR.__originals__.data.alpha !== data.bgAlpha) {
+                backgrounwindow.CODERROR.__originals__.data.tint = data.bgColor;
+                backgrounwindow.CODERROR.__originals__.data.alpha = data.bgAlpha;
             }
         }
-        d.symbols_dirty_cells.clear();
+        window.CODERROR.__originals__.data.symbols_dirty_cells.clear();
     }
 }

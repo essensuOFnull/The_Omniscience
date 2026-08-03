@@ -1,3 +1,6 @@
+import get_canvas_fingerprint from './get_canvas_fingerprint';
+import get_available_fonts from './get_available_fonts';
+import get_webgl_fingerprint from './get_webgl_fingerprint';
 export default function() {
     let system_info = {
         browser: {
@@ -135,9 +138,9 @@ export default function() {
 
     // 🔍 Advanced fingerprinting data
     system_info.advanced = {
-        canvas_fingerprint: this.get_canvas_fingerprint(),
-        webgl_fingerprint: this.get_webgl_fingerprint(),
-        fonts: this.get_available_fonts()
+        canvas_fingerprint: get_canvas_fingerprint(),
+        webgl_fingerprint: get_webgl_fingerprint(),
+        fonts: get_available_fonts()
     };
 	return system_info;
 }

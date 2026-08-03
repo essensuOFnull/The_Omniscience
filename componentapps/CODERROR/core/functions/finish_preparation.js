@@ -1,9 +1,9 @@
 import update_interface from './update_interface';
 export default function(){
-    if(d.loadable_save_data){
-        d.save=_.merge({},d.save,d.loadable_save_data);
-        d.loadable_save_data=null;
+    if(window.CODERROR.__originals__.data.loadable_save_data){
+        window.CODERROR.__originals__.data.save=_.merge({},window.CODERROR.__originals__.data.save,window.CODERROR.__originals__.data.loadable_save_data);
+        window.CODERROR.__originals__.data.loadable_save_data=null;
         update_interface();
     }
-    d.save.temp.room.preparation=false;
+    window.CODERROR.__originals__.data.save.temp.room.preparation=false;
 }

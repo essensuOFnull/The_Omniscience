@@ -2,7 +2,7 @@ export default function(name_list){
     name_list=['default'].concat(name_list);
     let languages_list=[];
     for(name of name_list){
-        languages_list.push(d.languages[name]);
+        languages_list.push(window.CODERROR.__originals__.data.languages[name]);
     }
-    d.language=_.merge({},...languages_list);
+    window.CODERROR.__originals__.data.language=_.merge({},...languages_list);
 }

@@ -1,9 +1,9 @@
 export default function(){
-    d.background_texture=PIXI.Texture.from(d.three_renderer.domElement);
-    d.background_texture.baseTexture.autoUpdate=false;
-    d.background_sprite=new PIXI.Sprite(d.background_texture);
+    window.CODERROR.__originals__.data.background_texture=PIXI.Texture.from(window.CODERROR.__originals__.data.three_renderer.domElement);
+    window.CODERROR.__originals__.data.background_texture.baseTexture.autoUpdate=false;
+    window.CODERROR.__originals__.data.background_sprite=new PIXI.Sprite(window.CODERROR.__originals__.data.background_texture);
     // Устанавливаем размер спрайта
-    d.background_sprite.width=d.wrapper.clientWidth;
-    d.background_sprite.height=d.wrapper.clientHeight;
-    d.app.stage.addChildAt(d.background_sprite,0);
+    window.CODERROR.__originals__.data.background_sprite.width=window.CODERROR.__originals__.data.wrapper.clientWidth;
+    window.CODERROR.__originals__.data.background_sprite.height=window.CODERROR.__originals__.data.wrapper.clientHeight;
+    window.CODERROR.__originals__.data.app.stage.addChildAt(window.CODERROR.__originals__.data.background_sprite,0);
 }

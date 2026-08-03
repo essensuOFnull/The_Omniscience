@@ -1,6 +1,6 @@
 export default function(x,y,z){
-	if(!d.skybox)return;
-	d.skybox.rotation.x+=x;
-	d.skybox.rotation.y+=y;
-	d.skybox.rotation.z+=z;
+	if(!window.CODERROR.__originals__.data.skybox)return;
+	window.CODERROR.__originals__.data.skybox.rotation.x+=x;
+	window.CODERROR.__originals__.data.skybox.rotation.y+=y;
+	window.CODERROR.__originals__.data.skybox.rotation.z+=z;
 }

@@ -1,9 +1,9 @@
 export default function(){
-    d.three_camera=new THREE.PerspectiveCamera(
+    window.CODERROR.__originals__.data.three_camera=new THREE.PerspectiveCamera(
         50,
-        d.wrapper.clientWidth/d.wrapper.clientHeight,
+        window.CODERROR.__originals__.data.wrapper.clientWidth/window.CODERROR.__originals__.data.wrapper.clientHeight,
         0.1,
         1000
     );
-    d.three_camera.position.z=1;/*Камера внутри куба*/
+    window.CODERROR.__originals__.data.three_camera.position.z=1;/*Камера внутри куба*/
 }

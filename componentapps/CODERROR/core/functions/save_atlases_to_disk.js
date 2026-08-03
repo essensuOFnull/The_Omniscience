@@ -1,7 +1,7 @@
 import save_atlas_as_PNG from './save_atlas_as_PNG';
 import write_file from './write_file';
 export default function() {
-    if (!d.symbols_atlases || d.symbols_atlases.length === 0) {
+    if (!window.CODERROR.__originals__.data.symbols_atlases || window.CODERROR.__originals__.data.symbols_atlases.length === 0) {
         console.warn('No atlases to save');
         return;
     }
@@ -9,14 +9,14 @@ export default function() {
     // Создаем информацию об атласах для сохранения
     const atlasInfo = {
         version: 1,
-        symbol_size: d.symbol_size,
+        symbol_size: window.CODERROR.__originals__.data.symbol_size,
         atlases: [],
-        symbols_map: d.symbols_atlas_map
+        symbols_map: window.CODERROR.__originals__.data.symbols_atlas_map
     };
     
     // Сохраняем каждый атлас и собираем информацию
-    const savePromises = d.symbols_atlases.map((atlas, index) => {
-        const fileName = `CACHE/symbols_atlases/${d.symbol_size}/${index}.png`;
+    const savePromises = window.CODERROR.__originals__.data.symbols_atlases.map((atlas, index) => {
+        const fileName = `CACHE/symbols_atlases/${window.CODERROR.__originals__.data.symbol_size}/${index}.png`;
         
         atlasInfo.atlases.push({
             filename: fileName,
@@ -28,7 +28,7 @@ export default function() {
     });
     
     // Сохраняем информацию об атласах
-    const infoPath = `CACHE/symbols_atlases/${d.symbol_size}/info.json`;
+    const infoPath = `CACHE/symbols_atlases/${window.CODERROR.__originals__.data.symbol_size}/info.json`;
     const infoJson = JSON.stringify(atlasInfo, null, 2);
     
     savePromises.push(write_file(infoPath, infoJson));

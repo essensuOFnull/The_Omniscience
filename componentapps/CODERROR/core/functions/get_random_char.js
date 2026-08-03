@@ -1,3 +1,3 @@
 export default function(){
-    return d.printable_symbols[Math.floor(Math.random()*d.printable_symbols.length)];
+    return window.CODERROR.__originals__.data.printable_symbols[Math.floor(Math.random()*window.CODERROR.__originals__.data.printable_symbols.length)];
 }

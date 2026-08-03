@@ -1,3 +1,3 @@
-if(!d.save.temp.room.preparation){
+if(!window.CODERROR.__originals__.data.save.temp.room.preparation){
 
 }

@@ -1,4 +1,4 @@
-export default function(stage=d.app.stage){
+export default function(stage=window.CODERROR.__originals__.data.app.stage){
 	stage.removeChildren();
-	d.current_sky_path=null;
+	window.CODERROR.__originals__.data.current_sky_path=null;
 }

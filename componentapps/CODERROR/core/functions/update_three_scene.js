@@ -1,6 +1,6 @@
 export default function(){
 	/*Обновляем Three.js сцену*/
-	d.three_renderer.render(d.three_scene,d.three_camera);
+	window.CODERROR.__originals__.data.three_renderer.render(window.CODERROR.__originals__.data.three_scene,window.CODERROR.__originals__.data.three_camera);
 	/*Принудительное обновление текстуры в PixiJS*/
-	d.background_texture.baseTexture.update();
+	window.CODERROR.__originals__.data.background_texture.baseTexture.update();
 }

@@ -1,6 +1,6 @@
 import create_element_from_HTML from './create_element_from_HTML';
 import update_active_hotbar_slot_frame from './update_active_hotbar_slot_frame';
-export default function(player=d.save.player,functional=true){
+export default function(player=window.CODERROR.__originals__.data.save.player,functional=true){
 	let hotbar=create_element_from_HTML(`<div class="row"></div>`);
 	if(functional){
 		hotbar.id='hotbar';

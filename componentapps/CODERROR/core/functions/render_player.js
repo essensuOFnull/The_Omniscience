@@ -10,7 +10,7 @@ export default function(player=_.get(d,['save','player'])){
         const fractional=[false,false];
         for(let i=0;i<=1;i++){
             const coord=_.get(d,[...basePath,'position','coordinates',i]);
-            if(coord/d.logical_symbol_size!==Math.floor(coord/d.logical_symbol_size)){
+            if(coord/window.CODERROR.__originals__.data.logical_symbol_size!==Math.floor(coord/window.CODERROR.__originals__.data.logical_symbol_size)){
                 fractional[i]=true;
             }
         }
@@ -19,13 +19,13 @@ export default function(player=_.get(d,['save','player'])){
         focus_camera_on_player();
         const coord0=_.get(d,[...basePath,'position','coordinates',0]);
         const coord1=_.get(d,[...basePath,'position','coordinates',1]);
-        let rendering_coordinates=[logical_to_screen(coord0)-(_.get(d,['save','temp','camera',0])||d.save.temp.camera&&d.save.temp.camera[0]||0),logical_to_screen(coord1)-(_.get(d,['save','temp','camera',1])||d.save.temp.camera&&d.save.temp.camera[1]||0)];
+        let rendering_coordinates=[logical_to_screen(coord0)-(_.get(d,['save','temp','camera',0])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[0]||0),logical_to_screen(coord1)-(_.get(d,['save','temp','camera',1])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[1]||0)];
         if(fractional[0]) rendering_coordinates[0]--;
         if(fractional[1]) rendering_coordinates[1]--;
-        print_text_to_symbols_grid(player_skin,rendering_coordinates[0]/d.symbol_size,rendering_coordinates[1]/d.symbol_size);
+        print_text_to_symbols_grid(player_skin,rendering_coordinates[0]/window.CODERROR.__originals__.data.symbol_size,rendering_coordinates[1]/window.CODERROR.__originals__.data.symbol_size);
     }
     //Ник над персонажем — создаётся один раз и потом только перемещается
-    if(!d.nickname_labels)d.nickname_labels=new Map();
+    if(!window.CODERROR.__originals__.data.nickname_labels)window.CODERROR.__originals__.data.nickname_labels=new Map();
     //Вычисляем центр верхней границы коллайдера в логических координатах
     let collider=[...basePath,'position','collider'],
     x=(_.get(d,[...collider,0,0])+_.get(d,[...collider,1,0]))/2,
@@ -34,14 +34,14 @@ export default function(player=_.get(d,['save','player'])){
     let camera=['save','temp','camera'],
     screen_x=Math.round(logical_to_screen(x)-_.get(d,[...camera,0],0)),
     screen_y=Math.round(logical_to_screen(y)-_.get(d,[...camera,1],0));
-    //Смещаем надпись над головой на расстояние d.symbol_size
-    screen_y-=d.symbol_size;
+    //Смещаем надпись над головой на расстояние window.CODERROR.__originals__.data.symbol_size
+    screen_y-=window.CODERROR.__originals__.data.symbol_size;
 
-    let label = d.nickname_labels.get(player_nickname);
+    let label = window.CODERROR.__originals__.data.nickname_labels.get(player_nickname);
     if(!label){
         // Создаём контейнер с фоном и текстом (полупрозрачный чёрный фон, alpha = 0.5)
         let container = new PIXI.Container();
-        let font_size = d.symbol_size;
+        let font_size = window.CODERROR.__originals__.data.symbol_size;
         let nick_text = player_nickname ? String(player_nickname) : '';
         let text = new PIXI.Text(nick_text, {
             fontFamily: 'CODERROR',
@@ -56,8 +56,8 @@ export default function(player=_.get(d,['save','player'])){
         if(text.anchor) text.anchor.set(0.5, 1);
         else text.pivot.set(text.width/2, text.height);
 
-        let paddingX = Math.ceil(d.symbol_size * 0.4);
-        let paddingY = Math.ceil(d.symbol_size * 0.25);
+        let paddingX = Math.ceil(window.CODERROR.__originals__.data.symbol_size * 0.4);
+        let paddingY = Math.ceil(window.CODERROR.__originals__.data.symbol_size * 0.25);
         let bounds = text.getLocalBounds();
         let bg = new PIXI.Graphics();
 
@@ -74,8 +74,8 @@ export default function(player=_.get(d,['save','player'])){
         container._paddingX = paddingX;
         container._paddingY = paddingY;
 
-        d.app.stage.addChild(container);
-        d.nickname_labels.set(player_nickname, container);
+        window.CODERROR.__originals__.data.app.stage.addChild(container);
+        window.CODERROR.__originals__.data.nickname_labels.set(player_nickname, container);
         label = container;
     } else {
         // If nickname text changed (rare), update text and re-cache the bitmap
@@ -87,8 +87,8 @@ export default function(player=_.get(d,['save','player'])){
             }catch(e){}
             t.text = desired;
             // redraw background size to fit new bounds
-            let paddingX = label._paddingX || Math.ceil(d.symbol_size * 0.4);
-            let paddingY = label._paddingY || Math.ceil(d.symbol_size * 0.25);
+            let paddingX = label._paddingX || Math.ceil(window.CODERROR.__originals__.data.symbol_size * 0.4);
+            let paddingY = label._paddingY || Math.ceil(window.CODERROR.__originals__.data.symbol_size * 0.25);
             let bounds = t.getLocalBounds();
             label._bg.clear();
             label._bg.beginFill(0x000000, 0.5);

@@ -1,23 +1,23 @@
 import init_printable_symbols from './init_printable_symbols';
 import save_atlases_to_disk from './save_atlases_to_disk';
 export default function() {
-    if (!d.printable_symbols || d.printable_symbols.length === 0) {
+    if (!window.CODERROR.__originals__.data.printable_symbols || window.CODERROR.__originals__.data.printable_symbols.length === 0) {
         init_printable_symbols();
     }
     
     // Если printable_symbols - строка, преобразуем в массив символов
-    const symbolsArray = typeof d.printable_symbols === 'string' 
-        ? Array.from(d.printable_symbols) 
-        : d.printable_symbols;
+    const symbolsArray = typeof window.CODERROR.__originals__.data.printable_symbols === 'string' 
+        ? Array.from(window.CODERROR.__originals__.data.printable_symbols) 
+        : window.CODERROR.__originals__.data.printable_symbols;
     
-    const size = d.symbol_size;
+    const size = window.CODERROR.__originals__.data.symbol_size;
     const resolution = 4;
     const maxAtlasSize = 2048;
     const symbolsPerRow = Math.floor(maxAtlasSize / size);
     const symbolsPerAtlas = symbolsPerRow * symbolsPerRow;
     
-    d.symbols_atlases = [];
-    d.symbols_atlas_map = {};
+    window.CODERROR.__originals__.data.symbols_atlases = [];
+    window.CODERROR.__originals__.data.symbols_atlas_map = {};
     
     // Создаем все атласы
     for (let i = 0; i < symbolsArray.length; i += symbolsPerAtlas) {
@@ -28,7 +28,7 @@ export default function() {
             continue;
         }
         
-        const atlasIndex = d.symbols_atlases.length;
+        const atlasIndex = window.CODERROR.__originals__.data.symbols_atlases.length;
         
         const cols = Math.min(symbolsPerRow, chunk.length);
         const rows = Math.ceil(chunk.length / cols);
@@ -78,7 +78,7 @@ export default function() {
                 destX, destY, size, size
             );
             
-            d.symbols_atlas_map[char] = {
+            window.CODERROR.__originals__.data.symbols_atlas_map[char] = {
                 atlasIndex: atlasIndex,
                 charIndex: j,
                 cols: cols,
@@ -93,11 +93,11 @@ export default function() {
             canvas: finalCanvas
         };
         
-        d.symbols_atlases.push(atlasData);
+        window.CODERROR.__originals__.data.symbols_atlases.push(atlasData);
         console.log(`Created atlas ${atlasIndex}: ${cols}x${rows} symbols, ${finalCanvas.width}x${finalCanvas.height} pixels, ${chunk.length} chars`);
     }
     
-    if (d.symbols_atlases.length === 0) {
+    if (window.CODERROR.__originals__.data.symbols_atlases.length === 0) {
         console.error('No atlases were created - check printable_symbols and symbol_size');
         return;
     }

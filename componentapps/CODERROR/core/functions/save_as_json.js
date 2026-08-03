@@ -18,5 +18,5 @@ export default function(data,filename){
 	document.body.removeChild(a);
 	URL.revokeObjectURL(url);
 	/*уведомление*/
-	alert(d.language.alerts.file_saved(filename));
+	alert(window.CODERROR.__originals__.data.language.alerts.file_saved(filename));
 }

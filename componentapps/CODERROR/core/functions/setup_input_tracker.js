@@ -2,7 +2,7 @@ import update_activated_actions from './update_activated_actions';
 export default function(){
 	let getKey=(e)=>{
 		if(e.type.startsWith('key')){
-			return d.settings.control.bind_to_layout?e.key:e.code;
+			return window.CODERROR.__originals__.data.settings.control.bind_to_layout?e.key:e.code;
 		}else if(e.type.startsWith('mouse')&&e.type!=='wheel'){
 			return`mouse${e.button}`;
 		}else if(e.type==='wheel'){
@@ -10,12 +10,12 @@ export default function(){
 		}
 	};
 	let handleEvent=(e)=>{
-		if(e.repeat||d.ignored_keys.includes(e.code))return/*Отключаем автоповтор*/
+		if(e.repeat||window.CODERROR.__originals__.data.ignored_keys.includes(e.code))return/*Отключаем автоповтор*/
 		let key=getKey(e);
 		if(e.type==='keydown'||e.type==='mousedown'||e.type==='wheel'){
-			d.pressed.add(key);
+			window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.add(key);
 		}else{
-			d.pressed.delete(key);
+			window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(key);
 		}
 		update_activated_actions();
 	};

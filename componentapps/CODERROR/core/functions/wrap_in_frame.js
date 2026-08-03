@@ -5,15 +5,15 @@ export default function(content,container_type='<button/>',removable=false) {
 	button.style.position='relative';
 	button.style.overflow='hidden';
 	let grid=document.createElement('div');
-	grid.style.display='grid';
-	grid.style.gridTemplateAreas=`"a . b" ". c ." "d . e"`;
-	grid.style.gridTemplateColumns='repeat(3,min-content)';
-	grid.style.gridTemplateRows='repeat(3,min-content)';
-	grid.style.gap='0';
-	grid.style.position='relative';
-	grid.style.alignItems='center'; // Выравнивание по центру
-	grid.style.justifyItems='center';
-	grid.style.color='inherit';
+	griwindow.CODERROR.__originals__.data.style.display='grid';
+	griwindow.CODERROR.__originals__.data.style.gridTemplateAreas=`"a . b" ". c ." "d . e"`;
+	griwindow.CODERROR.__originals__.data.style.gridTemplateColumns='repeat(3,min-content)';
+	griwindow.CODERROR.__originals__.data.style.gridTemplateRows='repeat(3,min-content)';
+	griwindow.CODERROR.__originals__.data.style.gap='0';
+	griwindow.CODERROR.__originals__.data.style.position='relative';
+	griwindow.CODERROR.__originals__.data.style.alignItems='center'; // Выравнивание по центру
+	griwindow.CODERROR.__originals__.data.style.justifyItems='center';
+	griwindow.CODERROR.__originals__.data.style.color='inherit';
 	/*Создание элементов с правильными областями*/
 	let b;
 	if(removable){
@@ -41,7 +41,7 @@ export default function(content,container_type='<button/>',removable=false) {
 	Object.entries(elements).forEach(([area,el])=>{
 		el.style.gridArea=area;
 		el.style.color='inherit';
-		grid.appendChild(el);
+		griwindow.CODERROR.__originals__.data.appendChild(el);
 	});
 	if(removable){
 		b.style.color='#f00'

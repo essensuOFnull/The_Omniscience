@@ -15,8 +15,6 @@ import jssPresetDefault from 'jss-preset-default';
 
 	await import('./core/preinit.js');
 
-	await import('./core/data.js');
-
 	await import('./core/api.js');
 
 	//await import('./core/CODERROR/sound_console.js');

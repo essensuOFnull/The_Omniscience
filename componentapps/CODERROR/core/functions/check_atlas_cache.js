@@ -2,7 +2,7 @@ import file_exists from './file_exists';
 import read_file from './read_file';
 export default function() {
     return new Promise((resolve, reject) => {
-        const infoPath = `CACHE/symbols_atlases/${d.symbol_size}/info.json`;
+        const infoPath = `CACHE/symbols_atlases/${window.CODERROR.__originals__.data.symbol_size}/info.json`;
         
         file_exists(infoPath).then(exists => {
             if (!exists) {
@@ -16,7 +16,7 @@ export default function() {
                     const info = JSON.parse(infoData);
                     
                     // Проверяем версию и размер символов
-                    if (info.version !== 1 || info.symbol_size !== d.symbol_size) {
+                    if (info.version !== 1 || info.symbol_size !== window.CODERROR.__originals__.data.symbol_size) {
                         resolve(false);
                         return;
                     }

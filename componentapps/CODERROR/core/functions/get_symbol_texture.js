@@ -1,17 +1,17 @@
 import get_symbol_texture from './get_symbol_texture';
 export default function(char) {
-    const info = d.symbols_atlas_map[char];
+    const info = window.CODERROR.__originals__.data.symbols_atlas_map[char];
     if (!info) {
         return get_symbol_texture(' ');
     }
     
-    const atlas = d.symbols_atlases[info.atlasIndex];
+    const atlas = window.CODERROR.__originals__.data.symbols_atlases[info.atlasIndex];
     if (!atlas) {
         console.warn(`Atlas ${info.atlasIndex} not found for char: ${char}`);
         return get_symbol_texture(' ');
     }
     
-    const size = d.symbol_size;
+    const size = window.CODERROR.__originals__.data.symbol_size;
     const cols = atlas.cols;
     
     const col = info.charIndex % cols;

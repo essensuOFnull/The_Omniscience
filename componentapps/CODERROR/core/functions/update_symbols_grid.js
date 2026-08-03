@@ -1,83 +1,83 @@
 export default function() {
-    if(!d.symbols_grid){
+    if(!window.CODERROR.__originals__.data.symbols_grid){
         return;
     }
     
-    let newColumns = Math.ceil(d.app.renderer.width / d.symbol_size);
-    let newRows = Math.ceil(d.app.renderer.height / d.symbol_size);
+    let newColumns = Math.ceil(window.CODERROR.__originals__.data.app.renderer.width / window.CODERROR.__originals__.data.symbol_size);
+    let newRows = Math.ceil(window.CODERROR.__originals__.data.app.renderer.height / window.CODERROR.__originals__.data.symbol_size);
     
-    if (newColumns === d.columns && newRows === d.rows) return;
+    if (newColumns === window.CODERROR.__originals__.data.columns && newRows === window.CODERROR.__originals__.data.rows) return;
     
     // Убедимся, что массивы инициализированы правильно
-    if (!Array.isArray(d.symbols_grid)) d.symbols_grid = [];
-    if (!Array.isArray(d.symbols_grid_data)) d.symbols_grid_data = [];
+    if (!Array.isArray(window.CODERROR.__originals__.data.symbols_grid)) window.CODERROR.__originals__.data.symbols_grid = [];
+    if (!Array.isArray(window.CODERROR.__originals__.data.symbols_grid_data)) window.CODERROR.__originals__.data.symbols_grid_data = [];
     
     // Удаляем ненужные ячейки
-    for (let y = 0; y < d.rows; y++) {
-        for (let x = 0; x < d.columns; x++) {
+    for (let y = 0; y < window.CODERROR.__originals__.data.rows; y++) {
+        for (let x = 0; x < window.CODERROR.__originals__.data.columns; x++) {
             // Если ячейка выходит за новые границы - удаляем
             if (y >= newRows || x >= newColumns) {
-                if (d.symbols_grid[y] && d.symbols_grid[y][x]) {
-                    d.app.stage.removeChild(d.symbols_grid[y][x]);
-                    d.symbols_grid[y][x].destroy({children: true});
-                    d.symbols_grid[y][x] = null;
+                if (window.CODERROR.__originals__.data.symbols_grid[y] && window.CODERROR.__originals__.data.symbols_grid[y][x]) {
+                    window.CODERROR.__originals__.data.app.stage.removeChild(window.CODERROR.__originals__.data.symbols_grid[y][x]);
+                    window.CODERROR.__originals__.data.symbols_grid[y][x].destroy({children: true});
+                    window.CODERROR.__originals__.data.symbols_grid[y][x] = null;
                     
-                    if (d.symbols_grid_data[y]) {
-                        d.symbols_grid_data[y][x] = null;
+                    if (window.CODERROR.__originals__.data.symbols_grid_data[y]) {
+                        window.CODERROR.__originals__.data.symbols_grid_data[y][x] = null;
                     }
                 }
             }
         }
         
         // Обрезаем массивы если нужно
-        if (d.symbols_grid[y] && d.symbols_grid[y].length > newColumns) {
-            d.symbols_grid[y].length = newColumns;
+        if (window.CODERROR.__originals__.data.symbols_grid[y] && window.CODERROR.__originals__.data.symbols_grid[y].length > newColumns) {
+            window.CODERROR.__originals__.data.symbols_grid[y].length = newColumns;
         }
-        if (d.symbols_grid_data[y] && d.symbols_grid_data[y].length > newColumns) {
-            d.symbols_grid_data[y].length = newColumns;
+        if (window.CODERROR.__originals__.data.symbols_grid_data[y] && window.CODERROR.__originals__.data.symbols_grid_data[y].length > newColumns) {
+            window.CODERROR.__originals__.data.symbols_grid_data[y].length = newColumns;
         }
     }
     
     // Обрезаем количество строк если нужно
-    if (d.symbols_grid.length > newRows) {
-        d.symbols_grid.length = newRows;
-        d.symbols_grid_data.length = newRows;
+    if (window.CODERROR.__originals__.data.symbols_griwindow.CODERROR.__originals__.data.length > newRows) {
+        window.CODERROR.__originals__.data.symbols_griwindow.CODERROR.__originals__.data.length = newRows;
+        window.CODERROR.__originals__.data.symbols_grid_data.length = newRows;
     }
     
     // Создаем новые ячейки
     for (let y = 0; y < newRows; y++) {
         // Инициализируем строки если их нет
-        if (!d.symbols_grid[y]) {
-            d.symbols_grid[y] = [];
-            d.symbols_grid_data[y] = [];
+        if (!window.CODERROR.__originals__.data.symbols_grid[y]) {
+            window.CODERROR.__originals__.data.symbols_grid[y] = [];
+            window.CODERROR.__originals__.data.symbols_grid_data[y] = [];
         }
         
         for (let x = 0; x < newColumns; x++) {
             // Создаем ячейку только если ее нет
-            if (!d.symbols_grid[y][x]) {
+            if (!window.CODERROR.__originals__.data.symbols_grid[y][x]) {
                 // Контейнер для ячейки
                 let container = new PIXI.Container();
-                container.x = x * d.symbol_size;
-                container.y = y * d.symbol_size;
+                container.x = x * window.CODERROR.__originals__.data.symbol_size;
+                container.y = y * window.CODERROR.__originals__.data.symbol_size;
                 
                 // Спрайт для фона
-                let background = new PIXI.Sprite(d.white_texture);
-                background.width = d.symbol_size;
-                background.height = d.symbol_size;
-                background.alpha = 0;
+                let background = new PIXI.Sprite(window.CODERROR.__originals__.data.white_texture);
+                backgrounwindow.CODERROR.__originals__.data.width = window.CODERROR.__originals__.data.symbol_size;
+                backgrounwindow.CODERROR.__originals__.data.height = window.CODERROR.__originals__.data.symbol_size;
+                backgrounwindow.CODERROR.__originals__.data.alpha = 0;
                 container.addChild(background);
                 
                 // Спрайт для символа
                 let symbol = new PIXI.Sprite();
-                symbol.width = d.symbol_size;
-                symbol.height = d.symbol_size;
+                symbol.width = window.CODERROR.__originals__.data.symbol_size;
+                symbol.height = window.CODERROR.__originals__.data.symbol_size;
                 container.addChild(symbol);
                 
-                d.app.stage.addChild(container);
+                window.CODERROR.__originals__.data.app.stage.addChild(container);
                 
                 // Прямое присваивание для массивов
-                d.symbols_grid[y][x] = container;
-                d.symbols_grid_data[y][x] = {
+                window.CODERROR.__originals__.data.symbols_grid[y][x] = container;
+                window.CODERROR.__originals__.data.symbols_grid_data[y][x] = {
                     char: '',
                     textColor: 0xFFFFFF,
                     bgColor: 0x000000,
@@ -87,8 +87,8 @@ export default function() {
         }
     }
     
-    d.columns = newColumns;
-    d.rows = newRows;
+    window.CODERROR.__originals__.data.columns = newColumns;
+    window.CODERROR.__originals__.data.rows = newRows;
     
-    console.log(`Grid updated: ${d.columns}x${d.rows}, cell size: ${d.symbol_size}px`);
+    console.log(`Grid updated: ${window.CODERROR.__originals__.data.columns}x${window.CODERROR.__originals__.data.rows}, cell size: ${window.CODERROR.__originals__.data.symbol_size}px`);
 }

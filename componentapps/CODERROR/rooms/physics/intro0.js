@@ -11,9 +11,9 @@ f.prepare(()=>{
 		let texture=PIXI.Texture.from(video);
 		let sprite=new PIXI.Sprite(texture);
 		sprite.anchor.set(0.5);
-		sprite.x=d.app.screen.width/2;
-		sprite.y=d.app.screen.height/2;
-		d.app.stage.addChild(sprite);
+		sprite.x=window.CODERROR.__originals__.data.app.screen.width/2;
+		sprite.y=window.CODERROR.__originals__.data.app.screen.height/2;
+		window.CODERROR.__originals__.data.app.stage.addChild(sprite);
 	});
 	video.addEventListener('ended',()=>{
 		f.clear_pixijs();

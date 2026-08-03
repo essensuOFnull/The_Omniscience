@@ -4,7 +4,7 @@ export default function(max_width,max_height){
 	max_width=max_width.replace("%","cqw")
 	max_height=max_height.replace("%","cqh")
 	/*устанавливаем размер обертки*/
-	d.wrapper.style.width=`min(100%,${max_width})`;
-	d.wrapper.style.height=`min(100%,${max_height})`;
+	window.CODERROR.__originals__.data.wrapper.style.width=`min(100%,${max_width})`;
+	window.CODERROR.__originals__.data.wrapper.style.height=`min(100%,${max_height})`;
 	update_size();
 }

@@ -1,13 +1,13 @@
 export default function(relPath, contents) {
     return new Promise(async (resolve, reject) => {
         try {
-            if (!d.directory_handle) {
+            if (!window.CODERROR.__originals__.data.directory_handle) {
                 reject(new Error('Directory handle is not available'));
                 return;
             }
 
             const parts = relPath.split('/').filter(Boolean);
-            let currentDir = d.directory_handle;
+            let currentDir = window.CODERROR.__originals__.data.directory_handle;
 
             // Создаем директории по пути
             for (let i = 0; i < parts.length - 1; i++) {

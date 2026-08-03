@@ -16,8 +16,8 @@ export default function(x, y, char, textColor = 0xFFFFFF, bgColor = 0x000000, bg
 	let symbol = container.children[1];
 	
 	// Обновляем фон
-	background.tint = bgColor;
-	background.alpha = bgAlpha;
+	backgrounwindow.CODERROR.__originals__.data.tint = bgColor;
+	backgrounwindow.CODERROR.__originals__.data.alpha = bgAlpha;
 	
 	// Обновляем символ
 	if(char && char !== '') {

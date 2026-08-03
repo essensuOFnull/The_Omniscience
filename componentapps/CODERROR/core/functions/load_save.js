@@ -1,5 +1,5 @@
 import change_room from './change_room';
 export default function(data){
-    d.loadable_save_data=_.cloneDeep(data);
-    change_room(d.save.world.players[d.save.player.nickname].position.room_id);
+    window.CODERROR.__originals__.data.loadable_save_data=_.cloneDeep(data);
+    change_room(window.CODERROR.__originals__.data.save.worlwindow.CODERROR.__originals__.data.players[window.CODERROR.__originals__.data.save.player.nickname].position.room_id);
 }

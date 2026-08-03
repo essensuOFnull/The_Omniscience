@@ -4,10 +4,10 @@ import apply_random_splash from './apply_random_splash';
 import set_max_content_size from './set_max_content_size';
 import change_room from './change_room';
 export default function(){
-	apply_language(d.settings.interface.language);
-	set_volume(d.settings.audio.music_volume);
+	apply_language(window.CODERROR.__originals__.data.settings.interface.language);
+	set_volume(window.CODERROR.__originals__.data.settings.audio.music_volume);
 	apply_random_splash();
-	/*set_font_size(d.settings.interface.font_size);*/
-	set_max_content_size(d.settings.interface.max_content_width,d.settings.interface.max_content_height);
-	change_room(d.save.world.players[d.save.player.nickname].position.room_id);
+	/*set_font_size(window.CODERROR.__originals__.data.settings.interface.font_size);*/
+	set_max_content_size(window.CODERROR.__originals__.data.settings.interface.max_content_width,window.CODERROR.__originals__.data.settings.interface.max_content_height);
+	change_room(window.CODERROR.__originals__.data.save.worlwindow.CODERROR.__originals__.data.players[window.CODERROR.__originals__.data.save.player.nickname].position.room_id);
 }

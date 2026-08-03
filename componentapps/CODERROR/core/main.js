@@ -18,26 +18,24 @@ import set_cursor from './functions/set_cursor';
 import setup_input_tracker from './functions/setup_input_tracker';
 import change_room from './functions/change_room';
 import eval_script from './functions/eval_script';
-{
-let d=window.CODERROR.__originals__.data;
-
+import _ from 'lodash';
 /*для иконки*/
 init_printable_symbols();
-d.dpr=window.devicePixelRatio||1;
+_.set(window,['CODERROR','__originals__','data','dpr'],window.devicePixelRatio||1);
 /**размер иконки сайта*/
-d.favicon.size=Math.round(16*d.dpr);
+_.set(window,['CODERROR','__originals__','data','favicon','size'],Math.round(16*window.CODERROR.__originals__.data.dpr));
 /**холст иконки сайта*/
-d.favicon.canvas=document.createElement('canvas');
-d.favicon.canvas.width=d.favicon.size;
-d.favicon.canvas.height=d.favicon.size;
-d.favicon.ctx=d.favicon.canvas.getContext('2d');
-d.favicon.ctx.font=`${d.symbol_size}px CODERROR`;
-d.favicon.ctx.textAlign='center';
-d.favicon.ctx.textBaseline='middle';
+_.set(window,['CODERROR','__originals__','data','favicon','canvas'],document.createElement('canvas'));
+_.set(window,['CODERROR','__originals__','data','favicon','canvas','width'],window.CODERROR.__originals__.data.favicon.size);
+_.set(window,['CODERROR','__originals__','data','favicon','canvas','height'],window.CODERROR.__originals__.data.favicon.size);
+_.set(window,['CODERROR','__originals__','data','favicon','ctx'],window.CODERROR.__originals__.data.favicon.canvas.getContext('2d'));
+_.set(window,['CODERROR','__originals__','data','favicon','ctx','font'],`${window.CODERROR.__originals__.data.symbol_size}px CODERROR`);
+_.set(window,['CODERROR','__originals__','data','favicon','ctx','textAlign'],'center');
+_.set(window,['CODERROR','__originals__','data','favicon','ctx','textBaseline'],'middle');
 /**ссылка на элемент иконки*/
-d.favicon.link=document.querySelector('link[rel="icon"]');
+window.CODERROR.__originals__.data.favicon.link=document.querySelector('link[rel="icon"]');
 /**автообновлятель иконки сайта*/
-d.favicon.interval=setInterval(()=>{
+window.CODERROR.__originals__.data.favicon.interval=setInterval(()=>{
     generate_favicon();
 },1000/5);
 
@@ -52,126 +50,126 @@ window.addEventListener('blur', function() {
 /**получение манифеста*/
 fetch_json('../../../componentapps/CODERROR/manifest.json').then(manifest=>{
 	/**манифест расширения*/
-	d.manifest=manifest;
+	window.CODERROR.__originals__.data.manifest=manifest;
 });
 /**получение данных о системе*/
 get_system_info();
 /*определяем стоит ли использовать GPU*/
-let rendering_info = get_rendering_method(d.system_info);
-d.gpu_enabled=(rendering_info.method=='gpu');
-console.log('GPU enabled:', d.gpu_enabled);
-d.gpu_initialized=false;
+let rendering_info = get_rendering_method(window.CODERROR.__originals__.data.system_info);
+window.CODERROR.__originals__.data.gpu_enabled=(rendering_info.method=='gpu');
+console.log('GPU enabled:', window.CODERROR.__originals__.data.gpu_enabled);
+window.CODERROR.__originals__.data.gpu_initialized=false;
 /**дожидаемся загрузки шрифта*/
 check_font_loaded('CODERROR').then(() => {
 	/**приложение PIXI.js*/
-	d.app=new PIXI.Application({});
-	d.app.init().then(()=>{
-		d.styleSheet=document.styleSheets[0];
+	window.CODERROR.__originals__.data.app=new PIXI.Application({});
+	window.CODERROR.__originals__.data.app.init().then(()=>{
+		window.CODERROR.__originals__.data.styleSheet=document.styleSheets[0];
 		/**обёртка в которой лежит весь интерфейс*/
-		d.wrapper=document.getElementById('wrapper');
+		window.CODERROR.__originals__.data.wrapper=document.getElementById('wrapper');
 		/*инициализация сцены*/
 		/**сцена THREE.js*/
-		d.three_scene=new THREE.Scene();
-		d.three_scene.background=null;
-		d.three_camera;
+		window.CODERROR.__originals__.data.three_scene=new THREE.Scene();
+		window.CODERROR.__originals__.data.three_scene.background=null;
+		window.CODERROR.__originals__.data.three_camera;
 		init_three_camera();
-		d.three_renderer=new THREE.WebGLRenderer({alpha:true});
-		d.three_renderer.shadowMap.enabled=false;/*отключаем тени*/
+		window.CODERROR.__originals__.data.three_renderer=new THREE.WebGLRenderer({alpha:true});
+		window.CODERROR.__originals__.data.three_renderer.shadowMap.enabled=false;/*отключаем тени*/
 		/**загрузчик для текстур THREE.js*/
-		d.texture_loader=new THREE.TextureLoader();
+		window.CODERROR.__originals__.data.texture_loader=new THREE.TextureLoader();
 		/**небо (коробка)*/
-		d.skybox;
+		window.CODERROR.__originals__.data.skybox;
 		/**текущий путь до текстур неба*/
-		d.current_sky_path;
+		window.CODERROR.__originals__.data.current_sky_path;
 		/*добавление в основной canvas canvas-а three*/
-		d.background_texture;
-		d.background_sprite;
+		window.CODERROR.__originals__.data.background_texture;
+		window.CODERROR.__originals__.data.background_sprite;
 		init_three_scene();
 		update_three_scene();
 		/*отслеживание координат мыши*/
 		/**данные о курсоре мыши*/
-		d.mouse={x:0,y:0};
+		window.CODERROR.__originals__.data.mouse={x:0,y:0};
 		// Флаг, что нужно применить позицию курсора в основном цикле рендера
-		d._cursorNeedsUpdate = false;
+		window.CODERROR.__originals__.data._cursorNeedsUpdate = false;
 		// Установим подсказку браузеру про ожидаемое изменение — помогает оптимизировать
 		const ensureCursorWillChange = ()=>{
-			try{ if(d.cursor) d.cursor.style.willChange = 'transform'; }catch(e){}
+			try{ if(window.CODERROR.__originals__.data.cursor) window.CODERROR.__originals__.data.cursor.style.willChange = 'transform'; }catch(e){}
 		};
 
 		document.addEventListener('mousemove',(event)=>{
-			if(!window.has_focus&&d.settings.interface.pause_on_blur) return;
+			if(!window.has_focus&&window.CODERROR.__originals__.data.settings.interface.pause_on_blur) return;
 			/*вычисляем глобальные координаты мыши*/
-			d.mouse.x_global=event.clientX;
-			d.mouse.y_global=event.clientY;
+			window.CODERROR.__originals__.data.mouse.x_global=event.clientX;
+			window.CODERROR.__originals__.data.mouse.y_global=event.clientY;
 			/*вычисляем координаты мыши относительно обертки*/
-			const rect=d.wrapper.getBoundingClientRect();
-			d.mouse.x=d.mouse.x_global-rect.left;
-			d.mouse.y=d.mouse.y_global-rect.top;
+			const rect=window.CODERROR.__originals__.data.wrapper.getBoundingClientRect();
+			window.CODERROR.__originals__.data.mouse.x=window.CODERROR.__originals__.data.mouse.x_global-rect.left;
+			window.CODERROR.__originals__.data.mouse.y=window.CODERROR.__originals__.data.mouse.y_global-rect.top;
 			/*для кастомного курсора*/
-			if(!d.cursor || !d.cursor_config) return;
+			if(!window.CODERROR.__originals__.data.cursor || !window.CODERROR.__originals__.data.cursor_config) return;
 
 			let element = event.target;
 			let cursor_type = get_cursor_from_element(element);
-			if(!d.cursor_config[cursor_type]) cursor_type = 'default';
+			if(!window.CODERROR.__originals__.data.cursor_config[cursor_type]) cursor_type = 'default';
 
 			// Вычисляем целевые координаты (без записи в layout)
-			const x = d.mouse.x_global - _.get(d,['cursor_config', cursor_type, 'hotspot_x']);
-			const y = d.mouse.y_global - _.get(d,['cursor_config', cursor_type, 'hotspot_y']);
-			d._cursorTargetX = Math.round(x);
-			d._cursorTargetY = Math.round(y);
+			const x = window.CODERROR.__originals__.data.mouse.x_global - _.get(d,['cursor_config', cursor_type, 'hotspot_x']);
+			const y = window.CODERROR.__originals__.data.mouse.y_global - _.get(d,['cursor_config', cursor_type, 'hotspot_y']);
+			window.CODERROR.__originals__.data._cursorTargetX = Math.round(x);
+			window.CODERROR.__originals__.data._cursorTargetY = Math.round(y);
 			// Помечаем, что позицию курсора надо применить на следующем кадре рендера
-			d._cursorNeedsUpdate = true;
+			window.CODERROR.__originals__.data._cursorNeedsUpdate = true;
 
 			// Обновление изображения курсора только при смене типа
-			if(d.cursor_type === cursor_type) return;
+			if(window.CODERROR.__originals__.data.cursor_type === cursor_type) return;
 			let cursor_file_path = _.get(d,['cursor_config', cursor_type, 'file']);
-			d.cursor.src = cursor_file_path ? `${d.cursor_folder_path}/${cursor_file_path}` : '';
-			d.cursor_type = cursor_type;
+			window.CODERROR.__originals__.data.cursor.src = cursor_file_path ? `${window.CODERROR.__originals__.data.cursor_folder_path}/${cursor_file_path}` : '';
+			window.CODERROR.__originals__.data.cursor_type = cursor_type;
 		});
 		/*добавление в разметку canvas-а pixijs*/
-		d.wrapper.appendChild(d.app.view);
+		window.CODERROR.__originals__.data.wrapper.appendChild(window.CODERROR.__originals__.data.app.view);
 		/**контейнер для HTML поверх canvas-ов*/
-		d.overlay=document.createElement('div');
-		d.overlay.id='html-overlay';
-		d.wrapper.appendChild(d.overlay);
+		window.CODERROR.__originals__.data.overlay=document.createElement('div');
+		window.CODERROR.__originals__.data.overlay.id='html-overlay';
+		window.CODERROR.__originals__.data.wrapper.appendChild(window.CODERROR.__originals__.data.overlay);
 		/**контейнер дя предпросмотра чата*/
-		d.chat_preview=document.createElement('div');
-		d.chat_preview.id='chat_preview';
-		d.wrapper.appendChild(d.chat_preview);
+		window.CODERROR.__originals__.data.chat_preview=document.createElement('div');
+		window.CODERROR.__originals__.data.chat_preview.id='chat_preview';
+		window.CODERROR.__originals__.data.wrapper.appendChild(window.CODERROR.__originals__.data.chat_preview);
 		/**контейнер для интерфейса*/
-		d.interface=document.createElement('div');
-		d.interface.id='interface';
-		d.wrapper.appendChild(d.interface);
+		window.CODERROR.__originals__.data.interface=document.createElement('div');
+		window.CODERROR.__originals__.data.interface.id='interface';
+		window.CODERROR.__originals__.data.wrapper.appendChild(window.CODERROR.__originals__.data.interface);
 		/**сетка символов PIXI js*/
-		d.symbols_grid;
+		window.CODERROR.__originals__.data.symbols_grid;
 		/**количество колонок сетки символов*/
-		d.columns;
+		window.CODERROR.__originals__.data.columns;
 		/**количество строк сетки символов*/
-		d.rows;
+		window.CODERROR.__originals__.data.rows;
 		/*инициализируем символы*/
 		init_printable_symbols();
 		/**отображаемый размер шрифта*/
-		d.symbol_size;
+		window.CODERROR.__originals__.data.symbol_size;
 		set_font_size(16,true);
 		/**/
 		window.addEventListener('resize',update_size);
-		d.dragover_states=new WeakMap();
-		d.event_handlers=new WeakMap();
+		window.CODERROR.__originals__.data.dragover_states=new WeakMap();
+		window.CODERROR.__originals__.data.event_handlers=new WeakMap();
 		/**текущая музыка*/
-		d.current_music=null;
+		window.CODERROR.__originals__.data.current_music=null;
 		/**путь до файла текущей музыки*/
-		d.current_music_path='';
+		window.CODERROR.__originals__.data.current_music_path='';
 		/**громкость музыки*/
-		d.music_volume=0.5;
+		window.CODERROR.__originals__.data.music_volume=0.5;
 		/**инициализирована ли музыка*/
-		d.audio_initialized=false;
+		window.CODERROR.__originals__.data.audio_initialized=false;
 		document.addEventListener('click',init_audio);
 		/**нажатые клавиши*/
-		d.pressed=new Set();
+		window.CODERROR.__originals__.data.pressed=new Set();
 		/**активированные действия персонажа*/
-		d.activated_actions=new Set();
+		window.CODERROR.__originals__.data.activated_actions=new Set();
 		/**данные сохранения которые должны быть загружены*/
-		d.loadable_save_data=null;
+		window.CODERROR.__originals__.data.loadable_save_data=null;
 		/*отключаем контекстные меню глобально. я сам ими пользовался для вызова консоли, но они могут помешать игре, если что-то забинжено на правую кнопку мыши. используйте F12*/
 		document.addEventListener('contextmenu',(e)=>{
 			e.preventDefault();
@@ -183,9 +181,9 @@ check_font_loaded('CODERROR').then(() => {
 		/**загрузка курсора по умолчанию*/
 		set_cursor('images/interface/cursors/default');
 		/**прослушиватель нажатий клавиш*/
-		d.input_tracker=setup_input_tracker();
+		window.CODERROR.__originals__.data.input_tracker=setup_input_tracker();
 		/**логический размер символов, используемый в физике*/
-		d.logical_symbol_size=16;
+		window.CODERROR.__originals__.data.logical_symbol_size=16;
 		update_size();
 		/*перехдим вначальную комнату*/
 		change_room('disclaimer');
@@ -196,4 +194,3 @@ check_font_loaded('CODERROR').then(() => {
 }).catch(console.error);
 
 window.CODERROR.CHEATING.data=window.CODERROR.__originals__.data;
-}

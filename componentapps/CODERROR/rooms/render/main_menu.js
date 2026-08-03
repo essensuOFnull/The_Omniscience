@@ -1,19 +1,19 @@
-if(!d.save.temp.room.preparation){
+if(!window.CODERROR.__originals__.data.save.temp.room.preparation){
 	f.visual_effect(0);
-	d.save.temp.room.data.logo.firstChild.style.color=f.get_random_true_str_color();
-	Object.entries(d.save.temp.room.data.buttons).forEach(([name,el])=>{
+	window.CODERROR.__originals__.data.save.temp.room.data.logo.firstChilwindow.CODERROR.__originals__.data.style.color=f.get_random_true_str_color();
+	Object.entries(window.CODERROR.__originals__.data.save.temp.room.data.buttons).forEach(([name,el])=>{
 		if(name=='exit'){
 			const _mul = -0.5+Math.floor(Math.random()*2);
-			el.style.marginLeft = (d.symbol_size * _mul) + 'px';
+			el.style.marginLeft = (window.CODERROR.__originals__.data.symbol_size * _mul) + 'px';
 			if(f.check_hover(el)){
 				f.visual_effect(1);
-				d.save.temp.room.data.bug_counter=100;
+				window.CODERROR.__originals__.data.save.temp.room.data.bug_counter=100;
 			}
 			else{
-				if(d.save.temp.room.data.bug_counter<=0){
+				if(window.CODERROR.__originals__.data.save.temp.room.data.bug_counter<=0){
 					f.visual_effect(2);
 				}else{
-					d.save.temp.room.data.bug_counter--;
+					window.CODERROR.__originals__.data.save.temp.room.data.bug_counter--;
 				}
 			}
 		}else if(name=='donation'){

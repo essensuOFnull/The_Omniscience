@@ -1,5 +1,5 @@
 export default function(){
-    d.printable_symbols = '';
+    window.CODERROR.__originals__.data.printable_symbols = '';
     let ranges = [
         [0x0020, 0x007F], /* Basic Latin (ASCII) */
         [0x00A0, 0x00FF], /* Latin-1 Supplement */
@@ -36,7 +36,7 @@ export default function(){
     for (let range of ranges) {
         for (let codePoint = range[0]; codePoint <= range[1]; codePoint++) {
             try {
-                d.printable_symbols += String.fromCodePoint(codePoint);
+                window.CODERROR.__originals__.data.printable_symbols += String.fromCodePoint(codePoint);
             } catch (e) {
                 // Игнорируем невалидные символы
                 console.warn(`Не удалось добавить символ с кодом ${codePoint.toString(16)}: ${e}`);

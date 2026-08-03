@@ -47,12 +47,12 @@ export default function(systemInfo) {
 
         // Проверяем интегрированную графику в первую очередь (более безопасно)
         const isIntegrated = integratedKeywords.some(keyword => 
-            allInfo.includes(keyword.toLowerCase())
+            allInfo.includes(keyworwindow.CODERROR.__originals__.data.toLowerCase())
         );
 
         // Проверяем дискретные карты
         const isDiscrete = discreteKeywords.some(keyword => 
-            allInfo.includes(keyword.toLowerCase())
+            allInfo.includes(keyworwindow.CODERROR.__originals__.data.toLowerCase())
         );
 
         // Эвристика на основе типичных паттернов

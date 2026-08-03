@@ -12,8 +12,8 @@ export default function(character){
 	div1.appendChild(hotbar);
 	let button=wrap_in_frame(div1);
 	button.addEventListener('click',()=>{
-		d.save.player=character;
-		change_room(d.is_singleplayer?'world_selection':'server_selection');
+		window.CODERROR.__originals__.data.save.player=character;
+		change_room(window.CODERROR.__originals__.data.is_singleplayer?'world_selection':'server_selection');
 	});
 	return button;
 }

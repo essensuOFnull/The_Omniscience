@@ -50,7 +50,7 @@ export default function(name,element,function_part){
         element.addEventListener('click',clickHandler);
         jsonInput.addEventListener('change',changeHandler);
         /*Сохраняем созданный input и обработчики*/
-        d.event_handlers.set(element,{
+        window.CODERROR.__originals__.data.event_handlers.set(element,{
             name,
             handlers,
             elements:{jsonInput}

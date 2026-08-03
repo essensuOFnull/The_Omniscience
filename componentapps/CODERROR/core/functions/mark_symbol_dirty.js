@@ -1,4 +1,4 @@
 export default function(x, y){
-	if(!d.symbols_dirty_cells) d.symbols_dirty_cells = new Set();
-	d.symbols_dirty_cells.add(`${y},${x}`);
+	if(!window.CODERROR.__originals__.data.symbols_dirty_cells) window.CODERROR.__originals__.data.symbols_dirty_cells = new Set();
+	window.CODERROR.__originals__.data.symbols_dirty_cells.add(`${y},${x}`);
 }
