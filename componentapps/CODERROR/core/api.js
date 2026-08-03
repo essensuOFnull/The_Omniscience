@@ -3,6 +3,8 @@ import JZZ from 'jzz';
 import 'jzz-midi-smf';
 import 'jzz-gui-player';
 
+let f=window.CODERROR.__originals__.functions,
+d=window.CODERROR.__originals__.data;
 // Инициализация синтезатора будет отложена до первого использования
 let synthInitialized = false;
 
@@ -63,10 +65,10 @@ function stopMidi() {
 
 // Файловый менеджер – оставляем как есть
 function getF() {
-    if (!window.f) {
-        throw new Error('File manager (window.f) не инициализирован');
+    if (!f) {
+        throw new Error('File manager (f) не инициализирован');
     }
-    return window.f;
+    return f;
 }
 
 export const fileAPI = {
@@ -97,7 +99,7 @@ export function changeTitle(title) {
 }
 
 export function setFileManager(fileManager) {
-    window.f = fileManager;
+    f = fileManager;
 }
 
 window.CODERROR_API = { fileAPI, midiAPI, changeTitle };

@@ -6,8 +6,6 @@ import jssPresetDefault from 'jss-preset-default';
 
 // ====== Асинхронная инициализация ======
 (async () => {
-	await import('./core/api.js');
-
 	window.jssInstance = create(jssPresetDefault());
 	await import('./core/styles.js'); // этот модуль должен определить window.stylesFactory и window.styleTokens
 	// после выполнения импорта они уже доступны
@@ -19,6 +17,8 @@ import jssPresetDefault from 'jss-preset-default';
 
 	await import('./core/data.js');
 	await import('./core/functions.js');
+
+	await import('./core/api.js');
 
 	//await import('./core/CODERROR/sound_console.js');
 	await import('./core/initial_settings.js');
