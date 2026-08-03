@@ -1,0 +1,17 @@
+export default async function(){
+	try{
+		d.characters=[];
+		const files=await f.list_files('YOUR_DATA/characters');
+		// Загружаем всех персонажей параллельно
+		const characterPromises=files.map(file=>
+			this.load_character(file)
+		);
+		const characters=await Promise.all(characterPromises);
+		// Добавляем всех персонажей в массив
+		d.characters.unshift(...characters);
+		return characters;
+	}catch(error){
+		console.error('Ошибка загрузки персонажей:', error);
+		throw error;
+	}
+}
