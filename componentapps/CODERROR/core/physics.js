@@ -1,4 +1,27 @@
 import _ from 'lodash';
+import update_interface from './functions/update_interface';
+import change_title from './functions/change_title';
+import activate_previous_hotbar_slot from './functions/activate_previous_hotbar_slot';
+import activate_next_hotbar_slot from './functions/activate_next_hotbar_slot';
+import prepare from './functions/prepare';
+import get_br from './functions/get_br';
+import init_audio from './functions/init_audio';
+import get_midi_inputs from './functions/get_midi_inputs';
+import get_midi_outputs from './functions/get_midi_outputs';
+import set_interface_visibility from './functions/set_interface_visibility';
+import create_element_from_HTML from './functions/create_element_from_HTML';
+import create_button_from_text from './functions/create_button_from_text';
+import get_symbolic_hr from './functions/get_symbolic_hr';
+import print_to_chat from './functions/print_to_chat';
+import init_file_access from './functions/init_file_access';
+import init_symbols_grid from './functions/init_symbols_grid';
+import load_languages from './functions/load_languages';
+import read_file from './functions/read_file';
+import get_transparent_space_text from './functions/get_transparent_space_text';
+import apply_settings from './functions/apply_settings';
+import update_activated_actions from './functions/update_activated_actions';
+import change_room from './functions/change_room';
+import change_button_text_color from './functions/change_button_text_color';
 {
 let f=window.CODERROR.__originals__.functions,
 d=window.CODERROR.__originals__.data,
@@ -16,7 +39,7 @@ setInterval(()=>{
 	last_measure=now;
 },1000);
 /*инициализация интерфейса*/
-f.update_interface();
+update_interface();
 /**заблокировать ли инвентарь*/
 window.CODERROR.__originals__.data.lock_inventory=false;
 /*функция главного цикла*/
@@ -25,16 +48,16 @@ function update_game_logic(){
 	let nickname=window.CODERROR.__originals__.data.save.player.nickname,
 	room_id=_.get(window.CODERROR.__originals__.data,['save','world','players',nickname,'position','room_id']);
 
-	f.change_title(`CODERROR (1)${window.CODERROR.__originals__.data.manifest.version} TPS: ${window.CODERROR.__originals__.data.TPS} FPS: ${window.CODERROR.__originals__.data.FPS} - ${window.CODERROR.__originals__.data.splash}`);
+	change_title(`CODERROR (1)${window.CODERROR.__originals__.data.manifest.version} TPS: ${window.CODERROR.__originals__.data.TPS} FPS: ${window.CODERROR.__originals__.data.FPS} - ${window.CODERROR.__originals__.data.splash}`);
 	if(!window.has_focus&&window.CODERROR.__originals__.data.settings.interface.pause_on_blur)return
 	tps_count++;
 	/*переключение слотов хотбара*/
 	if(document.getElementById('hotbar')){
 		if(window.CODERROR.__originals__.data.activated_actions.has('previous_hotbar_slot')){
-			f.activate_previous_hotbar_slot();
+			activate_previous_hotbar_slot();
 		}
 		if(window.CODERROR.__originals__.data.activated_actions.has('next_hotbar_slot')){
-			f.activate_next_hotbar_slot();
+			activate_next_hotbar_slot();
 		}
 	}
 	/*открытие/закрытие инвентаря*/
@@ -67,58 +90,58 @@ function update_game_logic(){
 	}
 	/*начальная комната, которую надо загрузить отдельно*/
 	if(room_id=='disclaimer'){
-		f.prepare(()=>{
-			f.init_audio();
-			f.get_midi_inputs();
-			f.get_midi_outputs();
-			f.set_interface_visibility(false);
+		prepare(()=>{
+			init_audio();
+			get_midi_inputs();
+			get_midi_outputs();
+			set_interface_visibility(false);
 			window.CODERROR.__originals__.data.save.temp.room.data={
-				scrollable:f.create_element_from_HTML(`<div class='scrollable'/>`),
-				div:f.create_element_from_HTML(`<div class="center column fill-parent"/>`),
-				button_continue:f.create_button_from_text(`принять риск и продолжить\n\ntake the risk and continue`),
+				scrollable:create_element_from_HTML(`<div class='scrollable'/>`),
+				div:create_element_from_HTML(`<div class="center column fill-parent"/>`),
+				button_continue:create_button_from_text(`принять риск и продолжить\n\ntake the risk and continue`),
 			}
 			window.CODERROR.__originals__.data.save.temp.room.data.scrollable.appendChild(window.CODERROR.__originals__.data.save.temp.room.data.div);
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.create_element_from_HTML(`<div>${f.get_transparent_space_text(`ДИСКЛЕЙМЕР | DISCLAIMER`,'#FF1D34')}</div>`));
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_symbolic_hr());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.create_element_from_HTML(`<div style='text-align:center'>${f.get_transparent_space_text(`Игра содержит часто сменяющиеся мелькающие цвета, что может вызвать приступ эпилепсии.\n\nАвтор не чурается использовать информацию из любых источников, такую как аудио и текстуры, даже если они возможно обладают авторскими правами, и просит простить его за это)`,'#FF1D34')}</div>`));
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_symbolic_hr());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.create_element_from_HTML(`<div style='text-align:center'>${f.get_transparent_space_text(`The game contains frequently changing flashing colors, which may cause an epileptic seizure.\n\nThe author does not shy away from using information from any source, such as audio and textures, even if they may have copyrights, and asks for forgiveness for this)`,'#FF1D34')}</div>`));
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_symbolic_hr());
-			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(f.get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(create_element_from_HTML(`<div>${get_transparent_space_text(`ДИСКЛЕЙМЕР | DISCLAIMER`,'#FF1D34')}</div>`));
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_symbolic_hr());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(create_element_from_HTML(`<div style='text-align:center'>${get_transparent_space_text(`Игра содержит часто сменяющиеся мелькающие цвета, что может вызвать приступ эпилепсии.\n\nАвтор не чурается использовать информацию из любых источников, такую как аудио и текстуры, даже если они возможно обладают авторскими правами, и просит простить его за это)`,'#FF1D34')}</div>`));
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_symbolic_hr());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(create_element_from_HTML(`<div style='text-align:center'>${get_transparent_space_text(`The game contains frequently changing flashing colors, which may cause an epileptic seizure.\n\nThe author does not shy away from using information from any source, such as audio and textures, even if they may have copyrights, and asks for forgiveness for this)`,'#FF1D34')}</div>`));
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_symbolic_hr());
+			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(get_br());
 			window.CODERROR.__originals__.data.save.temp.room.data.div.appendChild(window.CODERROR.__originals__.data.save.temp.room.data.button_continue);
 			window.CODERROR.__originals__.data.save.temp.room.data.button_continue.addEventListener('click',()=>{
 				let loading=document.getElementById('loading');
 				loading.style.display='block';
 				/*получение доступа к своей же папке*/
-				f.init_file_access().then(()=>{
-					f.init_symbols_grid().then(()=>{
+				init_file_access().then(()=>{
+					init_symbols_grid().then(()=>{
 						try{
 							/*используя полученные возможности, продолжаем загрузку игры*/
 							/*загружаем языки*/
-							f.load_languages().then(()=>{
+							load_languages().then(()=>{
 								/*загружаем и применяем настройки*/
-								f.read_file('YOUR_DATA/settings.json').then((text)=>{
+								read_file('YOUR_DATA/settings.json').then((text)=>{
 									if(text){
 										window.CODERROR.__originals__.data.settings=JSON.parse(text);
-										f.apply_settings();
-										f.print_to_chat(window.CODERROR.__originals__.data.language.notifications.settings_loaded);
+										apply_settings();
+										print_to_chat(window.CODERROR.__originals__.data.language.notifications.settings_loaded);
 									}
 								});
 							});
 						}catch(e){
-							f.print_to_chat(window.CODERROR.__originals__.data.language.errors.common(e));
+							print_to_chat(window.CODERROR.__originals__.data.language.errors.common(e));
 						}
 						loading.style.display='none';
-						f.change_room('main_menu');
+						change_room('main_menu');
 					});
 				}).catch(e=>{ console.warn('init_file_access failed:', e); });
 			});
-			f.change_button_text_color(window.CODERROR.__originals__.data.save.temp.room.data.button_continue,'#FF1D34');
+			change_button_text_color(window.CODERROR.__originals__.data.save.temp.room.data.button_continue,'#FF1D34');
 			window.CODERROR.__originals__.data.overlay.appendChild(window.CODERROR.__originals__.data.save.temp.room.data.scrollable);
 		});
 	}
@@ -134,7 +157,7 @@ function update_game_logic(){
 	/*деактивируем прокрутку колесика мыши*/
 	window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(`WheelUp`);
 	window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(`WheelDown`);
-	f.update_activated_actions();
+	update_activated_actions();
 }
 
 let fixed_update=()=>{

@@ -191,8 +191,8 @@ check_font_loaded('CODERROR').then(() => {
 		/*перехдим вначальную комнату*/
 		change_room('disclaimer');
 		/*загружаем циклы физики и отрисовки*/
-		eval_script(`core/CODERROR/physics.js`);
-		eval_script(`core/CODERROR/render.js`);
+		import('./physics.js');
+		import('./render.js');
 	}).catch(console.error);
 }).catch(console.error);
 
