@@ -1,4 +1,5 @@
 export default function(path){
+	path=`../../../componentapps/CODERROR/${path}`
 	return fetch(path)
 	.then(response=>{
 		if(!response.ok){

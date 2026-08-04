@@ -2,8 +2,9 @@ import focus_camera_on_player from './focus_camera_on_player';
 import print_text_to_symbols_grid from './print_text_to_symbols_grid';
 import logical_to_screen from './logical_to_screen';
 
+import _ from 'lodash';
 import * as PIXI from 'pixi.js';
-export default function(player=_.get(d,['save','player'])){
+export default function(player=_.get(window.CODERROR.__originals__.data,['save','player'])){
     let basePath=['save','world','players',player.nickname],
     player_nickname=_.get(player,['nickname']);
     //Символическое представление игрока
@@ -11,7 +12,7 @@ export default function(player=_.get(d,['save','player'])){
         /*расчет скина игрока*/
         const fractional=[false,false];
         for(let i=0;i<=1;i++){
-            const coord=_.get(d,[...basePath,'position','coordinates',i]);
+            const coord=_.get(window.CODERROR.__originals__.data,[...basePath,'position','coordinates',i]);
             if(coord/window.CODERROR.__originals__.data.logical_symbol_size!==Math.floor(coord/window.CODERROR.__originals__.data.logical_symbol_size)){
                 fractional[i]=true;
             }
@@ -19,9 +20,9 @@ export default function(player=_.get(d,['save','player'])){
         const player_skin=(fractional[0]?(fractional[1]?'▗▖\n▝▘':'▐▌'):(fractional[1]?'▄\n▀':'█'));
         /*отрисовка игрока*/
         focus_camera_on_player();
-        const coord0=_.get(d,[...basePath,'position','coordinates',0]);
-        const coord1=_.get(d,[...basePath,'position','coordinates',1]);
-        let rendering_coordinates=[logical_to_screen(coord0)-(_.get(d,['save','temp','camera',0])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[0]||0),logical_to_screen(coord1)-(_.get(d,['save','temp','camera',1])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[1]||0)];
+        const coord0=_.get(window.CODERROR.__originals__.data,[...basePath,'position','coordinates',0]);
+        const coord1=_.get(window.CODERROR.__originals__.data,[...basePath,'position','coordinates',1]);
+        let rendering_coordinates=[logical_to_screen(coord0)-(_.get(window.CODERROR.__originals__.data,['save','temp','camera',0])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[0]||0),logical_to_screen(coord1)-(_.get(window.CODERROR.__originals__.data,['save','temp','camera',1])||window.CODERROR.__originals__.data.save.temp.camera&&window.CODERROR.__originals__.data.save.temp.camera[1]||0)];
         if(fractional[0]) rendering_coordinates[0]--;
         if(fractional[1]) rendering_coordinates[1]--;
         print_text_to_symbols_grid(player_skin,rendering_coordinates[0]/window.CODERROR.__originals__.data.symbol_size,rendering_coordinates[1]/window.CODERROR.__originals__.data.symbol_size);
@@ -30,12 +31,12 @@ export default function(player=_.get(d,['save','player'])){
     if(!window.CODERROR.__originals__.data.nickname_labels)window.CODERROR.__originals__.data.nickname_labels=new Map();
     //Вычисляем центр верхней границы коллайдера в логических координатах
     let collider=[...basePath,'position','collider'],
-    x=(_.get(d,[...collider,0,0])+_.get(d,[...collider,1,0]))/2,
-    y=_.get(d,[...collider,0,1]);
+    x=(_.get(window.CODERROR.__originals__.data,[...collider,0,0])+_.get(window.CODERROR.__originals__.data,[...collider,1,0]))/2,
+    y=_.get(window.CODERROR.__originals__.data,[...collider,0,1]);
     //Переводим в экранные пиксели
     let camera=['save','temp','camera'],
-    screen_x=Math.round(logical_to_screen(x)-_.get(d,[...camera,0],0)),
-    screen_y=Math.round(logical_to_screen(y)-_.get(d,[...camera,1],0));
+    screen_x=Math.round(logical_to_screen(x)-_.get(window.CODERROR.__originals__.data,[...camera,0],0)),
+    screen_y=Math.round(logical_to_screen(y)-_.get(window.CODERROR.__originals__.data,[...camera,1],0));
     //Смещаем надпись над головой на расстояние window.CODERROR.__originals__.data.symbol_size
     screen_y-=window.CODERROR.__originals__.data.symbol_size;
 

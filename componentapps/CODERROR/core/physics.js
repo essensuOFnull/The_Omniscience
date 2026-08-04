@@ -23,7 +23,7 @@ window.CODERROR.__originals__.data.lock_inventory=false;
 function update_game_logic(){
 	/*переменные для укорочения кода*/
 	let nickname=window.CODERROR.__originals__.data.save.player.nickname,
-	room_id=_.get(d,['save','world','players',nickname,'position','room_id']);
+	room_id=_.get(window.CODERROR.__originals__.data,['save','world','players',nickname,'position','room_id']);
 
 	f.change_title(`CODERROR (1)${window.CODERROR.__originals__.data.manifest.version} TPS: ${window.CODERROR.__originals__.data.TPS} FPS: ${window.CODERROR.__originals__.data.FPS} - ${window.CODERROR.__originals__.data.splash}`);
 	if(!window.has_focus&&window.CODERROR.__originals__.data.settings.interface.pause_on_blur)return

@@ -6,6 +6,10 @@ import jssPresetDefault from 'jss-preset-default';
 
 // ====== Асинхронная инициализация ======
 (async () => {
+	await import('./core/preinit.js');
+	
+	await import('./core/data.js');
+
 	window.jssInstance = create(jssPresetDefault());
 	await import('./core/styles.js'); // этот модуль должен определить window.stylesFactory и window.styleTokens
 	// после выполнения импорта они уже доступны
@@ -13,11 +17,10 @@ import jssPresetDefault from 'jss-preset-default';
 		window.stylesFactory(window.styleTokens)
 	).attach();
 
-	await import('./core/preinit.js');
-
 	await import('./core/api.js');
 
 	//await import('./core/CODERROR/sound_console.js');
+	await import('./languages/default.js');
 	await import('./core/initial_settings.js');
 
 	await import('./core/main.js');
@@ -44,9 +47,4 @@ import jssPresetDefault from 'jss-preset-default';
 			</div>
 		</>
 	);
-
-	// 4. Если скрипт языков нужен после рендера – добавляем его динамически через DOM
-	const script = document.createElement('script');
-	script.src = '../../../componentapps/CODERROR/languages/default.js';
-	document.getElementById('languages_div')?.appendChild(script);
 })();

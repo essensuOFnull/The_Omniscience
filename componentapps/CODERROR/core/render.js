@@ -12,7 +12,7 @@ setInterval(()=>{
 window.CODERROR.__originals__.data.app.ticker.add(()=>{
 	/*переменные для укорочения кода*/
 	let nickname=window.CODERROR.__originals__.data.save.player.nickname,
-	room_id=_.get(d,['save','world','players',nickname,'position','room_id']);
+	room_id=_.get(window.CODERROR.__originals__.data,['save','world','players',nickname,'position','room_id']);
 	
 	if(!window.has_focus&&window.CODERROR.__originals__.data.settings.interface.pause_on_blur)return
 	frame_count++;
@@ -28,7 +28,7 @@ window.CODERROR.__originals__.data.app.ticker.add(()=>{
 	/*действия, которые надо совершить вне зависимости от комнаты*/
 	if(!window.CODERROR.__originals__.data.save.temp.room.preparation){
 		/*применяем мерцание к кнопки выхода в главное меню если она есть*/
-		let button_to_main_menu=_.get(d,['button_to_main_menu']);
+		let button_to_main_menu=_.get(window.CODERROR.__originals__.data,['button_to_main_menu']);
 		if(button_to_main_menu){
 			f.apply_standard_buttons_style({button_to_main_menu});
 		}

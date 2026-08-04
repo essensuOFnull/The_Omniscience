@@ -1,4 +1,6 @@
-export default {
+import _ from 'lodash';
+
+_.set(window,['CODERROR','__originals__','data'],{
 	/**целевой TPS (количество итераций физики мира в секунду)*/
 	fixed_TPS: 60,
 	/**фактический TPS*/
@@ -50,4 +52,4 @@ export default {
 	midi_player: null,
 	/**выбранное MIDI-устройство вывода*/
 	midi_output: null
-}
+});

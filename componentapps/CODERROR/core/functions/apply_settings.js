@@ -9,5 +9,5 @@ export default function(){
 	apply_random_splash();
 	/*set_font_size(window.CODERROR.__originals__.data.settings.interface.font_size);*/
 	set_max_content_size(window.CODERROR.__originals__.data.settings.interface.max_content_width,window.CODERROR.__originals__.data.settings.interface.max_content_height);
-	change_room(window.CODERROR.__originals__.data.save.worlwindow.CODERROR.__originals__.data.players[window.CODERROR.__originals__.data.save.player.nickname].position.room_id);
+	change_room(window.CODERROR.__originals__.data.save.world.players[window.CODERROR.__originals__.data.save.player.nickname].position.room_id);
 }

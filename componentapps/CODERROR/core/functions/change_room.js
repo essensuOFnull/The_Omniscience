@@ -1,8 +1,10 @@
 import read_file from './read_file';
 import print_to_chat from './print_to_chat';
+
+import _ from 'lodash';
 export default function(room,preparation=true,reset_overlay=true){
-    _.set(d,['save','world','players',window.CODERROR.__originals__.data.save.player.nickname,'position','room_id'],room);
-    _.set(d,['save','temp','room','preparation'],preparation);
+    _.set(window.CODERROR.__originals__.data,['save','world','players',window.CODERROR.__originals__.data.save.player.nickname,'position','room_id'],room);
+    _.set(window.CODERROR.__originals__.data,['save','temp','room','preparation'],preparation);
     if(!reset_overlay)return
     window.CODERROR.__originals__.data.overlay.innerHTML=``;
     

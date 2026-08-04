@@ -1,8 +1,10 @@
 import get_symbol_texture from './get_symbol_texture';
 import mark_symbol_dirty from'./mark_symbol_dirty';
+
+import _ from 'lodash';
 export default function(x, y, char, textColor = 0xFFFFFF, bgColor = 0x000000, bgAlpha = 0) {
-    let container = _.get(d, ['symbols_grid', y, x]),
-    data = _.get(d, ['symbols_grid_data', y, x]);
+    let container = _.get(window.CODERROR.__originals__.data, ['symbols_grid', y, x]),
+    data = _.get(window.CODERROR.__originals__.data, ['symbols_grid_data', y, x]);
     if(!container||!data) return;
     
     // Сохраняем данные

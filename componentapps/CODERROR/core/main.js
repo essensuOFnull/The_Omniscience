@@ -1,6 +1,5 @@
 import init_printable_symbols from './functions/init_printable_symbols';
 import generate_favicon from './functions/generate_favicon';
-import fetch_json from './functions/fetch_json';
 import get_system_info from './functions/get_system_info';
 import get_rendering_method from './functions/get_rendering_method';
 import check_font_loaded from './functions/check_font_loaded';
@@ -51,7 +50,8 @@ window.addEventListener('blur', function() {
 	window.has_focus = false;
 });
 /**получение манифеста*/
-fetch_json('../../../componentapps/CODERROR/manifest.json').then(manifest=>{
+
+import('../manifest.json').then(manifest=>{
 	/**манифест расширения*/
 	window.CODERROR.__originals__.data.manifest=manifest;
 });
@@ -116,8 +116,8 @@ check_font_loaded('CODERROR').then(() => {
 			if(!window.CODERROR.__originals__.data.cursor_config[cursor_type]) cursor_type = 'default';
 
 			// Вычисляем целевые координаты (без записи в layout)
-			const x = window.CODERROR.__originals__.data.mouse.x_global - _.get(d,['cursor_config', cursor_type, 'hotspot_x']);
-			const y = window.CODERROR.__originals__.data.mouse.y_global - _.get(d,['cursor_config', cursor_type, 'hotspot_y']);
+			const x = window.CODERROR.__originals__.data.mouse.x_global - _.get(window.CODERROR.__originals__.data,['cursor_config', cursor_type, 'hotspot_x']);
+			const y = window.CODERROR.__originals__.data.mouse.y_global - _.get(window.CODERROR.__originals__.data,['cursor_config', cursor_type, 'hotspot_y']);
 			window.CODERROR.__originals__.data._cursorTargetX = Math.round(x);
 			window.CODERROR.__originals__.data._cursorTargetY = Math.round(y);
 			// Помечаем, что позицию курсора надо применить на следующем кадре рендера
@@ -125,7 +125,7 @@ check_font_loaded('CODERROR').then(() => {
 
 			// Обновление изображения курсора только при смене типа
 			if(window.CODERROR.__originals__.data.cursor_type === cursor_type) return;
-			let cursor_file_path = _.get(d,['cursor_config', cursor_type, 'file']);
+			let cursor_file_path = _.get(window.CODERROR.__originals__.data,['cursor_config', cursor_type, 'file']);
 			window.CODERROR.__originals__.data.cursor.src = cursor_file_path ? `${window.CODERROR.__originals__.data.cursor_folder_path}/${cursor_file_path}` : '';
 			window.CODERROR.__originals__.data.cursor_type = cursor_type;
 		});

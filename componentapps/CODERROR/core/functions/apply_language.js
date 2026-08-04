@@ -1,3 +1,4 @@
+import _ from 'lodash';
 export default function(name_list){
     name_list=['default'].concat(name_list);
     let languages_list=[];

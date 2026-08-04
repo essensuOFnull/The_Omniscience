@@ -1,4 +1,5 @@
-window.CODERROR.__originals__.data.languages.default={
+import _ from 'lodash';
+_.set(window,['CODERROR','__originals__','data','languages','default'],{
 	contribution:{
 		'⦑color:#f0f⦒essensuOFnull':`инициатор, автор идей, программист.`,
 		'⦑color:#c70a0a⦒aliph0th':`главный советчик.`,
@@ -157,4 +158,4 @@ window.CODERROR.__originals__.data.languages.default={
 			to_main_menu:`в главное меню`,
 		}
 	}
-}
+});

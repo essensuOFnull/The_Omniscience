@@ -1,5 +1,7 @@
 import remove_event_listener from './remove_event_listener';
 import jsons_to_dict_list from './jsons_to_dict_list';
+
+import _ from 'lodash';
 export default function(name,element,function_part){
     /*Удаляем старые обработчики перед добавлением новых*/
     remove_event_listener(name,element);
