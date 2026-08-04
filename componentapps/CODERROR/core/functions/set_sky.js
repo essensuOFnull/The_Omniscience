@@ -1,4 +1,6 @@
 import create_skybox_materials from './create_skybox_materials';
+
+import * as THREE from 'three';
 export default function(path_part,extension,is_sphere=false) {
     let new_sky_path=`${path_part}/.${extension}`;
     if(new_sky_path==window.CODERROR.__originals__.data.current_sky_path)return

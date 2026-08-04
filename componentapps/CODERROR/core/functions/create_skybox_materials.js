@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 export default function(path_part,extension,is_sphere) {
     let sides = ['right','left','top','bottom','front','back'];
     if(is_sphere){

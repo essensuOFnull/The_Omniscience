@@ -2,6 +2,7 @@
 import JZZ from 'jzz';
 import 'jzz-midi-smf';
 import 'jzz-gui-player';
+import 'jzz-synth-tiny';
 
 let f=window.CODERROR.__originals__.functions,
 d=window.CODERROR.__originals__.data;

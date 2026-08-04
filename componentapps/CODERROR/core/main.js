@@ -18,7 +18,10 @@ import set_cursor from './functions/set_cursor';
 import setup_input_tracker from './functions/setup_input_tracker';
 import change_room from './functions/change_room';
 import eval_script from './functions/eval_script';
+
 import _ from 'lodash';
+import * as PIXI from 'pixi.js';
+import * as THREE from 'three';
 /*для иконки*/
 init_printable_symbols();
 _.set(window,['CODERROR','__originals__','data','dpr'],window.devicePixelRatio||1);

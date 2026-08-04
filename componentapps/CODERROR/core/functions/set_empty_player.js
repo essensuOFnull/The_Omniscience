@@ -1,5 +1,6 @@
+import _ from 'lodash';
 export default function(){
-	window.CODERROR.__originals__.data.save.player={
+	_.set(window,['CODERROR','__originals__','data','save','player'],{
 		/**ник персонажа*/
 		nickname:'',
 		interface:{
@@ -8,5 +9,5 @@ export default function(){
 				active_slot_index:0
 			}
 		}
-	}
+	});
 }

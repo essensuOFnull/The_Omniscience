@@ -1,3 +1,5 @@
+import * as PIXI from 'pixi.js';
+
 export default function(){
     window.CODERROR.__originals__.data.background_texture=PIXI.Texture.from(window.CODERROR.__originals__.data.three_renderer.domElement);
     window.CODERROR.__originals__.data.background_texture.baseTexture.autoUpdate=false;

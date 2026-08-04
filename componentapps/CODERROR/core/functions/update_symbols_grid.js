@@ -1,3 +1,5 @@
+import * as PIXI from 'pixi.js';
+
 export default function() {
     if(!window.CODERROR.__originals__.data.symbols_grid){
         return;

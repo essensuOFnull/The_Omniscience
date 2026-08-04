@@ -1,3 +1,4 @@
+import CODERROR from '../fonts/CODERROR16x16GNUUnifont.ttf';
 // style tokens and factory for JSS
 window.styleTokens = window.styleTokens || { symbol_size: 16, image_rendering: (window.devicePixelRatio >= 1 ? 'pixelated' : 'auto') };
 window.stylesFactory = function (t) {
@@ -5,10 +6,6 @@ window.stylesFactory = function (t) {
 	const img = t.image_rendering;
 	return {
 		'@global': {
-			'@font-face': {
-				fontFamily: 'CODERROR',
-				src: 'url("../../../componentapps/CODERROR/fonts/CODERROR16x16GNUUnifont.ttf") format("truetype")'
-			},
 			'@keyframes message_fade_out': {
 				'0%': { opacity: 1 },
 				'50%': { opacity: 1 },

@@ -1,5 +1,7 @@
 import init_printable_symbols from './init_printable_symbols';
 import save_atlases_to_disk from './save_atlases_to_disk';
+
+import * as PIXI from 'pixi.js';
 export default function() {
     if (!window.CODERROR.__originals__.data.printable_symbols || window.CODERROR.__originals__.data.printable_symbols.length === 0) {
         init_printable_symbols();

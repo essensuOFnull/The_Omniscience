@@ -1,4 +1,6 @@
 import get_symbol_texture from './get_symbol_texture';
+
+import * as PIXI from 'pixi.js';
 export default function(char) {
     const info = window.CODERROR.__originals__.data.symbols_atlas_map[char];
     if (!info) {

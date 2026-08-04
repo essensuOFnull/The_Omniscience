@@ -1,6 +1,8 @@
 import focus_camera_on_player from './focus_camera_on_player';
 import print_text_to_symbols_grid from './print_text_to_symbols_grid';
 import logical_to_screen from './logical_to_screen';
+
+import * as PIXI from 'pixi.js';
 export default function(player=_.get(d,['save','player'])){
     let basePath=['save','world','players',player.nickname],
     player_nickname=_.get(player,['nickname']);

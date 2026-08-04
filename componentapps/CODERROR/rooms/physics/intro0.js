@@ -1,3 +1,5 @@
+import * as PIXI from 'pixi.js';
+
 f.prepare(()=>{
 	f.set_music('music/Errorscape.webm');
 	f.set_interface_visibility(false);

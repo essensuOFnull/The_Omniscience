@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 export default function(){
     window.CODERROR.__originals__.data.three_camera=new THREE.PerspectiveCamera(
         50,

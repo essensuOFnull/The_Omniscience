@@ -1,4 +1,6 @@
 import read_file from './read_file';
+
+import * as PIXI from 'pixi.js';
 export default function() {
     return new Promise((resolve, reject) => {
         const infoPath = `CACHE/symbols_atlases/${window.CODERROR.__originals__.data.symbol_size}/info.json`;

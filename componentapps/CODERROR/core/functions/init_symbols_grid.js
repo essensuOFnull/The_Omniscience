@@ -1,5 +1,8 @@
 import init_symbols_atlas from './init_symbols_atlas';
 import update_symbols_grid from './update_symbols_grid';
+
+import * as PIXI from 'pixi.js';
+
 export default async function() {
     window.CODERROR.__originals__.data.symbols_grid = [];
     window.CODERROR.__originals__.data.symbols_grid_data = [];
