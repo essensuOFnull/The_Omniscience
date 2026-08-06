@@ -3,7 +3,7 @@ export default function(html){
 	template.innerHTML=html.trim();
 	let fragment=template.content;
 	/*Проверяем, есть ли ровно один дочерний элемент*/
-	if(fragment.childNodes.length===1&&fragment.firstChilwindow.CODERROR.__originals__.data.nodeType===Node.ELEMENT_NODE){
+	if(fragment.childNodes.length===1&&fragment.nodeType===Node.ELEMENT_NODE){
 		return fragment.firstChild;
 	}
 	/*Создаём контейнер с display: contents*/

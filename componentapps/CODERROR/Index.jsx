@@ -4,26 +4,31 @@ import { CircularProgress } from '@mui/material';
 import { create } from 'jss';
 import jssPresetDefault from 'jss-preset-default';
 
-// ====== Асинхронная инициализация ======
+import preinit from './core/preinit';
+import main from './core/main';
+import data from './core/data';
+import styles from './core/styles';
+import api from './core/api';
+
+// ====== инициализация ======
 (async () => {
-	await import('./core/preinit.js');
-	
-	await import('./core/data.js');
+	preinit();
+	data();
 
 	window.jssInstance = create(jssPresetDefault());
-	await import('./core/styles.js'); // этот модуль должен определить window.stylesFactory и window.styleTokens
+	styles();
 	// после выполнения импорта они уже доступны
 	window.jssSheet = window.jssInstance.createStyleSheet(
 		window.stylesFactory(window.styleTokens)
 	).attach();
 
-	await import('./core/api.js');
+	api();
 
 	//await import('./core/CODERROR/sound_console.js');
 	await import('./languages/default.js');
 	await import('./core/initial_settings.js');
 
-	await import('./core/main.js');
+	main();
 
 	// ====== Рендер React ======
 	const root = ReactDOM.createRoot(document.getElementById('root'));

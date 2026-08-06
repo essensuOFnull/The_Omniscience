@@ -41,8 +41,8 @@ export default function() {
     }
     
     // Обрезаем количество строк если нужно
-    if (window.CODERROR.__originals__.data.symbols_griwindow.CODERROR.__originals__.data.length > newRows) {
-        window.CODERROR.__originals__.data.symbols_griwindow.CODERROR.__originals__.data.length = newRows;
+    if (window.CODERROR.__originals__.data.symbols_grid.length > newRows) {
+        window.CODERROR.__originals__.data.symbols_grid.length = newRows;
         window.CODERROR.__originals__.data.symbols_grid_data.length = newRows;
     }
     

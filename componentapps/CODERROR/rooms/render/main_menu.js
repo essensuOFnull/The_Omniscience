@@ -1,6 +1,6 @@
 if(!window.CODERROR.__originals__.data.save.temp.room.preparation){
 	f.visual_effect(0);
-	window.CODERROR.__originals__.data.save.temp.room.data.logo.firstChilwindow.CODERROR.__originals__.data.style.color=f.get_random_true_str_color();
+	window.CODERROR.__originals__.data.save.temp.room.data.logo.style.color=f.get_random_true_str_color();
 	Object.entries(window.CODERROR.__originals__.data.save.temp.room.data.buttons).forEach(([name,el])=>{
 		if(name=='exit'){
 			const _mul = -0.5+Math.floor(Math.random()*2);
