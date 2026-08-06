@@ -1,4 +1,0 @@
-export default function(x,y,z){
-	if(!window.CODERROR.__originals__.data.skybox)return;
-	window.CODERROR.__originals__.data.skybox.rotation.set(x,y,z);
-}

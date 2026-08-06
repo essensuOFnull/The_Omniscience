@@ -1,4 +1,0 @@
-import logical_to_screen from './logical_to_screen';
-export default function(){
-	window.CODERROR.__originals__.data.save.temp.camera=[logical_to_screen(window.CODERROR.__originals__.data.save.worlwindow.CODERROR.__originals__.data.players[window.CODERROR.__originals__.data.save.player.nickname].position.coordinates[0])-(Math.floor(window.CODERROR.__originals__.data.columns/2)*window.CODERROR.__originals__.data.symbol_size),logical_to_screen(window.CODERROR.__originals__.data.save.worlwindow.CODERROR.__originals__.data.players[window.CODERROR.__originals__.data.save.player.nickname].position.coordinates[1])-(Math.floor(window.CODERROR.__originals__.data.rows/2)*window.CODERROR.__originals__.data.symbol_size)];
-}
