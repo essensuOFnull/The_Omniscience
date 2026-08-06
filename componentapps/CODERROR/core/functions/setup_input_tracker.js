@@ -13,9 +13,9 @@ export default function(){
 		if(e.repeat||window.CODERROR.__originals__.data.ignored_keys.includes(e.code))return/*Отключаем автоповтор*/
 		let key=getKey(e);
 		if(e.type==='keydown'||e.type==='mousedown'||e.type==='wheel'){
-			window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.add(key);
+			window.CODERROR.__originals__.data.pressed.add(key);
 		}else{
-			window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(key);
+			window.CODERROR.__originals__.data.pressed.delete(key);
 		}
 		update_activated_actions();
 	};

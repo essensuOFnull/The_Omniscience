@@ -148,15 +148,15 @@ function update_game_logic(){
 	/*вызовем логику физики текущей комнаты*/
 	eval(window.CODERROR.__originals__.data.current_room_physics);
 	/*разрешенные игроку функции*/
-	window.CODERROR.PERMITTEwindow.CODERROR.__originals__.data.functions={
+	window.CODERROR.PERMITTED.functions={
 		apply_language:f_s.apply_language,
 		set_max_content_size:f_s.set_max_content_size,
 		apply_random_splash:f_s.apply_random_splash,
 		apply_settings:f_s.apply_settings
 	};
 	/*деактивируем прокрутку колесика мыши*/
-	window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(`WheelUp`);
-	window.CODERROR.__originals__.data.pressewindow.CODERROR.__originals__.data.delete(`WheelDown`);
+	window.CODERROR.__originals__.data.pressed.delete(`WheelUp`);
+	window.CODERROR.__originals__.data.pressed.delete(`WheelDown`);
 	update_activated_actions();
 }
 
