@@ -92,7 +92,7 @@
     const textProcessed = new WeakSet();
 
     function processElement(el) {
-        if (!el || processed.has(el)) return;
+        if (!el || processed.has(el)||el.classList.contains('ignore_The_Omniscience_Theme')) return;
         processed.add(el);
 
         // ======== фон (как раньше) ========
