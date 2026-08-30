@@ -6,14 +6,29 @@ export const initialState = {
 	layers: [],
 	activeLayerId: null,
 	showAllLayers: true,
-	tool: 'select', // теперь по умолчанию инструмент выбора
+	tool: 'select',
 	isDrawing: false,
 	draft: null,
-	currentColor: { hex: '#ff0000', alpha: 1 }, // текущий цвет для точек
+	currentColor: { hex: '#ff0000', alpha: 1 },
+	// Новое:
+	textSettings: {
+		text: 'Lorem ipsum dolor sit amet',
+		fontFamily: 'Arial',
+		fontSize: 16,
+		direction: 'ltr', // ltr, rtl, ttb, btt
+	},
+	glyphs: [], // [{ char, x, y, width, height }]
 };
 
 export function reducer(state, action) {
 	switch (action.type) {
+		case 'SET_TEXT_SETTINGS': {
+			const newSettings = { ...state.textSettings, ...action.payload };
+			return { ...state, textSettings: newSettings };
+		}
+		case 'SET_GLYPHS': {
+			return { ...state, glyphs: action.payload };
+		}
 		case 'SET_IMAGE':
 			return { ...state, image: action.payload.image, imageName: action.payload.name, layers: [], activeLayerId: null };
 		case 'SET_TOOL':

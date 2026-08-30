@@ -1,9 +1,8 @@
-import React, { useContext, useRef } from 'react';
-import {
-	AppBar, Toolbar, Button, IconButton, Box, TextField, Select, MenuItem, Typography
-} from '@mui/material';
+import React, { useContext, useRef, useEffect } from 'react';
+import { AppBar, Toolbar, Button, IconButton, Box, TextField, Select, MenuItem, Typography } from '@mui/material';
 import { AppContext } from './App';
 import { importImage, exportImage, saveProject, openProject } from './fileUtils';
+import { calculateGlyphs } from './glyphUtils';
 
 export default function TopBar() {
 	const { state, dispatch } = useContext(AppContext);
@@ -16,11 +15,17 @@ export default function TopBar() {
 		await importImage(file, dispatch);
 	};
 
-	// Заглушки для текстовых настроек (будут использованы позже)
-	const [text, setText] = React.useState('Lorem ipsum dolor sit amet');
-	const [fontSize, setFontSize] = React.useState(16);
-	const [fontFamily, setFontFamily] = React.useState('Arial');
-	const [direction, setDirection] = React.useState('ltr');
+	// Обновляем глифы при изменении текста/шрифта/размера/направления или изображения
+	useEffect(() => {
+		if (state.image && state.textSettings) {
+			const glyphs = calculateGlyphs(state.image.width, state.image.height, state.textSettings);
+			dispatch({ type: 'SET_GLYPHS', payload: glyphs });
+		}
+	}, [state.image, state.textSettings, dispatch]);
+
+	const updateTextSettings = (key, value) => {
+		dispatch({ type: 'SET_TEXT_SETTINGS', payload: { [key]: value } });
+	};
 
 	return (
 		<AppBar position="static" color="default">
@@ -33,18 +38,17 @@ export default function TopBar() {
 
 				<Box sx={{ flexGrow: 1 }} />
 
-				{/* Заглушки настроек текста */}
 				<TextField
 					size="small"
 					label="Текст"
-					value={text}
-					onChange={(e) => setText(e.target.value)}
+					value={state.textSettings.text}
+					onChange={(e) => updateTextSettings('text', e.target.value)}
 					sx={{ width: 200, mr: 1 }}
 				/>
 				<Select
 					size="small"
-					value={fontFamily}
-					onChange={(e) => setFontFamily(e.target.value)}
+					value={state.textSettings.fontFamily}
+					onChange={(e) => updateTextSettings('fontFamily', e.target.value)}
 					sx={{ width: 120, mr: 1 }}
 				>
 					<MenuItem value="Arial">Arial</MenuItem>
@@ -56,14 +60,14 @@ export default function TopBar() {
 					size="small"
 					label="Размер"
 					type="number"
-					value={fontSize}
-					onChange={(e) => setFontSize(Number(e.target.value))}
+					value={state.textSettings.fontSize}
+					onChange={(e) => updateTextSettings('fontSize', Number(e.target.value))}
 					sx={{ width: 80, mr: 1 }}
 				/>
 				<Select
 					size="small"
-					value={direction}
-					onChange={(e) => setDirection(e.target.value)}
+					value={state.textSettings.direction}
+					onChange={(e) => updateTextSettings('direction', e.target.value)}
 					sx={{ width: 150 }}
 				>
 					<MenuItem value="ltr">Слева направо</MenuItem>

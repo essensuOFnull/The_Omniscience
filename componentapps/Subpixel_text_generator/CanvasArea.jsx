@@ -1,15 +1,23 @@
 import React, { useRef, useEffect, useContext } from 'react';
 import { Box } from '@mui/material';
 import { AppContext } from './App';
-import { drawLayers, getRandomColor, isPointInLayer } from './drawUtils';
+import { drawLayers, getRandomColor, isPointInLayer, drawGlyphsForLayer } from './drawUtils';
 
 export default function CanvasArea() {
 	const { state, dispatch } = useContext(AppContext);
 	const containerRef = useRef(null);
 	const canvasRef = useRef(null);
 	const drawingRef = useRef(null); // текущее временное выделение
-	const moveDataRef = useRef(null); // { layerId, startMouseX, startMouseY, originalLayer }
+	const moveDataRef = useRef(null); // { type, layerId?, pointId?, startX, startY, original? }
 	const snappingRef = useRef(null); // подсветка привязки для точки
+
+	// Функция для генерации уникального id с fallback
+	const generateId = () => {
+		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+			return crypto.randomUUID();
+		}
+		return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+	};
 
 	// Рисуем всё на canvas
 	useEffect(() => {
@@ -20,16 +28,24 @@ export default function CanvasArea() {
 		canvas.height = state.image.height;
 		ctx.drawImage(state.image, 0, 0);
 
-		// Рисуем выделения
-		const layersToDraw = state.showAllLayers
+		const visibleLayers = state.showAllLayers
 			? state.layers.filter(l => l.visible)
 			: state.layers.filter(l => l.id === state.activeLayerId && l.visible);
-		drawLayers(ctx, layersToDraw, state.activeLayerId);
-		// Рисуем draft (незавершённое выделение)
+
+		// Рисуем контуры и точки
+		drawLayers(ctx, visibleLayers, state.activeLayerId);
+
+		// Рисуем знакоместа для каждого слоя
+		visibleLayers.forEach(layer => {
+			if (state.glyphs && state.glyphs.length > 0) {
+				drawGlyphsForLayer(ctx, state.glyphs, layer, layer.color || '#00ffff');
+			}
+		});
+
 		if (drawingRef.current) {
 			drawLayers(ctx, [drawingRef.current], null, true);
 		}
-	}, [state.image, state.layers, state.activeLayerId, state.showAllLayers, state.draft]);
+	}, [state.image, state.layers, state.activeLayerId, state.showAllLayers, state.glyphs]);
 
 	// Обработчики мыши
 	const getCanvasCoords = (e) => {
@@ -56,6 +72,7 @@ export default function CanvasArea() {
 		}
 		return null;
 	};
+
 	// Найти точку под координатами
 	const findColorPointAt = (x, y) => {
 		for (let i = state.layers.length - 1; i >= 0; i--) {
@@ -63,7 +80,7 @@ export default function CanvasArea() {
 			if (layer.colorPoints) {
 				for (const p of layer.colorPoints) {
 					const dx = p.x - x, dy = p.y - y;
-					if (Math.sqrt(dx * dx + dy * dy) <= 5) {
+					if (Math.sqrt(dx * dx + dy * dy) <= 6) { // чуть увеличили радиус захвата
 						return { layer, point: p };
 					}
 				}
@@ -85,7 +102,6 @@ export default function CanvasArea() {
 
 	// Примагничивание для точки: возвращает скорректированные координаты
 	const snapPoint = (x, y, layer) => {
-		// Особые точки области: углы, середины сторон, центр
 		const bounds = getLayerBounds(layer);
 		if (!bounds) return { x, y };
 		const { minX, minY, maxX, maxY } = bounds;
@@ -96,7 +112,7 @@ export default function CanvasArea() {
 			{ x: minX, y: (minY + maxY) / 2 }, { x: maxX, y: (minY + maxY) / 2 },
 			{ x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
 		];
-		const threshold = 10; // px
+		const threshold = 10;
 		let best = null, bestDist = threshold;
 		for (const sp of specialPoints) {
 			const dist = Math.hypot(sp.x - x, sp.y - y);
@@ -138,7 +154,7 @@ export default function CanvasArea() {
 					layerId: layer.id,
 					startX: x,
 					startY: y,
-					originalLayer: JSON.parse(JSON.stringify(layer)),
+					originalLayer: JSON.parse(JSON.stringify(layer)), // глубокая копия, включая colorPoints
 				};
 				dispatch({ type: 'SET_DRAWING', payload: true });
 				e.preventDefault();
@@ -154,7 +170,7 @@ export default function CanvasArea() {
 			// Примагничиваем координаты
 			const snapped = snapPoint(x, y, layer);
 			const newPoint = {
-				id: crypto.randomUUID(),
+				id: generateId(),
 				x: snapped.x,
 				y: snapped.y,
 				color: state.currentColor.hex,
@@ -180,6 +196,7 @@ export default function CanvasArea() {
 
 			if (moveDataRef.current.type === 'point') {
 				const { layerId, pointId, originalPoint } = moveDataRef.current;
+				// Можно добавить примагничивание при перемещении, если нужно
 				dispatch({
 					type: 'UPDATE_COLOR_POINT',
 					payload: {
@@ -199,12 +216,21 @@ export default function CanvasArea() {
 						points: originalLayer.points.map(p => ({ x: p.x + dx, y: p.y + dy })),
 					};
 				}
+				// Сдвигаем все colorPoints вместе со слоем
+				if (updatedLayer && originalLayer.colorPoints) {
+					updatedLayer.colorPoints = originalLayer.colorPoints.map(p => ({
+						...p,
+						x: p.x + dx,
+						y: p.y + dy,
+					}));
+				}
 				if (updatedLayer) {
 					dispatch({ type: 'UPDATE_LAYER', payload: updatedLayer });
 				}
 			}
 			return;
 		}
+
 		if (!drawingRef.current) return;
 		const { x, y } = getClampedCoords(e);
 		if (drawingRef.current.type === 'rect' || drawingRef.current.type === 'ellipse') {
@@ -219,7 +245,6 @@ export default function CanvasArea() {
 				height = maxSide;
 			}
 
-			// Вычисляем новые x,y с учётом направления
 			const newX = x < startX ? startX - width : startX;
 			const newY = y < startY ? startY - height : startY;
 
@@ -258,12 +283,12 @@ export default function CanvasArea() {
 
 		if (draft.type === 'rect' || draft.type === 'ellipse') {
 			if (draft.width > 2 && draft.height > 2) {
-				const { startX, startY, ...cleanDraft } = draft; // убираем временные startX/startY
+				const { startX, startY, ...cleanDraft } = draft;
 				dispatch({ type: 'ADD_LAYER', payload: { ...cleanDraft, visible: true, color: getRandomColor() } });
 			}
 		} else if (draft.type === 'freehand') {
 			if (draft.points.length > 2) {
-				const { startX, startY, ...cleanDraft } = draft; // убираем временные startX/startY
+				const { startX, startY, ...cleanDraft } = draft;
 				dispatch({ type: 'ADD_LAYER', payload: { ...cleanDraft, visible: true, color: getRandomColor() } });
 			}
 		}
@@ -295,6 +320,11 @@ export default function CanvasArea() {
 			? layers.filter(l => l.visible)
 			: layers.filter(l => l.id === activeLayerId && l.visible);
 		drawLayers(ctx, layersToDraw, activeLayerId, false);
+		layersToDraw.forEach(layer => {
+			if (state.glyphs && state.glyphs.length > 0) {
+				drawGlyphsForLayer(ctx, state.glyphs, layer, layer.color || '#00ffff');
+			}
+		});
 	};
 
 	return (

@@ -1,3 +1,4 @@
+// drawUtils.js
 export const drawLayers = (ctx, layers, activeLayerId, isDraft = false) => {
 	layers.forEach(layer => {
 		const color = layer.color || '#ff0000';
@@ -66,8 +67,11 @@ export const drawLayers = (ctx, layers, activeLayerId, isDraft = false) => {
 			layer.colorPoints.forEach(p => {
 				ctx.beginPath();
 				ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-				ctx.fillStyle = p.color + (p.alpha < 1 ? Math.round(p.alpha * 255).toString(16).padStart(2, '0') : '');
+				// Учитываем прозрачность
+				ctx.fillStyle = p.color;
+				ctx.globalAlpha = isDraft ? 0.7 * p.alpha : p.alpha;
 				ctx.fill();
+				ctx.globalAlpha = isDraft ? 0.7 : 1;
 				ctx.strokeStyle = '#ffffff';
 				ctx.lineWidth = 1;
 				ctx.stroke();
@@ -86,14 +90,50 @@ export const isPointInLayer = (x, y, layer) => {
 		const cx = layer.x + rx, cy = layer.y + ry;
 		return ((x - cx) ** 2) / (rx ** 2) + ((y - cy) ** 2) / (ry ** 2) <= 1;
 	} else if (layer.type === 'freehand' && layer.points) {
-		// Грубая проверка: ограничивающий прямоугольник
-		const xs = layer.points.map(p => p.x);
-		const ys = layer.points.map(p => p.y);
-		const minX = Math.min(...xs), maxX = Math.max(...xs);
-		const minY = Math.min(...ys), maxY = Math.max(...ys);
-		return x >= minX && x <= maxX && y >= minY && y <= maxY;
+		// Более точная проверка: лучевой тест (point in polygon)
+		let inside = false;
+		const pts = layer.points;
+		for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+			const xi = pts[i].x, yi = pts[i].y;
+			const xj = pts[j].x, yj = pts[j].y;
+			const intersect = ((yi > y) !== (yj > y)) &&
+				(x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+			if (intersect) inside = !inside;
+		}
+		return inside;
 	}
 	return false;
 };
 
 export const getRandomColor = () => `hsl(${Math.random() * 360}, 70%, 60%)`;
+
+// Проверка, что прямоугольник (x,y,width,height) полностью внутри слоя
+export const isRectInsideLayer = (rect, layer) => {
+	const { x, y, width, height } = rect;
+	const corners = [
+		{ x, y },
+		{ x: x + width, y },
+		{ x, y: y + height },
+		{ x: x + width, y: y + height },
+	];
+	return corners.every(corner => isPointInLayer(corner.x, corner.y, layer));
+};
+
+// Рисуем знакоместа для слоя (если предоставлены glyphs)
+export const drawGlyphsForLayer = (ctx, glyphs, layer, color) => {
+	const insideGlyphs = glyphs.filter(g => isRectInsideLayer(g, layer));
+	if (insideGlyphs.length === 0) return;
+
+	ctx.save();
+	ctx.globalAlpha = 0.1; // полупрозрачная заливка
+	ctx.fillStyle = 'transparent';
+	ctx.strokeStyle = '#fff'; 
+	ctx.lineWidth = 1; 
+
+	insideGlyphs.forEach(g => {
+		ctx.fillRect(g.x, g.y, g.width, g.height);
+		// Рисуем обводку по размеру всего холста
+		ctx.strokeRect(g.x, g.y, g.width, g.height);
+	});
+	ctx.restore();
+};
