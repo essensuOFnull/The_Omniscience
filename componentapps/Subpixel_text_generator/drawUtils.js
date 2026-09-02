@@ -8,6 +8,9 @@ export const drawLayers = (ctx, layers, activeLayerId, isDraft = false) => {
 		ctx.lineWidth = 1;
 		ctx.setLineDash([]);
 
+		// Заливаем градиентом, если есть точки
+		fillLayerWithGradient(ctx, layer);
+
 		// Рисуем контур области
 		if (layer.type === 'rect') {
 			ctx.strokeRect(layer.x, layer.y, layer.width, layer.height);
@@ -69,7 +72,8 @@ export const drawLayers = (ctx, layers, activeLayerId, isDraft = false) => {
 				ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
 				// Учитываем прозрачность
 				ctx.fillStyle = p.color;
-				ctx.globalAlpha = isDraft ? 0.7 * p.alpha : p.alpha;
+				const pointAlpha = p.alpha / 255;
+				ctx.globalAlpha = isDraft ? 0.7 * pointAlpha : pointAlpha;
 				ctx.fill();
 				ctx.globalAlpha = isDraft ? 0.7 : 1;
 				ctx.strokeStyle = '#ffffff';
@@ -103,6 +107,17 @@ export const isPointInLayer = (x, y, layer) => {
 		return inside;
 	}
 	return false;
+};
+
+export const getLayerBounds = (layer) => {
+	if (layer.type === 'rect' || layer.type === 'ellipse') {
+		return { minX: layer.x, minY: layer.y, maxX: layer.x + layer.width, maxY: layer.y + layer.height };
+	} else if (layer.type === 'freehand' && layer.points) {
+		const xs = layer.points.map(p => p.x);
+		const ys = layer.points.map(p => p.y);
+		return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+	}
+	return null;
 };
 
 export const getRandomColor = () => `hsl(${Math.random() * 360}, 70%, 60%)`;
@@ -157,5 +172,117 @@ export const drawAllGlyphs = (ctx, glyphs, layers) => {
 			ctx.strokeRect(g.x, g.y, g.width, g.height);
 		}
 	});
+	ctx.restore();
+};
+
+const fillLayerWithGradient = (ctx, layer) => {
+	const points = layer.colorPoints;
+	if (!points || points.length === 0) return;
+
+	// Сохраняем контекст и обрезаем по форме слоя
+	ctx.save();
+	if (layer.type === 'rect') {
+		ctx.beginPath();
+		ctx.rect(layer.x, layer.y, layer.width, layer.height);
+	} else if (layer.type === 'ellipse') {
+		ctx.beginPath();
+		ctx.ellipse(
+			layer.x + layer.width / 2,
+			layer.y + layer.height / 2,
+			layer.width / 2,
+			layer.height / 2,
+			0, 0, Math.PI * 2
+		);
+	} else if (layer.type === 'freehand' && layer.points) {
+		ctx.beginPath();
+		ctx.moveTo(layer.points[0].x, layer.points[0].y);
+		for (let i = 1; i < layer.points.length; i++) {
+			ctx.lineTo(layer.points[i].x, layer.points[i].y);
+		}
+		ctx.closePath();
+	}
+	ctx.clip(); // теперь рисование только внутри области
+
+	if (points.length === 1) {
+		const p = points[0];
+		ctx.globalAlpha = p.alpha / 255;
+		ctx.fillStyle = p.color;
+		ctx.fill(); // зальёт область, ограниченную клипом (формой слоя)
+	} else {
+		// Несколько точек: IDW через попиксельную отрисовку
+		const bounds = getLayerBounds(layer);
+		if (!bounds) {
+			ctx.restore();
+			return;
+		}
+		const { minX, minY, maxX, maxY } = bounds;
+		const offscreen = document.createElement('canvas');
+		offscreen.width = maxX - minX;
+		offscreen.height = maxY - minY;
+		const offCtx = offscreen.getContext('2d');
+		const imageData = offCtx.createImageData(offscreen.width, offscreen.height);
+		const data = imageData.data;
+
+		// Кэш цветов точек в RGB
+		const pointRGBs = points.map(p => {
+			const hex = p.color.replace('#', '');
+			return {
+				x: p.x,
+				y: p.y,
+				r: parseInt(hex.slice(0, 2), 16),
+				g: parseInt(hex.slice(2, 4), 16),
+				b: parseInt(hex.slice(4, 6), 16),
+				a: p.alpha,
+			};
+		});
+
+		const power = 2; // степень для IDW
+		const epsilon = 0.0001;
+
+		for (let y = 0; y < offscreen.height; y++) {
+			for (let x = 0; x < offscreen.width; x++) {
+				const worldX = x + minX;
+				const worldY = y + minY;
+				let weightSum = 0;
+				let r = 0, g = 0, b = 0, a = 0;
+
+				for (const p of pointRGBs) {
+					const dx = worldX - p.x;
+					const dy = worldY - p.y;
+					const dist = Math.sqrt(dx * dx + dy * dy);
+					const w = 1 / Math.pow(dist + epsilon, power);
+					weightSum += w;
+					r += p.r * w;
+					g += p.g * w;
+					b += p.b * w;
+					a += p.a * w;
+				}
+
+				if (weightSum > 0) {
+					r /= weightSum;
+					g /= weightSum;
+					b /= weightSum;
+					a /= weightSum;
+				} else {
+					// если все дистанции нулевые, берём цвет первой точки
+					r = pointRGBs[0].r;
+					g = pointRGBs[0].g;
+					b = pointRGBs[0].b;
+					a = pointRGBs[0].a;
+				}
+
+				const idx = (y * offscreen.width + x) * 4;
+				data[idx] = Math.round(r);
+				data[idx + 1] = Math.round(g);
+				data[idx + 2] = Math.round(b);
+				data[idx + 3] = Math.round(a);
+			}
+		}
+
+		offCtx.putImageData(imageData, 0, 0);
+		ctx.globalAlpha = 1;
+		ctx.drawImage(offscreen, minX, minY);
+	}
+
 	ctx.restore();
 };

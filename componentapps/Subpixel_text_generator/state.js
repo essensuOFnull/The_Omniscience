@@ -9,7 +9,7 @@ export const initialState = {
 	tool: 'select',
 	isDrawing: false,
 	draft: null,
-	currentColor: { hex: '#ff0000', alpha: 1 },
+	currentColor: { hex: '#ff0000', alpha: 255 },
 	// Новое:
 	textSettings: {
 		text: 'Lorem ipsum dolor sit amet',
@@ -95,7 +95,13 @@ export function reducer(state, action) {
 			return { ...state, layers };
 		}
 		case 'SET_CURRENT_COLOR':
-			return { ...state, currentColor: action.payload };
+			return {
+				...state,
+				currentColor: {
+					...state.currentColor,
+					...action.payload, // hex и alpha
+				},
+			};
 		case 'ADD_COLOR_POINT': {
 			const { layerId, point } = action.payload;
 			const layers = state.layers.map(l =>
