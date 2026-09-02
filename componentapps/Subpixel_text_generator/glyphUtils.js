@@ -8,9 +8,8 @@ export function calculateGlyphs(imageWidth, imageHeight, textSettings) {
 	const font = `${fontSize}px ${fontFamily}`;
 	ctx.font = font;
 
-	const lineHeight = Math.round(fontSize * 1.2);
+	const lineHeight = Math.ceil(fontSize * 1);
 	const compressionRatio = 3;
-	const subpixelGap = 0;
 
 	const glyphs = [];
 	let index = 0;
@@ -42,11 +41,11 @@ export function calculateGlyphs(imageWidth, imageHeight, textSettings) {
 				if (direction === 'ltr') {
 					if (x + glyphWidth > imageWidth) break;
 					addGlyph(char, x, y, glyphWidth);
-					x += glyphWidth + subpixelGap;
+					x += glyphWidth;
 				} else {
 					if (x - glyphWidth < 0) break;
 					addGlyph(char, x - glyphWidth, y, glyphWidth);
-					x -= (glyphWidth + subpixelGap);
+					x -= glyphWidth;
 				}
 			}
 			y += lineHeight;
@@ -69,7 +68,7 @@ export function calculateGlyphs(imageWidth, imageHeight, textSettings) {
 					y -= lineHeight;
 				}
 			}
-			x += maxGlyphWidth + subpixelGap;
+			x += maxGlyphWidth;
 		}
 	}
 

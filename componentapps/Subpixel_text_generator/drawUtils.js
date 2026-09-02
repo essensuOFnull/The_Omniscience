@@ -286,3 +286,4 @@ const fillLayerWithGradient = (ctx, layer) => {
 
 	ctx.restore();
 };
+export { fillLayerWithGradient };

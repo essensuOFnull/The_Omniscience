@@ -32,7 +32,7 @@ export default function TopBar() {
 			<Toolbar variant="dense">
 				<Button onClick={handleImportClick}>Импорт</Button>
 				<input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
-				<Button onClick={() => exportImage(state.image, state.layers)}>Экспорт PNG</Button>
+				<Button onClick={() => exportImage(state.image, state.layers, state.glyphs, state.textSettings)}>Экспорт PNG</Button>
 				<Button onClick={() => saveProject(state)}>Сохранить .stg</Button>
 				<Button onClick={() => openProject(dispatch)}>Открыть .stg</Button>
 

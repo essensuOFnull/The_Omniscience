@@ -320,8 +320,8 @@ export default function CanvasArea() {
 	};
 
 	return (
-		<Box sx={{ flex: 1, overflow: 'scroll', bgcolor: 'background.paper', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-			<Box sx={{ padding: '50px', display: 'block', minWidth: 'fit-content', minHeight: 'fit-content' }}
+		<Box sx={{ flex: 1, overflow: 'scroll', bgcolor: 'background.paper', display: 'flex' }}>
+			<Box sx={{ padding: '50px', display: 'block', minWidth: 'max-content', minHeight: 'max-content' }}
 				onMouseDown={handleMouseDown}
 				onMouseMove={handleMouseMove}
 				onMouseUp={handleMouseUp}
