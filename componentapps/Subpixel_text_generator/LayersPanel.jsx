@@ -9,10 +9,12 @@ import {
 	Checkbox,
 	Tooltip,
 	Typography,
+	Dialog, DialogTitle, DialogContent, FormControlLabel, Switch, Button, DialogActions
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { AppContext } from './App';
 import {
 	DndContext,
@@ -94,6 +96,18 @@ function SortableLayer({ layer, index }) {
 							{layer.visible ? <VisibilityIcon /> : <VisibilityOffIcon />}
 						</IconButton>
 					</Tooltip>
+					<Tooltip title="Настроить слой">
+						<IconButton
+							edge="end"
+							size="small"
+							onClick={(e) => {
+								e.stopPropagation();
+								dispatch({ type: 'OPEN_LAYER_SETTINGS', payload: layer.id });
+							}}
+						>
+							<SettingsIcon />
+						</IconButton>
+					</Tooltip>
 					<Tooltip title="Удалить слой">
 						<IconButton
 							edge="end"
@@ -152,55 +166,86 @@ export default function LayersPanel() {
 		}
 	};
 
+	const settingsLayer = state.layers.find(l => l.id === state.layerSettingsId);
+
+	const handleCloseSettings = () => dispatch({ type: 'CLOSE_LAYER_SETTINGS' });
+
+	const handleToggleNegative = (event) => {
+		if (!settingsLayer) return;
+		const updatedLayer = { ...settingsLayer, negative: event.target.checked };
+		dispatch({ type: 'UPDATE_LAYER', payload: updatedLayer });
+	};
+
 	return (
-		<Box
-			sx={{
-				width: 260,
-				borderLeft: 1,
-				borderColor: 'divider',
-				display: 'flex',
-				flexDirection: 'column',
-				bgcolor: 'background.paper',
-			}}
-		>
+		<>
 			<Box
 				sx={{
-					p: 1,
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'space-between',
-					borderBottom: 1,
+					width: 260,
+					borderLeft: 1,
 					borderColor: 'divider',
+					display: 'flex',
+					flexDirection: 'column',
+					bgcolor: 'background.paper',
 				}}
 			>
-				<Typography variant="subtitle2">Слои выделений</Typography>
-				<Tooltip title="Показывать все видимые слои на холсте">
-					<Checkbox
-						checked={state.showAllLayers}
-						onChange={(e) => dispatch({ type: 'TOGGLE_SHOW_ALL', payload: e.target.checked })}
-						size="small"
-					/>
-				</Tooltip>
-			</Box>
+				<Box
+					sx={{
+						p: 1,
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						borderBottom: 1,
+						borderColor: 'divider',
+					}}
+				>
+					<Typography variant="subtitle2">Слои выделений</Typography>
+					<Tooltip title="Показывать все видимые слои на холсте">
+						<Checkbox
+							checked={state.showAllLayers}
+							onChange={(e) => dispatch({ type: 'TOGGLE_SHOW_ALL', payload: e.target.checked })}
+							size="small"
+						/>
+					</Tooltip>
+				</Box>
 
-			<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-				<SortableContext items={state.layers.map((l) => l.id)} strategy={verticalListSortingStrategy}>
-					<List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
-						{state.layers.map((layer, index) => (
-							<SortableLayer
-								key={layer.id}
-								layer={layer}
-								index={index}
-							/>
-						))}
-						{state.layers.length === 0 && (
-							<Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
-								Нет слоёв
-							</Box>
-						)}
-					</List>
-				</SortableContext>
-			</DndContext>
-		</Box>
+				<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+					<SortableContext items={state.layers.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+						<List dense sx={{ flex: 1, overflow: 'auto', py: 0 }}>
+							{state.layers.map((layer, index) => (
+								<SortableLayer
+									key={layer.id}
+									layer={layer}
+									index={index}
+								/>
+							))}
+							{state.layers.length === 0 && (
+								<Box sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>
+									Нет слоёв
+								</Box>
+							)}
+						</List>
+					</SortableContext>
+				</DndContext>
+			</Box>
+			<Dialog open={!!settingsLayer} onClose={handleCloseSettings}>
+				<DialogTitle>Настройки слоя</DialogTitle>
+				<DialogContent>
+					{settingsLayer && (
+						<FormControlLabel
+							control={
+								<Switch
+									checked={settingsLayer.negative}
+									onChange={handleToggleNegative}
+								/>
+							}
+							label="Негативный режим"
+						/>
+					)}
+				</DialogContent>
+				<DialogActions>
+					<Button onClick={handleCloseSettings}>Закрыть</Button>
+				</DialogActions>
+			</Dialog>
+		</>
 	);
 }

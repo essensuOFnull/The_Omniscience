@@ -18,6 +18,15 @@ export const initialState = {
 		direction: 'ltr', // ltr, rtl, ttb, btt
 	},
 	glyphs: [], // [{ char, x, y, width, height }]
+	layerSettingsId: null,
+};
+
+// Функция для генерации уникального id с fallback
+const generateId = () => {
+	if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+		return crypto.randomUUID();
+	}
+	return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 };
 
 export function reducer(state, action) {
@@ -36,7 +45,7 @@ export function reducer(state, action) {
 		case 'SET_DRAWING':
 			return { ...state, isDrawing: action.payload };
 		case 'ADD_LAYER': {
-			const layer = { ...action.payload, id: crypto.randomUUID(), colorPoints: [] };
+			const layer = { ...action.payload, id: generateId(), colorPoints: [], negative: false };
 			return { ...state, layers: [...state.layers, layer], activeLayerId: layer.id };
 		}
 		case 'SET_ACTIVE_LAYER':
@@ -45,6 +54,10 @@ export function reducer(state, action) {
 			const layers = state.layers.map(l => l.id === action.payload ? { ...l, visible: !l.visible } : l);
 			return { ...state, layers };
 		}
+		case 'OPEN_LAYER_SETTINGS':
+			return { ...state, layerSettingsId: action.payload };
+		case 'CLOSE_LAYER_SETTINGS':
+			return { ...state, layerSettingsId: null };
 		case 'DELETE_LAYER': {
 			const layers = state.layers.filter(l => l.id !== action.payload);
 			const activeLayerId = state.activeLayerId === action.payload ? null : state.activeLayerId;

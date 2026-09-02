@@ -119,21 +119,43 @@ export const isRectInsideLayer = (rect, layer) => {
 	return corners.every(corner => isPointInLayer(corner.x, corner.y, layer));
 };
 
-// Рисуем знакоместа для слоя (если предоставлены glyphs)
-export const drawGlyphsForLayer = (ctx, glyphs, layer, color) => {
-	const insideGlyphs = glyphs.filter(g => isRectInsideLayer(g, layer));
-	if (insideGlyphs.length === 0) return;
+export const drawAllGlyphs = (ctx, glyphs, layers) => {
+	if (!glyphs || glyphs.length === 0) return;
+
+	const visibleLayers = layers.filter(l => l.visible);
 
 	ctx.save();
-	ctx.globalAlpha = 0.1; // полупрозрачная заливка
-	ctx.fillStyle = 'transparent';
-	ctx.strokeStyle = '#fff'; 
-	ctx.lineWidth = 1; 
+	glyphs.forEach(g => {
+		const centerX = g.x + g.width / 2;
+		const centerY = g.y + g.height / 2;
 
-	insideGlyphs.forEach(g => {
-		ctx.fillRect(g.x, g.y, g.width, g.height);
-		// Рисуем обводку по размеру всего холста
-		ctx.strokeRect(g.x, g.y, g.width, g.height);
+		// Ищем верхний слой, содержащий центр
+		let topLayer = null;
+		for (let i = visibleLayers.length - 1; i >= 0; i--) {
+			const layer = visibleLayers[i];
+			if (isPointInLayer(centerX, centerY, layer)) {
+				topLayer = layer;
+				break;
+			}
+		}
+
+		if (topLayer) {
+			if (topLayer.negative) {
+				// Негативный режим: заливка белым, без обводки
+				ctx.fillStyle = '#ffffff';
+				ctx.fillRect(g.x, g.y, g.width, g.height);
+			} else {
+				// Обычный режим: обводка белым, без заливки
+				ctx.strokeStyle = '#ffffff';
+				ctx.lineWidth = 1;
+				ctx.strokeRect(g.x, g.y, g.width, g.height);
+			}
+		} else {
+			// Не попал в видимый слой: серый контур
+			ctx.strokeStyle = '#808080';
+			ctx.lineWidth = 1;
+			ctx.strokeRect(g.x, g.y, g.width, g.height);
+		}
 	});
 	ctx.restore();
 };

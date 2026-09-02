@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useContext } from 'react';
 import { Box } from '@mui/material';
 import { AppContext } from './App';
-import { drawLayers, getRandomColor, isPointInLayer, drawGlyphsForLayer } from './drawUtils';
+import { drawLayers, getRandomColor, isPointInLayer, drawAllGlyphs } from './drawUtils';
 
 export default function CanvasArea() {
 	const { state, dispatch } = useContext(AppContext);
@@ -35,12 +35,8 @@ export default function CanvasArea() {
 		// Рисуем контуры и точки
 		drawLayers(ctx, visibleLayers, state.activeLayerId);
 
-		// Рисуем знакоместа для каждого слоя
-		visibleLayers.forEach(layer => {
-			if (state.glyphs && state.glyphs.length > 0) {
-				drawGlyphsForLayer(ctx, state.glyphs, layer, layer.color || '#00ffff');
-			}
-		});
+		// Рисуем знакоместа
+		drawAllGlyphs(ctx, state.glyphs, visibleLayers);
 
 		if (drawingRef.current) {
 			drawLayers(ctx, [drawingRef.current], null, true);
@@ -320,11 +316,7 @@ export default function CanvasArea() {
 			? layers.filter(l => l.visible)
 			: layers.filter(l => l.id === activeLayerId && l.visible);
 		drawLayers(ctx, layersToDraw, activeLayerId, false);
-		layersToDraw.forEach(layer => {
-			if (state.glyphs && state.glyphs.length > 0) {
-				drawGlyphsForLayer(ctx, state.glyphs, layer, layer.color || '#00ffff');
-			}
-		});
+		drawAllGlyphs(ctx, state.glyphs, layersToDraw);
 	};
 
 	return (
