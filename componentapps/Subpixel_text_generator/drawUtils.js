@@ -141,18 +141,18 @@ export const drawAllGlyphs = (ctx, glyphs, layers) => {
 
 		if (topLayer) {
 			if (topLayer.negative) {
-				// Негативный режим: заливка белым, без обводки
-				ctx.fillStyle = '#ffffff';
+				// Негативный режим: заливка черным, без обводки (симуляция естественного затемнения)
+				ctx.fillStyle = '#000000aa';
 				ctx.fillRect(g.x, g.y, g.width, g.height);
 			} else {
-				// Обычный режим: обводка белым, без заливки
-				ctx.strokeStyle = '#ffffff';
+				// Обычный режим: обводка черым, без заливки (симуляция естественного затемнения)
+				ctx.strokeStyle = '#000000aa';
 				ctx.lineWidth = 1;
 				ctx.strokeRect(g.x, g.y, g.width, g.height);
 			}
 		} else {
 			// Не попал в видимый слой: серый контур
-			ctx.strokeStyle = '#808080';
+			ctx.strokeStyle = 'transparent';
 			ctx.lineWidth = 1;
 			ctx.strokeRect(g.x, g.y, g.width, g.height);
 		}
