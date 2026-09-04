@@ -1,76 +1,101 @@
 // glyphUtils.js
 export function calculateGlyphs(imageWidth, imageHeight, textSettings) {
-	const { text, fontFamily, fontSize, direction } = textSettings;
-	if (!text || !imageWidth || !imageHeight) return [];
+    const { text, fontFamily, fontSize, direction } = textSettings;
+    if (!text || !imageWidth || !imageHeight) return [];
 
-	const canvas = document.createElement('canvas');
-	const ctx = canvas.getContext('2d');
-	const font = `${fontSize}px ${fontFamily}`;
-	ctx.font = font;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const font = `${fontSize}px ${fontFamily}`;
+    ctx.font = font;
 
-	const lineHeight = Math.ceil(fontSize * 1);
-	const compressionRatio = 3;
+    const lineHeight = fontSize * textSettings.lineHeightMultiplier;
+    const widthScale = textSettings.widthScale;
 
-	const glyphs = [];
-	let index = 0;
-	let charIndex = 0;
+    const glyphs = [];
+    let index = 0;
+    let charIndex = 0;
 
-	const addGlyph = (char, x, y, width) => {
-		glyphs.push({ char, x, y, width, height: lineHeight, index });
-		index++;
-	};
+    const addGlyph = (char, x, y, width) => {
+        glyphs.push({ char, x, y, width, height: lineHeight, index });
+        index++;
+    };
 
-	// Вычисляем максимальную сжатую ширину символа (для ровных колонок)
-	let maxGlyphWidth = 0;
-	for (const char of text) {
-		const charWidth = ctx.measureText(char).width;
-		const glyphWidth = charWidth / compressionRatio;
-		if (glyphWidth > maxGlyphWidth) maxGlyphWidth = glyphWidth;
-	}
+    const getChars = () => {
+        if (direction === 'rtl') return text.split('').reverse();
+        if (direction === 'btt') return text.split('').reverse();
+        return text.split('');
+    };
 
-	if (direction === 'ltr' || direction === 'rtl') {
-		const chars = direction === 'rtl' ? text.split('').reverse() : text.split('');
-		let y = 0;
-		while (y + lineHeight <= imageHeight) {
-			let x = direction === 'rtl' ? imageWidth : 0;
-			while (true) {
-				charIndex >= chars.length - 1 ? charIndex = 0 : charIndex++;
-				const char = chars[charIndex];
-				const charWidth = ctx.measureText(char).width;
-				const glyphWidth = charWidth / compressionRatio;
-				if (direction === 'ltr') {
-					if (x + glyphWidth > imageWidth) break;
-					addGlyph(char, x, y, glyphWidth);
-					x += glyphWidth;
-				} else {
-					if (x - glyphWidth < 0) break;
-					addGlyph(char, x - glyphWidth, y, glyphWidth);
-					x -= glyphWidth;
-				}
-			}
-			y += lineHeight;
-		}
-	} else if (direction === 'ttb' || direction === 'btt') {
-		const chars = direction === 'btt' ? text.split('').reverse() : text.split('');
-		let x = 0;
-		while (x + maxGlyphWidth <= imageWidth) {
-			let y = direction === 'btt' ? imageHeight : 0;
-			while (true) {
-				charIndex >= chars.length - 1 ? charIndex = 0 : charIndex++;
-				const char = chars[charIndex];
-				if (direction === 'ttb') {
-					if (y + lineHeight > imageHeight) break;
-					addGlyph(char, x, y, maxGlyphWidth);
-					y += lineHeight;
-				} else {
-					if (y - lineHeight < 0) break;
-					addGlyph(char, x, y - lineHeight, maxGlyphWidth);
-					y -= lineHeight;
-				}
-			}
-			x += maxGlyphWidth;
-		}
-	}
+    const chars = getChars();
 
-	return glyphs;
+    if (direction === 'ltr' || direction === 'rtl') {
+        let y = 0;
+        while (y + lineHeight <= imageHeight) {
+            if (direction === 'ltr') {
+                let xFloat = 0;
+                while (true) {
+                    const char = chars[charIndex % chars.length];
+                    charIndex++;
+                    const charWidth = ctx.measureText(char).width;
+                    const glyphWidth = charWidth * widthScale; // точная ширина
+                    if (xFloat + glyphWidth > imageWidth) break;
+                    const x = Math.round(xFloat); // целая координата
+                    addGlyph(char, x, y, glyphWidth);
+                    xFloat += glyphWidth;
+                }
+            } else { // rtl
+                let xFloat = imageWidth;
+                while (true) {
+                    const char = chars[charIndex % chars.length];
+                    charIndex++;
+                    const charWidth = ctx.measureText(char).width;
+                    const glyphWidth = charWidth * widthScale;
+                    const newXFloat = xFloat - glyphWidth;
+                    if (newXFloat < 0) break;
+                    const x = Math.round(newXFloat);
+                    addGlyph(char, x, y, glyphWidth);
+                    xFloat = newXFloat;
+                }
+            }
+            y += lineHeight;
+        }
+    } else if (direction === 'ttb' || direction === 'btt') {
+        let maxGlyphWidth = 0;
+        for (const char of text) {
+            const charWidth = ctx.measureText(char).width;
+            const glyphWidth = charWidth * widthScale;
+            if (glyphWidth > maxGlyphWidth) maxGlyphWidth = glyphWidth;
+        }
+        // не округляем maxGlyphWidth
+
+        let xFloat = 0;
+        while (xFloat + maxGlyphWidth <= imageWidth) {
+            const x = Math.round(xFloat);
+            if (direction === 'ttb') {
+                let yFloat = 0;
+                while (true) {
+                    const char = chars[charIndex % chars.length];
+                    charIndex++;
+                    if (yFloat + lineHeight > imageHeight) break;
+                    const y = Math.round(yFloat);
+                    addGlyph(char, x, y, maxGlyphWidth);
+                    yFloat += lineHeight;
+                }
+            } else { // btt
+                let yFloat = imageHeight;
+                while (true) {
+                    const char = chars[charIndex % chars.length];
+                    charIndex++;
+                    const newYFloat = yFloat - lineHeight;
+                    if (newYFloat < 0) break;
+                    const y = Math.round(newYFloat);
+                    addGlyph(char, x, y, maxGlyphWidth);
+                    yFloat = newYFloat;
+                }
+            }
+            xFloat += maxGlyphWidth;
+        }
+    }
+
+    return glyphs;
 }

@@ -12,10 +12,12 @@ export const initialState = {
 	currentColor: { hex: '#ff0000', alpha: 255 },
 	// Новое:
 	textSettings: {
-		text: 'Lorem ipsum dolor sit amet',
+		text: 'Lorem ipsum dolor sit amet ',
 		fontFamily: 'Arial',
 		fontSize: 16,
 		direction: 'ltr', // ltr, rtl, ttb, btt
+		lineHeightMultiplier: 1,   // множитель высоты строки относительно fontSize
+		widthScale: 1/3, // субпиксельное сжатие
 	},
 	glyphs: [], // [{ char, x, y, width, height }]
 	layerSettingsId: null,

@@ -9,18 +9,14 @@ function getCharFromGlyph(glyph, text) {
 }
 
 // Рендеринг субпиксельного текста для слоя
+// renderSubpixelText (внутри exportImage)
 function renderSubpixelText(ctx, layer, glyphs, textSettings, imageData) {
-	const { text, fontFamily, fontSize } = textSettings;
+	const { text, fontFamily, fontSize, widthScale, lineHeightMultiplier } = textSettings;
 	if (!text || !fontFamily || !fontSize || !glyphs || glyphs.length === 0) return;
 
 	const font = `${fontSize}px ${fontFamily}`;
 	const tempCanvas = document.createElement('canvas');
 	const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-	tempCtx.font = font;
-
-	const imageWidth = imageData.width;
-	const imageHeight = imageData.height;
-	const data = imageData.data;
 
 	glyphs.forEach(glyph => {
 		const centerX = glyph.x + glyph.width / 2;
@@ -28,72 +24,55 @@ function renderSubpixelText(ctx, layer, glyphs, textSettings, imageData) {
 		if (!isPointInLayer(centerX, centerY, layer)) return;
 
 		const char = getCharFromGlyph(glyph, text);
-		if (!char) return;
+		if (!char || glyph.width <= 0 || glyph.height <= 0) return;
 
-		// Ширина временного канваса – в 3 раза больше ширины глифа (по субпикселям)
-		const charWidth = Math.ceil(glyph.width * 3);
-		const charHeight = Math.ceil(glyph.height);
-		if (charWidth <= 0 || charHeight <= 0) return;
+		// Ширина временного холста = ширина глифа * 3 (для субпикселей)
+		const tempWidth = Math.ceil(glyph.width * 3);
+		const tempHeight = Math.ceil(glyph.height);
+		tempCanvas.width = tempWidth;
+		tempCanvas.height = tempHeight;
 
-		tempCanvas.width = charWidth;
-		tempCanvas.height = charHeight;
-		tempCtx.clearRect(0, 0, charWidth, charHeight);
+		tempCtx.setTransform(1, 0, 0, 1, 0, 0);
+		tempCtx.clearRect(0, 0, tempWidth, tempHeight);
 		tempCtx.font = font;
-		tempCtx.fillStyle = '#ffffff';
 		tempCtx.textBaseline = 'top';
-		// Рисуем символ с началом в (0,0) – относительная система координат
+		tempCtx.fillStyle = 'rgba(255, 255, 255, 1)';
+
+		// Точное измерение ширины символа в исходном масштабе
+		const originalCharWidth = tempCtx.measureText(char).width;
+		// Масштаб, чтобы символ занял ровно glyph.width * 3 пикселей
+		const scaleX = (glyph.width * 3) / originalCharWidth;
+		tempCtx.setTransform(scaleX, 0, 0, 1, 0, 0);
 		tempCtx.fillText(char, 0, 0);
 
-		const charImageData = tempCtx.getImageData(0, 0, charWidth, charHeight);
-		const charData = charImageData.data;
+		const charImageData = tempCtx.getImageData(0, 0, tempWidth, tempHeight);
+		const data = charImageData.data;
 
-		for (let y = 0; y < charHeight; y++) {
-			// Глобальная вертикальная координата (дробная часть glyph.y учитывается)
-			const globalY = glyph.y + y;
-			const srcY = Math.floor(globalY);
-			if (srcY < 0 || srcY >= imageHeight) continue;
+		for (let row = 0; row < tempHeight; row++) {
+			const srcY = Math.floor(glyph.y) + row;
+			if (srcY < 0 || srcY >= imageData.height) continue;
 
-			for (let x = 0; x < charWidth; x++) {
-				// Глобальная горизонтальная координата субпикселя (в единицах исходных пикселей)
-				const globalX = glyph.x + x / 3;
-				const srcX = Math.floor(globalX);
-				if (srcX < 0 || srcX >= imageWidth) continue;
+			for (let col = 0; col < glyph.width; col++) {
+				const srcX = Math.floor(glyph.x) + col;
+				if (srcX < 0 || srcX >= imageData.width) continue;
+				if (!isPointInLayer(srcX + 0.5, srcY + 0.5, layer)) continue;
 
-				// Определяем, какому субпикселю (R/G/B) соответствует текущий x
-				const subpixelIndex = Math.min(2, Math.floor((globalX - srcX) * 3));
+				const subX = col * 3;
+				const dataIndex = (srcY * imageData.width + srcX) * 4;
 
-				// Альфа из временного канваса (уже содержит сглаживание по вертикали)
-				const charAlpha = charData[(y * charWidth + x) * 4 + 3] / 255;
-				const active = charAlpha > 0.5;
-
-				// Индекс исходного пикселя
-				const srcIndex = (srcY * imageWidth + srcX) * 4;
-
-				let newR = data[srcIndex];
-				let newG = data[srcIndex + 1];
-				let newB = data[srcIndex + 2];
+				const alphaR = data[(row * tempWidth + subX) * 4 + 3] / 255;
+				const alphaG = data[(row * tempWidth + subX + 1) * 4 + 3] / 255;
+				const alphaB = data[(row * tempWidth + subX + 2) * 4 + 3] / 255;
 
 				if (layer.negative) {
-					// Негатив: активный субпиксель выжигаем (0), неактивный остаётся
-					if (active) {
-						if (subpixelIndex === 0) newR = 0;
-						else if (subpixelIndex === 1) newG = 0;
-						else newB = 0;
-					}
-					// Никакой искусственной минимальной яркости
+					imageData.data[dataIndex] *= alphaR;
+					imageData.data[dataIndex + 1] *= alphaG;
+					imageData.data[dataIndex + 2] *= alphaB;
 				} else {
-					// Обычный: неактивный субпиксель выжигаем, активный остаётся
-					if (!active) {
-						if (subpixelIndex === 0) newR = 0;
-						else if (subpixelIndex === 1) newG = 0;
-						else newB = 0;
-					}
+					imageData.data[dataIndex] *= (1 - alphaR);
+					imageData.data[dataIndex + 1] *= (1 - alphaG);
+					imageData.data[dataIndex + 2] *= (1 - alphaB);
 				}
-
-				data[srcIndex] = newR;
-				data[srcIndex + 1] = newG;
-				data[srcIndex + 2] = newB;
-				// Альфа канал исходного изображения не меняем
 			}
 		}
 	});
