@@ -25,7 +25,6 @@ export default function TopBar() {
 
 	const loadFontFromFile = async (file) => {
 		try {
-			// Поддерживаемые форматы
 			const allowedExtensions = ['.ttf', '.otf', '.woff', '.woff2'];
 			const ext = '.' + file.name.split('.').pop().toLowerCase();
 			if (!allowedExtensions.includes(ext)) {
@@ -33,24 +32,27 @@ export default function TopBar() {
 				return;
 			}
 
-			// Читаем файл как ArrayBuffer
 			const arrayBuffer = await file.arrayBuffer();
 
-			// Имя шрифта — имя файла без расширения, но делаем его уникальным
+			// Безопасное уникальное имя
 			const baseName = file.name.replace(/\.[^/.]+$/, '');
-			const fontName = baseName;
+			const safeName = baseName.replace(/[^a-zA-Z0-9]/g, '_');
+			const fontName = `CustomFont_${Date.now()}_${safeName}`;
 
-			// Создаём FontFace
+			// Удаляем старый шрифт с таким же именем (если есть)
+			for (const existingFont of document.fonts) {
+				if (existingFont.family === fontName) {
+					document.fonts.delete(existingFont);
+				}
+			}
+
 			const font = new FontFace(fontName, arrayBuffer);
 			await font.load();
-
-			// Добавляем в document.fonts
 			document.fonts.add(font);
 
-			// Дожидаемся полной готовности
-			await document.fonts.ready;
+			// Убеждаемся, что шрифт готов к использованию
+			await document.fonts.load(`16px "${fontName}"`);
 
-			// Обновляем настройки
 			dispatch({
 				type: 'SET_TEXT_SETTINGS',
 				payload: { fontFamily: fontName },

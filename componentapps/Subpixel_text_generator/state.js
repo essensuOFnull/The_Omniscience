@@ -16,7 +16,7 @@ export const initialState = {
 		fontSize: 16,
 		direction: 'ltr',
 		verticalSpacing: 0,      // отступ между строками в пикселях
-		horizontalSpacing: 1,    // отступ между глифами в субпикселях
+		horizontalSpacing: 0,    // отступ между глифами в субпикселях
 		widthScale: 0.33333333333333333333,           // коэффициент сжатия ширины (1 = без изменений)
 	},
 	glyphs: [], // [{ char, x, y, width, height }]
