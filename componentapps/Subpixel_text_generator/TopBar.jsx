@@ -1,7 +1,7 @@
-import React, { useContext, useRef, useEffect } from 'react';
+import React, { useContext, useRef, useEffect, useMemo } from 'react';
 import { AppBar, Toolbar, Button, IconButton, Box, TextField, MenuItem, Typography } from '@mui/material';
 import { AppContext } from './App';
-import { importImage, exportImage, saveProject, openProject } from './fileUtils';
+import { importImage, exportImage, saveProject, openProject, createGlyphAtlas } from './fileUtils';
 import { calculateGlyphs } from './glyphUtils';
 
 export default function TopBar() {
@@ -81,13 +81,29 @@ export default function TopBar() {
 		}
 	};
 
-	// Обновляем глифы при изменении текста/шрифта/размера/направления или изображения
+	const glyphAtlas = useMemo(() => {
+		if (!state.textSettings.text) return {};
+		return createGlyphAtlas(
+			state.textSettings.text,
+			state.textSettings.fontFamily,
+			state.textSettings.fontSize,
+			state.textSettings.widthScale
+		);
+	}, [state.textSettings.text, state.textSettings.fontFamily, state.textSettings.fontSize, state.textSettings.widthScale]);
+
 	useEffect(() => {
-		if (state.image && state.textSettings) {
-			const glyphs = calculateGlyphs(state.image.width, state.image.height, state.textSettings);
-			dispatch({ type: 'SET_GLYPHS', payload: glyphs });
+		if (state.image && glyphAtlas && Object.keys(glyphAtlas).length > 0) {
+			const newGlyphs = calculateGlyphs(
+				state.image.width,
+				state.image.height,
+				state.textSettings,
+				glyphAtlas
+			);
+			dispatch({ type: 'SET_GLYPHS', payload: newGlyphs });
+		} else if (state.image) {
+			dispatch({ type: 'SET_GLYPHS', payload: [] });
 		}
-	}, [state.image, state.textSettings, dispatch]);
+	}, [state.image, state.textSettings, glyphAtlas, dispatch]);
 
 	const updateTextSettings = (key, value) => {
 		dispatch({ type: 'SET_TEXT_SETTINGS', payload: { [key]: value } });
@@ -110,7 +126,12 @@ export default function TopBar() {
 				<Button onClick={handleImportClick} sx={{ flex: 1, maxWidth: 'max-content' }}>Импорт изображения</Button>
 				<Button onClick={() => openProject(dispatch)} sx={{ flex: 1, maxWidth: 'max-content' }}>Импорт .stg</Button>
 				<input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none', flex: 1, maxWidth: 'max-content' }} onChange={handleFileChange} />
-				<Button onClick={() => exportImage(state.image, state.layers, state.glyphs, state.textSettings)} sx={{ flex: 1, maxWidth: 'max-content' }}>Экспорт .png</Button>
+				<Button
+					onClick={() => exportImage(state.image, state.layers, state.glyphs, state.textSettings, glyphAtlas)}
+					sx={{ flex: 1, maxWidth: 'max-content' }}
+				>
+					Экспорт .png
+				</Button>
 				<Button onClick={() => saveProject(state)} sx={{ flex: 1, maxWidth: 'max-content' }}>Экспорт .stg</Button>
 			</Toolbar>
 			<Toolbar variant="dense" sx={{ justifyContent: 'space-evenly' }}>
@@ -152,12 +173,21 @@ export default function TopBar() {
 				/>
 				<TextField
 					size="small"
-					label="Высота строки"
+					label="Отступ по вертикали (px)"
 					type="number"
-					value={state.textSettings.lineHeightMultiplier}
-					onChange={(e) => updateTextSettings('lineHeightMultiplier', Number(e.target.value))}
+					value={state.textSettings.verticalSpacing}
+					onChange={(e) => updateTextSettings('verticalSpacing', Number(e.target.value))}
 					sx={{ mr: 1, flex: 1, maxWidth: 'max-content' }}
-					inputProps={{ min: 0.1, max: 5, step: 0.1 }}
+					inputProps={{ min: -100, max: 100, step: 1 }}
+				/>
+				<TextField
+					size="small"
+					label="Отступ по горизонтали (субпикс.)"
+					type="number"
+					value={state.textSettings.horizontalSpacing}
+					onChange={(e) => updateTextSettings('horizontalSpacing', Number(e.target.value))}
+					sx={{ mr: 1, flex: 1, maxWidth: 'max-content' }}
+					inputProps={{ min: -100, max: 100, step: 1 }}
 				/>
 				<TextField
 					size="small"

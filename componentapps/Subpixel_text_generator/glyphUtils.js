@@ -1,99 +1,101 @@
-// glyphUtils.js
-export function calculateGlyphs(imageWidth, imageHeight, textSettings) {
-    const { text, fontFamily, fontSize, direction } = textSettings;
-    if (!text || !imageWidth || !imageHeight) return [];
+export function calculateGlyphs(imageWidth, imageHeight, textSettings, glyphAtlas) {
+    const { text, direction, horizontalSpacing, verticalSpacing } = textSettings;
+    if (!text || !imageWidth || !imageHeight || !glyphAtlas) return [];
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const font = `${fontSize}px ${fontFamily}`;
-    ctx.font = font;
+    const imageWidthSubpx = imageWidth * 3;
+    const imageHeightSubpx = imageHeight * 3;
+    const horizontalGap = Math.round(horizontalSpacing);//ни в коем случае не max(0,...) // субпиксели
+    const verticalGap = Math.round(verticalSpacing) * 3;//ни в коем случае не max(0,...) // переводим пиксели в субпиксели
 
-    const lineHeight = fontSize * textSettings.lineHeightMultiplier;
-    const widthScale = textSettings.widthScale;
-
+    // Все символы имеют одинаковую высоту (heightSubpx в атласе)
+    const maxHeightSubpx = Math.max(1, ...Object.values(glyphAtlas).map(e => e.heightSubpx));
     const glyphs = [];
     let index = 0;
     let charIndex = 0;
 
-    const addGlyph = (char, x, y, width) => {
-        glyphs.push({ char, x, y, width, height: lineHeight, index });
+    const chars = (direction === 'rtl' || direction === 'btt') ? Array.from(text).reverse() : Array.from(text);
+
+    const addGlyph = (char, xSubpx, ySubpx, widthSubpx, heightSubpx) => {
+        glyphs.push({
+            char,
+            x: xSubpx / 3,
+            y: ySubpx / 3,
+            width: widthSubpx / 3,
+            height: heightSubpx / 3,
+            xSubpx,
+            ySubpx,
+            widthSubpx,
+            heightSubpx,
+            index,
+        });
         index++;
     };
 
-    const getChars = () => {
-        if (direction === 'rtl') return text.split('').reverse();
-        if (direction === 'btt') return text.split('').reverse();
-        return text.split('');
-    };
-
-    const chars = getChars();
-
     if (direction === 'ltr' || direction === 'rtl') {
-        let y = 0;
-        while (y + lineHeight <= imageHeight) {
+        let ySubpx = 0;
+        while (ySubpx + maxHeightSubpx <= imageHeightSubpx) {
             if (direction === 'ltr') {
-                let xFloat = 0;
+                let xSubpx = 0;
                 while (true) {
                     const char = chars[charIndex % chars.length];
                     charIndex++;
-                    const charWidth = ctx.measureText(char).width;
-                    const glyphWidth = charWidth * widthScale; // точная ширина
-                    if (xFloat + glyphWidth > imageWidth) break;
-                    const x = Math.round(xFloat); // целая координата
-                    addGlyph(char, x, y, glyphWidth);
-                    xFloat += glyphWidth;
+                    const entry = glyphAtlas[char];
+                    if (!entry) continue;
+                    const w = entry.widthSubpx;
+                    if (xSubpx + w > imageWidthSubpx) break;
+                    addGlyph(char, xSubpx, ySubpx, w, maxHeightSubpx);
+                    xSubpx += w + horizontalGap;
                 }
             } else { // rtl
-                let xFloat = imageWidth;
+                let xSubpx = imageWidthSubpx;
                 while (true) {
                     const char = chars[charIndex % chars.length];
                     charIndex++;
-                    const charWidth = ctx.measureText(char).width;
-                    const glyphWidth = charWidth * widthScale;
-                    const newXFloat = xFloat - glyphWidth;
-                    if (newXFloat < 0) break;
-                    const x = Math.round(newXFloat);
-                    addGlyph(char, x, y, glyphWidth);
-                    xFloat = newXFloat;
+                    const entry = glyphAtlas[char];
+                    if (!entry) continue;
+                    const w = entry.widthSubpx;
+                    const newX = xSubpx - w;
+                    if (newX < 0) break;
+                    addGlyph(char, newX, ySubpx, w, maxHeightSubpx);
+                    xSubpx = newX - horizontalGap;
                 }
             }
-            y += lineHeight;
+            ySubpx += maxHeightSubpx + verticalGap;
         }
     } else if (direction === 'ttb' || direction === 'btt') {
-        let maxGlyphWidth = 0;
-        for (const char of text) {
-            const charWidth = ctx.measureText(char).width;
-            const glyphWidth = charWidth * widthScale;
-            if (glyphWidth > maxGlyphWidth) maxGlyphWidth = glyphWidth;
+        let maxWidthSubpx = 1;
+        for (const ch of text) {
+            const entry = glyphAtlas[ch];
+            if (entry && entry.widthSubpx > maxWidthSubpx) maxWidthSubpx = entry.widthSubpx;
         }
-        // не округляем maxGlyphWidth
 
-        let xFloat = 0;
-        while (xFloat + maxGlyphWidth <= imageWidth) {
-            const x = Math.round(xFloat);
+        let xSubpx = 0;
+        while (xSubpx + maxWidthSubpx <= imageWidthSubpx) {
             if (direction === 'ttb') {
-                let yFloat = 0;
+                let ySubpx = 0;
                 while (true) {
                     const char = chars[charIndex % chars.length];
                     charIndex++;
-                    if (yFloat + lineHeight > imageHeight) break;
-                    const y = Math.round(yFloat);
-                    addGlyph(char, x, y, maxGlyphWidth);
-                    yFloat += lineHeight;
+                    const entry = glyphAtlas[char];
+                    if (!entry) continue;
+                    if (ySubpx + maxHeightSubpx > imageHeightSubpx) break;
+                    addGlyph(char, xSubpx, ySubpx, maxWidthSubpx, maxHeightSubpx);
+                    ySubpx += maxHeightSubpx + verticalGap;
                 }
             } else { // btt
-                let yFloat = imageHeight;
+                let ySubpx = imageHeightSubpx;
                 while (true) {
                     const char = chars[charIndex % chars.length];
                     charIndex++;
-                    const newYFloat = yFloat - lineHeight;
-                    if (newYFloat < 0) break;
-                    const y = Math.round(newYFloat);
-                    addGlyph(char, x, y, maxGlyphWidth);
-                    yFloat = newYFloat;
+                    const entry = glyphAtlas[char];
+                    if (!entry) continue;
+                    const newY = ySubpx - maxHeightSubpx;
+                    if (newY < 0) break;
+                    addGlyph(char, xSubpx, newY, maxWidthSubpx, maxHeightSubpx);
+                    ySubpx = newY - verticalGap;
                 }
             }
-            xFloat += maxGlyphWidth;
+            xSubpx += maxWidthSubpx + horizontalGap;
         }
     }
 

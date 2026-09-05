@@ -10,17 +10,18 @@ export const initialState = {
 	isDrawing: false,
 	draft: null,
 	currentColor: { hex: '#ff0000', alpha: 255 },
-	// Новое:
 	textSettings: {
-		text: 'Lorem ipsum dolor sit amet ',
+		text: 'Lorem ipsum dolor sit amet ',
 		fontFamily: 'Arial',
 		fontSize: 16,
-		direction: 'ltr', // ltr, rtl, ttb, btt
-		lineHeightMultiplier: 1,   // множитель высоты строки относительно fontSize
-		widthScale: 1/3, // субпиксельное сжатие
+		direction: 'ltr',
+		verticalSpacing: 0,      // отступ между строками в пикселях
+		horizontalSpacing: 1,    // отступ между глифами в субпикселях
+		widthScale: 0.33333333333333333333,           // коэффициент сжатия ширины (1 = без изменений)
 	},
 	glyphs: [], // [{ char, x, y, width, height }]
 	layerSettingsId: null,
+	glyphAtlas: null,
 };
 
 // Функция для генерации уникального id с fallback
@@ -33,6 +34,9 @@ const generateId = () => {
 
 export function reducer(state, action) {
 	switch (action.type) {
+		case 'SET_GLYPH_ATLAS': {
+			return { ...state, glyphAtlas: action.payload };
+		}
 		case 'SET_TEXT_SETTINGS': {
 			const newSettings = { ...state.textSettings, ...action.payload };
 			return { ...state, textSettings: newSettings };
