@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { drawLayers, drawAllGlyphs, getLayerBounds, isPointInLayer, fillLayerWithGradient } from './drawUtils';
+import { drawLayers, drawAllGlyphs, getLayerBounds, isPointInLayer, fillLayerWithGradient, assignLayerInfoToGlyphs } from './drawUtils';
 import { saveAs } from 'file-saver';
 
 function getCharFromGlyph(glyph, text) {
@@ -102,68 +102,81 @@ export function createGlyphAtlas(text, fontFamily, fontSize, widthScale) {
 /**
  * Рендеринг субпиксельного текста с бинарной логикой.
  */
-function renderSubpixelText(ctx, layer, glyphs, textSettings, imageData, glyphAtlas) {
-	let imageBooleanData =[]
-	for(let i=0;i<imageData.data.length;i++){
-		imageBooleanData.push(!layer.negative);
-	}
-
+function renderSubpixelText(ctx, glyphs, textSettings, imageData, glyphAtlas) {
 	if (!textSettings.text || !glyphs.length || !glyphAtlas) return;
 
-	glyphs.forEach(glyph => {
-		const centerX = glyph.x + glyph.width / 2;
-		const centerY = glyph.y + glyph.height / 2;
-		if (!isPointInLayer(centerX, centerY, layer)) return;
+	const width = imageData.width;
+	const height = imageData.height;
 
+	// Массивы для RGB (без альфа-канала)
+	const totalSubpixels = width * height * 3;
+	const locked = new Uint8Array(totalSubpixels); // 0/1
+	const darken = new Uint8Array(totalSubpixels); // 0/1
+
+	// Идём с конца: верхние глифы первыми
+	for (let gi = glyphs.length - 1; gi >= 0; gi--) {
+		const glyph = glyphs[gi];
 		const char = glyph.char;
-		if (!char) return;
+		if (!char || glyph.negative === null) continue; // глиф вне видимых слоёв
 
 		const entry = glyphAtlas[char];
-		if (!entry || entry.widthSubpx === 0 || entry.heightSubpx === 0) return;
+		if (!entry || entry.widthSubpx === 0 || entry.heightSubpx === 0) continue;
 
 		const { widthSubpx, heightSubpx, brightness } = entry;
 
+		// Пиксельные границы, гарантирующие покрытие всех субпикселей глифа
 		const startX = Math.max(0, Math.floor(glyph.x));
-		const endX = Math.min(imageData.width, Math.ceil(glyph.x + glyph.width));
+		const endX = Math.min(width, Math.ceil(glyph.x + glyph.width));
 		const startY = Math.max(0, Math.floor(glyph.y));
-		const endY = Math.min(imageData.height, Math.ceil(glyph.y + glyph.height));
+		const endY = Math.min(height, Math.ceil(glyph.y + glyph.height));
 
 		for (let dstY = startY; dstY < endY; dstY++) {
 			const subY = dstY * 3 - glyph.ySubpx;
+			// Проверяем, что subY попадает в вертикальный диапазон глифа
 			if (subY < 0 || subY >= heightSubpx) continue;
 
 			for (let dstX = startX; dstX < endX; dstX++) {
-				if (!isPointInLayer(dstX + 0.5, dstY + 0.5, layer)) continue;
-
 				const subXBase = dstX * 3 - glyph.xSubpx;
-				let alphaR = 0, alphaG = 0, alphaB = 0;
+				const pixelDataIndex = (dstY * width + dstX) * 4;
+				const subIdxBase = (dstY * width + dstX) * 3;
 
 				for (let k = 0; k < 3; k++) {
+					const subIdx = subIdxBase + k;
+					if (locked[subIdx]) continue; // уже занято верхним глифом
+
 					const subX = subXBase + k;
+					// Субпиксель должен быть внутри глифа, иначе пропускаем
 					if (subX < 0 || subX >= widthSubpx) continue;
-					const val = brightness[subY * widthSubpx + subX] / 255;
-					if (k === 0) alphaR = val;
-					else if (k === 1) alphaG = val;
-					else alphaB = val;
+
+					// Считываем яркость (0..255)
+					const val = brightness[subY * widthSubpx + subX];
+					const covered = val > 127; // порог ~0.5*255
+
+					if (glyph.negative) {
+						// Негативный: блокируем весь субпиксель, фон затемняем, буквы защищаем
+						locked[subIdx] = 1;
+						darken[subIdx] = covered ? 0 : 1;
+					} else {
+						// Обычный: затемняем только покрытые, фон не блокируем
+						if (covered) {
+							locked[subIdx] = 1;
+							darken[subIdx] = 1;
+						}
+						// Если не покрыт, субпиксель остаётся доступным для нижних глифов
+					}
 				}
-
-				// Бинаризация
-				alphaR = alphaR > 0.5;
-				alphaG = alphaG > 0.5;
-				alphaB = alphaB > 0.5;
-
-				const dstIdx = (dstY * imageData.width + dstX) * 4;
-				//инвертируем субпиксели в логическом списке
-				if (alphaR) imageBooleanData[dstIdx] = layer.negative;
-				if (alphaG) imageBooleanData[dstIdx + 1] = layer.negative;
-				if (alphaB) imageBooleanData[dstIdx + 2] = layer.negative;
 			}
 		}
-	});
-	//рендерим изобжение
-	for (let [i,channel] of Object.entries(imageBooleanData)) {
-		if (i % 4 == 3) continue;
-		imageData.data[i] = channel ? Math.max(1, imageData.data[i]) : 0;
+	}
+
+	// Применяем затемнение к исходным данным (RGB)
+	for (let i = 0; i < totalSubpixels; i++) {
+		if (darken[i]) {
+			// Индекс в data с учётом альфы: i*4/3 + ... но проще пересчитать
+			const pixelIndex = Math.floor(i / 3) * 4;
+			const channel = i % 3;
+			imageData.data[pixelIndex + channel] = 0;
+		}
 	}
 }
 
@@ -180,6 +193,7 @@ export const exportImage = (image, layers, glyphs, textSettings, glyphAtlas) => 
 
 	const visibleLayers = layers.filter(l => l.visible);
 
+	// Рисуем градиенты слоёв (как в интерфейсе)
 	visibleLayers.forEach(layer => {
 		if (layer.colorPoints && layer.colorPoints.length > 0) {
 			ctx.save();
@@ -190,9 +204,12 @@ export const exportImage = (image, layers, glyphs, textSettings, glyphAtlas) => 
 
 	const finalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-	visibleLayers.forEach(layer => {
-		renderSubpixelText(ctx, layer, glyphs, textSettings, finalImageData, glyphAtlas);
-	});
+	// Копируем глифы и назначаем им верхний слой
+	const updatedGlyphs = glyphs.map(g => ({ ...g }));
+	assignLayerInfoToGlyphs(updatedGlyphs, layers);
+
+	// Один вызов рендера субпиксельного текста
+	renderSubpixelText(ctx, updatedGlyphs, textSettings, finalImageData, glyphAtlas);
 
 	ctx.putImageData(finalImageData, 0, 0);
 

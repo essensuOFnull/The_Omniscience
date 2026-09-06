@@ -1,4 +1,22 @@
 // drawUtils.js
+export const assignLayerInfoToGlyphs = (glyphs, layers) => {
+	const visibleLayers = layers.filter(l => l.visible);
+	glyphs.forEach(glyph => {
+		const centerX = glyph.x + glyph.width / 2;
+		const centerY = glyph.y + glyph.height / 2;
+		let topLayer = null;
+		// Ищем верхний видимый слой, содержащий центр глифа
+		for (let i = visibleLayers.length - 1; i >= 0; i--) {
+			if (isPointInLayer(centerX, centerY, visibleLayers[i])) {
+				topLayer = visibleLayers[i];
+				break;
+			}
+		}
+		// Если слой не найден, negative = null (глиф не будет отрисован)
+		glyph.negative = topLayer ? topLayer.negative : null;
+	});
+};
+
 export const drawLayers = (ctx, layers, activeLayerId, isDraft = false) => {
 	layers.forEach(layer => {
 		const color = layer.color || '#ff0000';
