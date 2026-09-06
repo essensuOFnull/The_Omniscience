@@ -107,24 +107,47 @@ function renderSubpixelText(ctx, glyphs, textSettings, imageData, glyphAtlas) {
 
 	const width = imageData.width;
 	const height = imageData.height;
+	const finalDark = new Uint8Array(width * height * 3); // 0 – светлый, 1 – тёмный//эм... окей, но это не соответствует меметике человечества.
 
-	// Массивы для RGB (без альфа-канала)
-	const totalSubpixels = width * height * 3;
-	const locked = new Uint8Array(totalSubpixels); // 0/1
-	const darken = new Uint8Array(totalSubpixels); // 0/1
+	// ---------- ЭТАП 1: Инициализация фона негативных глифов ----------
+	for (let gi = 0; gi < glyphs.length; gi++) {
+		const glyph = glyphs[gi];
+		if (!glyph.char || glyph.negative === null) continue;
+		if (!glyph.negative) continue; // обычный режим фон не заполняем
 
-	// Идём с конца: верхние глифы первыми
-	for (let gi = glyphs.length - 1; gi >= 0; gi--) {
+		const entry = glyphAtlas[glyph.char];
+		if (!entry || entry.widthSubpx === 0 || entry.heightSubpx === 0) continue;
+
+		const startX = Math.max(0, Math.floor(glyph.x));
+		const endX = Math.max(Math.min(width, Math.ceil(glyph.x + glyph.width + Math.floor(textSettings.horizontalSpacing/2))),0);
+		const startY = Math.max(0, Math.floor(glyph.y));
+		const endY = Math.max(Math.min(height, Math.ceil(glyph.y + glyph.height + Math.floor(textSettings.verticalSpacing/2))),0);
+
+		for (let dstY = startY; dstY < endY; dstY++) {
+			const subY = dstY * 3 - glyph.ySubpx;
+			if (subY < 0 || subY >= entry.heightSubpx) continue;
+
+			for (let dstX = startX; dstX < endX; dstX++) {
+				const subIdxBase = (dstY * width + dstX) * 3;
+				// Весь пиксель затемняем (все три субпикселя)
+				finalDark[subIdxBase] = 1;
+				finalDark[subIdxBase + 1] = 1;
+				finalDark[subIdxBase + 2] = 1;
+			}
+		}
+	}
+
+	// ---------- ЭТАП 2: Обработка чернил символов ----------
+	for (let gi = 0; gi < glyphs.length; gi++) {
 		const glyph = glyphs[gi];
 		const char = glyph.char;
-		if (!char || glyph.negative === null) continue; // глиф вне видимых слоёв
+		if (!char || glyph.negative === null) continue;
 
 		const entry = glyphAtlas[char];
 		if (!entry || entry.widthSubpx === 0 || entry.heightSubpx === 0) continue;
 
 		const { widthSubpx, heightSubpx, brightness } = entry;
 
-		// Пиксельные границы, гарантирующие покрытие всех субпикселей глифа
 		const startX = Math.max(0, Math.floor(glyph.x));
 		const endX = Math.min(width, Math.ceil(glyph.x + glyph.width));
 		const startY = Math.max(0, Math.floor(glyph.y));
@@ -132,47 +155,33 @@ function renderSubpixelText(ctx, glyphs, textSettings, imageData, glyphAtlas) {
 
 		for (let dstY = startY; dstY < endY; dstY++) {
 			const subY = dstY * 3 - glyph.ySubpx;
-			// Проверяем, что subY попадает в вертикальный диапазон глифа
 			if (subY < 0 || subY >= heightSubpx) continue;
 
 			for (let dstX = startX; dstX < endX; dstX++) {
 				const subXBase = dstX * 3 - glyph.xSubpx;
-				const pixelDataIndex = (dstY * width + dstX) * 4;
 				const subIdxBase = (dstY * width + dstX) * 3;
 
 				for (let k = 0; k < 3; k++) {
-					const subIdx = subIdxBase + k;
-					if (locked[subIdx]) continue; // уже занято верхним глифом
-
 					const subX = subXBase + k;
-					// Субпиксель должен быть внутри глифа, иначе пропускаем
-					if (subX < 0 || subX >= widthSubpx) continue;
+					const subIdx = subIdxBase + k;
 
-					// Считываем яркость (0..255)
-					const val = brightness[subY * widthSubpx + subX];
-					const covered = val > 127; // порог ~0.5*255
-
-					if (glyph.negative) {
-						// Негативный: блокируем весь субпиксель, фон затемняем, буквы защищаем
-						locked[subIdx] = 1;
-						darken[subIdx] = covered ? 0 : 1;
-					} else {
-						// Обычный: затемняем только покрытые, фон не блокируем
-						if (covered) {
-							locked[subIdx] = 1;
-							darken[subIdx] = 1;
-						}
-						// Если не покрыт, субпиксель остаётся доступным для нижних глифов
+					let covered = false;
+					if (subX >= 0 && subX < widthSubpx) {
+						const val = brightness[subY * widthSubpx + subX];
+						covered = val > 127;
+					}
+					//вне зависимости от режима, именно ИНВЕРТИРУЕМ)
+					if (covered) {
+						finalDark[subIdx] = !finalDark[subIdx];
 					}
 				}
 			}
 		}
 	}
 
-	// Применяем затемнение к исходным данным (RGB)
-	for (let i = 0; i < totalSubpixels; i++) {
-		if (darken[i]) {
-			// Индекс в data с учётом альфы: i*4/3 + ... но проще пересчитать
+	// ---------- ПРИМЕНЕНИЕ МАСКИ ----------
+	for (let i = 0; i < finalDark.length; i++) {
+		if (finalDark[i] === 1) {
 			const pixelIndex = Math.floor(i / 3) * 4;
 			const channel = i % 3;
 			imageData.data[pixelIndex + channel] = 0;
