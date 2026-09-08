@@ -49,7 +49,7 @@ export default function TitleBar({
 					<Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden' }}>
 						{app?.icon ? <img src={app.icon} width="16" height="16" alt="" /> : <span>📄</span>}
 						<Typography variant="body2" noWrap sx={{userSelect:'none'}}>
-							{browserMode ? (pageTitle || currentUrl || 'Новая вкладка') : (app?.title || 'Окно')}
+							{browserMode ? (pageTitle || currentUrl || 'Новая вкладка') : (pageTitle || app?.title || 'Окно')}
 						</Typography>
 					</Box>
 					<Box sx={{ display: 'flex', gap: 0.5 }}>

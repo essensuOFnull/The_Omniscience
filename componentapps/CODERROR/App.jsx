@@ -169,7 +169,7 @@ function App() {
 			const now = performance.now();
 			if (now - lastFpsUpdate >= 1000) {
 				const fps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
-				document.title = `FPS: ${fps}`;
+				document.title = `CODERROR - очередная попытка - FPS: ${fps}`;
 				frameCount = 0;
 				lastFpsUpdate = now;
 			}
