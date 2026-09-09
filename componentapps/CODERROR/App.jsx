@@ -299,7 +299,35 @@ function App() {
 	return (
 		<div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }} className='ignore_The_Omniscience_Theme'>
 			<div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0 }} />
+			<pre className='ignore_The_Omniscience_Theme' style={{
+				position: 'absolute',
+				left: '50%',
+				top: `${cellHeight}px`,
+				transform: 'translate(-50%, 0)',
+				maxWidth: 'fit-content',
+				maxHeight: 'min-content',
+				color: 'transparent',
+				padding:0,
+				margin:0,
+				// Зацикливаем градиент: он начинается и заканчивается красным цветом (rgba(255,0,0,1))
+				backgroundImage: 'linear-gradient(90deg, rgba(255,0,0,1) 0%, rgba(255,0,255,1) 33%, rgba(0,0,255,1) 66%, rgba(255,0,0,1) 100%)',
+				backgroundSize: '200% 100%', // Растягиваем по горизонтали для плавной прокрутки
+				backgroundClip: 'text',
+				WebkitBackgroundClip: 'text',
 
+				display: 'block',
+				textShadow: '4px 4px 1px rgba(255,0,0,0.3), 8px 8px 1px rgba(255,0,255,0.3), 12px 12px 1px rgba(0,0,255,0.3)',
+
+				// Бесконечное линейное движение влево. 6s — скорость, можно менять
+				animation: 'logoGradientMove 1s linear infinite'
+			}}>
+				░█████╗░░█████╗░██████╗░███████╗██████╗░██████╗░░█████╗░██████╗░<br />
+				██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔══██╗<br />
+				██║░░╚═╝██║░░██║██║░░██║█████╗░░██████╔╝██████╔╝██║░░██║██████╔╝<br />
+				██║░░██╗██║░░██║██║░░██║██╔══╝░░██╔══██╗██╔══██╗██║░░██║██╔══██╗<br />
+				╚█████╔╝╚█████╔╝██████╔╝███████╗██║░░██║██║░░██║╚█████╔╝██║░░██║<br />
+				░╚════╝░░╚════╝░╚═════╝░╚══════╝╚═╝░░╚═╝╚═╝░░╚═╝░╚════╝░╚═╝░░╚═╝
+			</pre>
 			{isLoading && (
 				<div style={{
 					position: 'fixed',
