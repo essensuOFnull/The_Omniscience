@@ -57,6 +57,20 @@
         return el._TheOmniscienceTextId;
     }
 
+    /* === RECURSIVE ===
+       Проверка, что элемент (или любой его предок) помечен как
+       "не трогать". Класс ignore_The_Omniscience_Theme действует
+       только на сам элемент. Класс ignore_The_Omniscience_Theme_recursive
+       действует на элемент и всё его поддерево, включая динамически
+       добавленные узлы (что критично для CodeMirror, который вставляет
+       декорации уже после первичного обхода DOM). */
+    function isIgnored(el) {
+        if (!el || el.nodeType !== 1) return true;
+        if (el.classList && el.classList.contains('ignore_The_Omniscience_Theme')) return true;
+        if (el.closest && el.closest('.ignore_The_Omniscience_Theme_recursive')) return true;
+        return false;
+    }
+
     /* Фон */
     function colorExpression(varName) {
         return `rgba(from var(${varName}) `
@@ -92,7 +106,9 @@
     const textProcessed = new WeakSet();
 
     function processElement(el) {
-        if (!el || processed.has(el)||el.classList.contains('ignore_The_Omniscience_Theme')) return;
+        if (!el || processed.has(el)) return;
+        /* === RECURSIVE === */
+        if (isIgnored(el)) return;
         processed.add(el);
 
         // ======== фон (как раньше) ========
@@ -141,17 +157,17 @@
 
     function processTextColor(el) {
         if (!el || textProcessed.has(el)) return;
+        /* === RECURSIVE === */
+        if (isIgnored(el)) return;
         const parent = el.parentElement;
         const parentColor = parent ? getComputedStyle(parent).color : null;
         const myColor = getComputedStyle(el).color;
 
-        // Пропускаем элементы с прозрачным цветом (не мешаем)
         if (myColor === 'rgba(0, 0, 0, 0)' || myColor === 'transparent') {
             textProcessed.add(el);
             return;
         }
 
-        // Если цвет явно отличается от родительского — считаем, что он задан явно
         if (!parent || myColor !== parentColor) {
             const id = getTextId(el);
             const origVar = `--TheOmniscience-text-${id}`;
@@ -159,7 +175,6 @@
             el.style.setProperty('color', textColorExpression(origVar, 'var(--TheOmniscience-text-brightness)'), 'important');
             textProcessed.add(el);
         } else {
-            // Иначе цвет унаследован, не трогаем
             textProcessed.add(el);
         }
     }
@@ -167,15 +182,15 @@
     function reprocessElement(el) {
         processed.delete(el);
         textProcessed.delete(el);
+        /* === RECURSIVE === */
+        if (isIgnored(el)) return;
         processElement(el);
     }
 
     /* ============== Запуск обработки ============== */
     function startProcessing() {
-        // Обрабатываем всё существующее
         document.querySelectorAll('*').forEach(processElement);
 
-        // Наблюдаем за изменениями
         new MutationObserver(mutations => {
             for (const m of mutations) {
                 if (m.type === 'childList') {
