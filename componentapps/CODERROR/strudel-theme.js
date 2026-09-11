@@ -14,7 +14,7 @@ export default createTheme({
         gutterBackground: 'transparent',
         gutterForeground: '#4a5568',
         gutterBorder: 'transparent',
-        fontFamily: 'monospace',
+        fontFamily: 'Terminus',
     },
     styles: [
         { tag: t.comment, color: '#4a5568', fontStyle: 'italic' },

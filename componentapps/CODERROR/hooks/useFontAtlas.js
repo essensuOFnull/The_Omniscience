@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { generateFontAtlas } from '../utils/fontAtlas.js';
+import { getFontAtlas } from '../utils/fontAtlas.js';
 
 export function useFontAtlas({ ready, cellWidth, cellHeight, fontFamily }) {
 	const [fontTextures, setFontTextures] = useState(null);
@@ -15,7 +15,7 @@ export function useFontAtlas({ ready, cellWidth, cellHeight, fontFamily }) {
 			await document.fonts.load(`${cellHeight}px "${fontFamily}"`);
 			await document.fonts.ready;
 
-			const textures = await generateFontAtlas(cellWidth, cellHeight, fontFamily);
+			const textures = await getFontAtlas(cellWidth, cellHeight, fontFamily, 1024);
 			if (cancelled) return;
 
 			fontTexturesRef.current = textures;
