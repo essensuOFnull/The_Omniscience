@@ -12,7 +12,7 @@ const strudelTheme = EditorView.theme(
             backgroundColor: 'transparent',
             color: '#cbd5e1',
             fontSize: '14px',
-            fontFamily: 'Terminus, monospace',
+            fontFamily: 'Terminus',
         },
         '.cm-content': { caretColor: 'transparent', padding: '0' },
         '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'transparent' },
