@@ -9,7 +9,6 @@ export default function MusicEditor({
 }) {
 	return (
 		<div
-			className="ignore_The_Omniscience_Theme_recursive"
 			style={{
 				position: 'absolute',
 				left: '50%',
@@ -21,6 +20,8 @@ export default function MusicEditor({
 				maxHeight: `calc(100vh - ${cellHeight * 9}px)`,
 				overflow: 'auto',
 				zIndex: 5,
+				background:'#00000099',
+				boxShadow:`0px 0px ${cellHeight}px ${cellHeight}px #00000099`
 			}}
 		>
 			<CodeMirror6

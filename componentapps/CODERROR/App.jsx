@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import CharacterGrid from './components/CharacterGrid.jsx';
 import Logo from './components/Logo.jsx';
+import Info from './components/Info.jsx';
 import MusicEditor from './components/MusicEditor.jsx';
 
 import { useStrudel } from './hooks/useStrudel.js';
@@ -55,7 +56,6 @@ function App() {
 				height: '100vh',
 				overflow: 'hidden',
 			}}
-			className="ignore_The_Omniscience_Theme"
 		>
 			<CharacterGrid
 				width={width}
@@ -65,7 +65,7 @@ function App() {
 				fontFamily={fontFamily}
 				tpsRef={tpsRef}
 			/>
-
+			<Info/>
 			<Logo cellHeight={cellHeight} />
 
 			{isMusicReady && (

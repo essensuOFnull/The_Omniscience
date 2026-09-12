@@ -3,7 +3,6 @@ import React from 'react';
 export default function Logo({ cellHeight }) {
 	return (
 		<pre
-			className="ignore_The_Omniscience_Theme"
 			style={{
 				position: 'absolute',
 				left: '50%',
