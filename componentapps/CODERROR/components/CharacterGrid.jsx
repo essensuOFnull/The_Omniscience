@@ -7,6 +7,8 @@ import LoadingOverlay from './LoadingOverlay.jsx';
 
 import { useCursor } from '../hooks/useCursor.js';
 
+import { useThreeBackground } from '../hooks/useThreeBackground.js';
+
 export default function CharacterGrid({
 	width,
 	height,
@@ -17,6 +19,15 @@ export default function CharacterGrid({
 }) {
 	const containerRef = useRef(null);
 	const cursorRef = useCursor(containerRef);
+	const threeCanvasRef = useRef(null);
+
+	// фон
+	useThreeBackground(threeCanvasRef, {
+		textureUrl: '../../../componentapps/CODERROR/textures/MainMenu/cubemap/', // ← подставьте свой путь
+		speedX: 1,
+		speedY:0.5,
+		fov: 75,
+	});
 
 	const { app, gridContainer } = usePixiApp(containerRef, width, height);
 	const { fontTextures, fontTexturesRef, isLoading } = useFontAtlas({
@@ -43,6 +54,17 @@ export default function CharacterGrid({
 
 	return (
 		<>
+			<canvas
+				ref={threeCanvasRef}
+				style={{
+					position: 'absolute',
+					inset: 0,
+					width: '100%',
+					height: '100%',
+					zIndex: 0,
+					display: 'block',
+				}}
+			/>
 			<div ref={containerRef} style={{ position: 'absolute', top: 0, left: 0 }} />
 			{isLoading && <LoadingOverlay />}
 		</>
