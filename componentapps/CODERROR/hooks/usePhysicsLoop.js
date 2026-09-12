@@ -11,6 +11,12 @@ const MAX_FRAME_MS = 250; // защита от «спирали смерти» �
 /**
  * Цикл физики (60 tps): подсветка активных haps в CodeMirror.
  * Использует rAF + аккумулятор для стабильного фиксированного шага.
+ *
+ * @param {{
+ *   enabled: boolean,
+ *   replRef, patternRef, miniLocationsRef, viewRef,
+ *   tpsRef?: React.RefObject<number>,   // ← сюда пишется измеренный TPS
+ * }} args
  */
 export function usePhysicsLoop({
 	enabled,
@@ -18,6 +24,7 @@ export function usePhysicsLoop({
 	patternRef,
 	miniLocationsRef,
 	viewRef,
+	tpsRef,
 }) {
 	const appliedMiniLocsRef = useRef(false);
 
@@ -28,6 +35,10 @@ export function usePhysicsLoop({
 		let last = performance.now();
 		let acc = 0;
 		let tickCount = 0;
+
+		// Счётчики для измерения реального TPS
+		let stepCount = 0;
+		let lastTpsUpdate = performance.now();
 
 		const step = () => {
 			tickCount++;
@@ -67,7 +78,19 @@ export function usePhysicsLoop({
 
 			while (acc >= FIXED_DT) {
 				step();
+				stepCount++;
 				acc -= FIXED_DT;
+			}
+
+			// Раз в секунду публикуем измеренный TPS
+			if (tpsRef) {
+				const nowWall = performance.now();
+				const dtWall = nowWall - lastTpsUpdate;
+				if (dtWall >= 1000) {
+					tpsRef.current = (stepCount * 1000) / dtWall;
+					stepCount = 0;
+					lastTpsUpdate = nowWall;
+				}
 			}
 
 			rafId = requestAnimationFrame(loop);
@@ -79,7 +102,7 @@ export function usePhysicsLoop({
 			cancelled = true;
 			if (rafId) cancelAnimationFrame(rafId);
 		};
-	}, [enabled, replRef, patternRef, miniLocationsRef, viewRef]);
+	}, [enabled, replRef, patternRef, miniLocationsRef, viewRef, tpsRef]);
 
 	return appliedMiniLocsRef;
 }

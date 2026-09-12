@@ -5,14 +5,18 @@ import { useGridSprites } from '../hooks/useGridSprites.js';
 import { useRenderLoop } from '../hooks/useRenderLoop.js';
 import LoadingOverlay from './LoadingOverlay.jsx';
 
+import { useCursor } from '../hooks/useCursor.js';
+
 export default function CharacterGrid({
 	width,
 	height,
 	cellWidth,
 	cellHeight,
 	fontFamily,
+	tpsRef
 }) {
 	const containerRef = useRef(null);
+	const cursorRef = useCursor(containerRef);
 
 	const { app, gridContainer } = usePixiApp(containerRef, width, height);
 	const { fontTextures, fontTexturesRef, isLoading } = useFontAtlas({
@@ -21,7 +25,7 @@ export default function CharacterGrid({
 		cellHeight,
 		fontFamily,
 	});
-	const spritesRef = useGridSprites({
+	const cellsRef = useGridSprites({
 		gridContainer,
 		fontTextures,
 		width,
@@ -30,7 +34,12 @@ export default function CharacterGrid({
 		cellHeight,
 	});
 
-	useRenderLoop({ app, spritesRef, fontTexturesRef });
+	useRenderLoop({
+		app, cellsRef, fontTexturesRef, tpsRef,
+		cursorRef,
+		cursorRadius: 120,
+		cursorFalloff: 1,
+	});
 
 	return (
 		<>

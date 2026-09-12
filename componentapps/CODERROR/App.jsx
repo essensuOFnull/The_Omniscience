@@ -21,6 +21,8 @@ function App() {
 
 	const viewRef = useRef(null);
 
+	const tpsRef = useRef(0);
+
 	// Strudel: init + загрузка кода + получение pattern/miniLocations
 	const { musicCode, isMusicReady, replRef, patternRef, miniLocationsRef } =
 		useStrudel({ musicPath: MUSIC_PATH });
@@ -32,6 +34,7 @@ function App() {
 		patternRef,
 		miniLocationsRef,
 		viewRef,
+		tpsRef,
 	});
 
 	// Resize
@@ -60,6 +63,7 @@ function App() {
 				cellWidth={cellWidth}
 				cellHeight={cellHeight}
 				fontFamily={fontFamily}
+				tpsRef={tpsRef}
 			/>
 
 			<Logo cellHeight={cellHeight} />
