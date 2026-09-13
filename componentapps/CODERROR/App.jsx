@@ -1,86 +1,44 @@
 import './utils/audioWorkletPatch.js';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
+import { EngineProvider } from './context/EngineContext.jsx';
+import ThreeLayer from './components/layers/ThreeLayer.jsx';
+import PixiLayer from './components/layers/PixiLayer.jsx';
+import UILayer from './components/layers/UILayer.jsx';
+import MainMenu from './components/MainMenu.jsx';
+import { useWindowSize } from './hooks/useWindowSize.js';
+import { CUBEMAP_FACES } from './config/cubemap.js';
 
-import CharacterGrid from './components/CharacterGrid.jsx';
-import Logo from './components/Logo.jsx';
-import Info from './components/Info.jsx';
-import MusicEditor from './components/MusicEditor.jsx';
-
-import { useStrudel } from './hooks/useStrudel.js';
-import { usePhysicsLoop } from './hooks/usePhysicsLoop.js';
-
+const CELL_W = 16;
+const CELL_H = 16;
+const FONT_FAMILY = 'Terminus';
+const TPS = 60;
 const MUSIC_PATH = '../../../componentapps/CODERROR/music/MainMenu.js';
 
-function App() {
-	const cellWidth = 16;
-	const cellHeight = 16;
-	const fontFamily = 'Terminus';
+export default function App() {
+  const { width: winW, height: winH } = useWindowSize();
+  const cols = Math.max(1, Math.ceil(winW / CELL_W));
+  const rows = Math.max(1, Math.ceil(winH / CELL_H));
 
-	const [width, setWidth] = useState(window.innerWidth);
-	const [height, setHeight] = useState(window.innerHeight);
-
-	const viewRef = useRef(null);
-
-	const tpsRef = useRef(0);
-
-	// Strudel: init + загрузка кода + получение pattern/miniLocations
-	const { musicCode, isMusicReady, replRef, patternRef, miniLocationsRef } =
-		useStrudel({ musicPath: MUSIC_PATH });
-
-	// Цикл физики 60 tps: подсветка активных haps
-	usePhysicsLoop({
-		enabled: isMusicReady,
-		replRef,
-		patternRef,
-		miniLocationsRef,
-		viewRef,
-		tpsRef,
-	});
-
-	// Resize
-	useEffect(() => {
-		const onResize = () => {
-			setWidth(window.innerWidth);
-			setHeight(window.innerHeight);
-		};
-		window.addEventListener('resize', onResize);
-		return () => window.removeEventListener('resize', onResize);
-	}, []);
-
-	return (
-		<div
-			style={{
-				position: 'relative',
-				width: '100vw',
-				height: '100vh',
-				overflow: 'hidden',
-			}}
-		>
-			<CharacterGrid
-				width={width}
-				height={height}
-				cellWidth={cellWidth}
-				cellHeight={cellHeight}
-				fontFamily={fontFamily}
-				tpsRef={tpsRef}
-			/>
-			<Info/>
-			<Logo cellHeight={cellHeight} />
-
-			{isMusicReady && (
-				<MusicEditor
-					value={musicCode}
-					cellWidth={cellWidth}
-					cellHeight={cellHeight}
-					onCreateEditor={(view) => {
-						viewRef.current = view;
-						console.log('[cm] editor created');
-					}}
-				/>
-			)}
-		</div>
-	);
+  return (
+    <EngineProvider
+      width={cols} height={rows}
+      tps={TPS}
+      musicPath={MUSIC_PATH}
+    >
+      <ThreeLayer
+        width={winW} height={winH}
+        faces={CUBEMAP_FACES}
+        speedX={1} speedY={0.5} fov={75}
+      />
+      <PixiLayer
+        width={cols} height={rows}
+        cellWidth={CELL_W} cellHeight={CELL_H}
+        fontFamily={FONT_FAMILY}
+      />
+      <UILayer>
+        <MainMenu cellWidth={CELL_W} cellHeight={CELL_H} />
+      </UILayer>
+    </EngineProvider>
+  );
 }
-
-export default App;
