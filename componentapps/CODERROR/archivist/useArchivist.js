@@ -4,7 +4,7 @@ import { archivistLines } from './dialogue.js';
 // Раньше здесь был allEntries — такого экспорта нет.
 // entries.js отдаёт дерево; в плоскую последовательность его
 // разворачивает flattenBook в Archivist.jsx.
-import { entries as bookEntries } from './entries.js';
+import { entries } from './entries/index.js';
 
 // Ключ комнаты. Отделён от archivistStore (там .arkh и флаги книги).
 // Раньше они жили под одним 'archivist:state:v1' и затирали друг друга.
@@ -99,11 +99,6 @@ export function useArchivist(isOpen) {
     setStage(scene.stage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-
-  // Отдаём полное дерево. Фильтрация и разворот — забота Archivist.jsx
-  // и flattenBook. Скрытые записи из книги не выкидываются — они
-  // становятся серыми плашками, это часть замысла.
-  const entries = useMemo(() => bookEntries, []);
 
   const advance = () => {
     setState((s) => {
