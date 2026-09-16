@@ -8,6 +8,8 @@ import {
   highlightMiniLocations,
 } from './CodeMirror6.jsx';
 
+import Archivist from '../archivist/Archivist.jsx';
+
 export default function MainMenu({
   cellWidth,
   cellHeight,
@@ -148,6 +150,7 @@ export default function MainMenu({
           onCreateEditor={(view) => { viewRef.current = view; }}
         />
       )}
+      <Archivist/>
     </>
   );
 }

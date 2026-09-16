@@ -1,0 +1,621 @@
+/* ───────────────────────── корневой оверлей ───────────────────────── */
+.archivist-overlay {
+  --inset-x: 80px;
+  --inset-y: 48px;
+  position: fixed;
+  inset: var(--inset-y) var(--inset-x);
+  z-index: 9999;
+  background: #000;
+  color: #c8b89a;
+  font-family: 'Courier New', ui-monospace, monospace;
+  overflow: hidden;
+  user-select: none;
+  border-radius: 16px;
+  box-shadow:
+    0 0 16px 16px #000,
+    0 0 0 1px rgba(200, 184, 154, 0.06),
+    inset 0 0 60px rgba(200, 160, 80, 0.03);
+}
+
+/* ───────────────────────── комната ───────────────────────── */
+.archivist-room {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #000;
+  animation: archivist-fade 600ms ease-out;
+}
+@keyframes archivist-fade { from { opacity: 0 } to { opacity: 1 } }
+
+.archivist-flicker {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 55%,
+    rgba(255, 180, 80, 0.05),
+    transparent 60%
+  );
+  animation: archivist-flicker 5s ease-in-out infinite;
+  z-index: 2;
+}
+@keyframes archivist-flicker {
+  0%, 100% { opacity: 0.6 }
+  42%      { opacity: 0.85 }
+  43%      { opacity: 0.35 }
+  44%      { opacity: 0.9 }
+  70%      { opacity: 0.5 }
+}
+
+/* ─── портрет ─── */
+.archivist-portrait {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  height: 100%;
+  width: auto;
+  max-width: none;
+  object-fit: contain;
+  object-position: bottom center;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  z-index: 1;
+}
+
+/* момент «отложил бумаги» — становится чуть светлее */
+.archivist-room--moment .archivist-portrait {
+  filter: brightness(1.15) saturate(1.08);
+  transition: filter 600ms ease;
+}
+
+/* ─── текст ─── */
+.archivist-text {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+  max-width: 660px;
+  padding: 20px 24px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: #d8c8a8;
+  text-align: center;
+  min-height: 60px;
+  text-shadow: 0 0 8px rgba(200, 160, 80, 0.35);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.archivist-caret {
+  display: inline-block;
+  color: #c8a860;
+  animation: archivist-caret 0.8s steps(1) infinite;
+}
+@keyframes archivist-caret { 50% { opacity: 0 } }
+
+.archivist-hint {
+  position: absolute;
+  right: 24px;
+  bottom: 16px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  opacity: 0.4;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ─── кнопка книги ─── */
+.archivist-book-toggle {
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  z-index: 4;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1px solid rgba(200, 184, 154, 0.3);
+  border-radius: 6px;
+  color: #c8b89a;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: lowercase;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms;
+}
+.archivist-book-toggle:hover {
+  background: rgba(200, 184, 154, 0.08);
+  border-color: rgba(200, 184, 154, 0.55);
+}
+.archivist-book-toggle.is-open {
+  color: #f0d8a8;
+  border-color: rgba(240, 216, 168, 0.5);
+}
+
+/* ─── книга поверх комнаты ─── */
+.archivist-book-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: archivist-fade 300ms ease-out;
+}
+
+/* ... остальные стили книги (book-stage, book-spread, book-page и т.д.) — без изменений ... */
+
+.archivist-book-close {
+	position: absolute;
+	top: 20px;
+	right: 24px;
+	width: 36px;
+	height: 36px;
+	z-index: 100;
+	background: transparent;
+	color: #c8b89a;
+	border: 1px solid rgba(200, 184, 154, 0.3);
+	border-radius: 4px;
+	font-size: 20px;
+	cursor: pointer;
+	transition: background 150ms;
+}
+
+.archivist-book-close:hover {
+	background: rgba(200, 184, 154, 0.1);
+}
+
+.book-stage {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 20px;
+}
+
+/* Ключевое: perspective здесь, чтобы анимация flip имела
+   общую точку схода. Родитель статичен, дети в 3D. */
+.book-spread {
+	position: relative;
+	width: 840px;
+	height: 560px;
+	display: flex;
+	perspective: 2400px;
+	perspective-origin: 50% 50%;
+	touch-action: none;
+	cursor: grab;
+}
+
+.book-spread:active {
+	cursor: grabbing;
+}
+
+/* ── статичные страницы ── */
+.book-page {
+	width: 50%;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+	background-color: #ede0c8;
+	background-image: var(--paper-texture, none);
+	background-size: cover;
+	color: #3a2a1a;
+	contain: paint;
+	/* изолирует перерисовку */
+}
+
+/* Тени корешка — inset, статичны, дёшевы.
+   Именно они дают ощущение «стыка», без перекрытия. */
+.book-page-left {
+	box-shadow: inset -25px 0 40px -30px rgba(0, 0, 0, 0.55);
+}
+
+.book-page-right {
+	box-shadow: inset 25px 0 40px -30px rgba(0, 0, 0, 0.55);
+}
+
+.book-page-content {
+	padding: 40px 32px;
+	height: 100%;
+	overflow: hidden;
+	box-sizing: border-box;
+	font-family: 'Georgia', 'Times New Roman', serif;
+	font-size: 15px;
+	line-height: 1.75;
+}
+
+.book-page-title {
+	font-size: 20px;
+	margin: 0 0 16px;
+	padding-bottom: 8px;
+	font-style: italic;
+	letter-spacing: 0.05em;
+	border-bottom: 1px solid rgba(80, 50, 20, 0.3);
+	font-weight: normal;
+}
+
+.book-page-body {
+	white-space: pre-wrap;
+}
+
+.book-page-locked {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 72px;
+	font-style: italic;
+	color: rgba(80, 50, 20, 0.2);
+}
+
+.book-page-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: rgba(80, 50, 20, 0.15);
+	font-size: 24px;
+}
+
+/* ── перелистывающийся лист ── */
+.book-flip {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	transform-style: preserve-3d;
+	will-change: transform;
+	pointer-events: none;
+}
+
+.book-flip-next {
+	left: 50%;
+	width: 50%;
+	transform-origin: left center;
+}
+
+.book-flip-prev {
+	left: 0;
+	width: 50%;
+	transform-origin: right center;
+}
+
+.book-flip-face {
+	position: absolute;
+	inset: 0;
+	backface-visibility: hidden;
+	overflow: hidden;
+	background-color: #ede0c8;
+	background-image: var(--paper-texture, none);
+	background-size: cover;
+	color: #3a2a1a;
+	contain: paint;
+}
+
+.book-flip-back {
+	transform: rotateY(180deg);
+}
+
+/* Градиенты на гранях — «дёшево и сердито» вместо shadow.
+   Создают ощущение кривизны листа. */
+.book-flip-front {
+	box-shadow: inset 30px 0 40px -30px rgba(0, 0, 0, 0.4);
+}
+
+.book-flip-back {
+	box-shadow: inset -30px 0 40px -30px rgba(0, 0, 0, 0.4);
+}
+
+/* ── навигация ── */
+.book-nav {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	color: #c8b89a;
+	font-family: 'Courier New', monospace;
+	font-size: 14px;
+	letter-spacing: 0.15em;
+}
+
+.book-nav button {
+	background: transparent;
+	border: 1px solid rgba(200, 184, 154, 0.3);
+	color: #c8b89a;
+	width: 44px;
+	height: 36px;
+	cursor: pointer;
+	font-size: 16px;
+	border-radius: 4px;
+	transition: background 150ms;
+}
+
+.book-nav button:hover:not(:disabled) {
+	background: rgba(200, 184, 154, 0.1);
+}
+
+.book-nav button:disabled {
+	opacity: 0.2;
+	cursor: default;
+}
+
+.book-nav-pager {
+	min-width: 60px;
+	text-align: center;
+	opacity: 0.6;
+}
+
+.archivist-room--moment .archivist-papers {
+  transform: translate(-50%, 60px);
+  opacity: 0.3;
+  transition: transform 600ms ease, opacity 600ms ease;
+}
+.archivist-room--moment .archivist-figure {
+  opacity: 1;
+  transition: opacity 600ms ease;
+}
+.archivist-room--moment .archivist-desk-glow {
+  background: radial-gradient(ellipse, rgba(255, 210, 130, 0.24), transparent 70%);
+  transition: background 600ms ease;
+}
+.archivist-room--moment .archivist-text {
+  font-size: 17px;
+  letter-spacing: 0.02em;
+}
+
+/* archivist.css */
+
+.book-page-spoiler {
+  cursor: text;
+}
+
+/* Не «замок». Не «?». Сплошной серый прямоугольник на месте
+   текста. Как будто там пока ничего. */
+.book-spoiler-rect {
+  width: 100%;
+  min-height: 60%;
+  background:
+    linear-gradient(180deg, #c9c4b8 0%, #b6b1a4 100%);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+/* После — маленькая пометка снизу. Не «спойлер раскрыт».
+   Просто констатация. */
+.book-spoiler-note {
+  margin-top: 14px;
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.5;
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
+/* Абзацы и цитаты внутри записи — чтобы отбивались как в книге */
+.book-page-body p { margin: 0 0 0.7em; }
+.book-page-body blockquote {
+  margin: 0.8em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid rgba(0,0,0,0.15);
+  font-style: italic;
+}
+.book-page-body blockquote footer {
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  opacity: 0.65;
+  font-style: normal;
+}
+.book-page-body .book-em { font-style: italic; }
+.book-page-body .book-strong { font-weight: 600; }
+.book-page-body .book-pre {
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: rgba(0,0,0,0.03);
+  padding: 0.6em 0.8em;
+  border-radius: 2px;
+}
+.book-page-subtitle {
+  margin: -0.4em 0 0.9em;
+  font-size: 0.85em;
+  opacity: 0.65;
+  font-style: italic;
+}
+
+/* ─────────────── страница: контейнер и колонки ─────────────── */
+
+.book-page-content {
+  /* padding + height — база; display: flex чтобы подстроить
+     под заголовок и колонки, если понадобится */
+  padding: 40px 32px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.book-page-empty {
+  align-items: center;
+  justify-content: center;
+  color: rgba(80, 50, 20, 0.15);
+  font-size: 24px;
+}
+
+/* Неподвижная обёртка колонок. Клипует всё, что за пределами
+   области контента. */
+.book-page-columns-outer {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Движущийся слой. Это блочный контейнер, поэтому multicol
+   здесь реально работает. Сдвигаем колонки через transform. */
+.book-page-columns-inner {
+  height: 100%;
+  column-fill: auto;
+  will-change: transform;
+  /* длинные неразрывные строки ломаем на любом месте */
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* ─────────────── содержимое блоков ─────────────── */
+
+.book-page-columns-inner p,
+.book-page-body p {
+  margin: 0 0 0.7em;
+}
+
+.book-page-columns-inner blockquote,
+.book-page-body blockquote {
+  margin: 0.8em 0;
+  padding-left: 0.9em;
+  border-left: 2px solid rgba(0, 0, 0, 0.15);
+  font-style: italic;
+}
+
+.book-page-columns-inner blockquote footer,
+.book-page-body blockquote footer {
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  opacity: 0.65;
+  font-style: normal;
+}
+
+.book-page-columns-inner .book-em,
+.book-page-body .book-em {
+  font-style: italic;
+}
+
+.book-page-columns-inner .book-strong,
+.book-page-body .book-strong {
+  font-weight: 600;
+}
+
+.book-page-columns-inner .book-pre,
+.book-page-body .book-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.6em 0.8em;
+  border-radius: 2px;
+  break-inside: auto;
+}
+
+/* Заголовки не отрываем от начала текста — если глава не влезает
+   целиком, лучше перенести её на следующую страницу. */
+.book-page-columns-inner .book-page-title,
+.book-page-columns-inner h3,
+.book-page-columns-inner h4 {
+  break-after: avoid;
+}
+
+.book-page-title {
+  font-size: 20px;
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(80, 50, 20, 0.3);
+  font-weight: normal;
+}
+
+.book-page-subtitle {
+  margin: -0.4em 0 0.9em;
+  font-size: 0.85em;
+  opacity: 0.65;
+  font-style: italic;
+}
+
+/* ─────────────── скрытая запись ─────────────── */
+
+.book-page-spoiler {
+  cursor: text;
+  height: 100%;
+}
+
+.book-spoiler-rect {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 60%;
+  background: linear-gradient(180deg, #c9c4b8 0%, #b6b1a4 100%);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.book-spoiler-note {
+  margin-top: 14px;
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.5;
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
+/* Раскрытая скрытая запись — тот же вид, что обычная, но с
+   пометкой снизу. Пока без pagination: записи короткие. */
+.book-page-spoiler-open {
+  padding: 40px 32px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+/* ─────────────── замерный офскрин ─────────────── */
+
+.book-measure-host {
+  position: fixed;
+  left: -99999px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.book-measure-entry {
+  display: block;
+  padding: 0;
+  margin: 0 0 12px 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #3a2a1a;
+  column-fill: auto;
+}
+
+/* ─────────────── внутренние ссылки ─────────────── */
+
+.book-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.book-link:hover {
+  color: #6a4a2a;
+}
+
+.book-link:focus-visible {
+  outline: 1px dotted rgba(106, 74, 42, 0.6);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
