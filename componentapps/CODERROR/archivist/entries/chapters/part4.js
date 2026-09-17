@@ -1,15 +1,8 @@
 // src/archivist/entries/chapters/part4.js
 
-import { lairSeon } from '../records/lair-seon.js';
-import { moralPrinciples } from '../items/moral-principles.js';
-import { scenes } from '../sections/scenes.js';
-import { scenePulseUp } from '../scenes/pulse-up.js';
-import { sceneQuetiapine } from '../scenes/quetiapine.js';
-import { battleSeon } from '../bosses/battle-seon.js';
-import { core } from '../bosses/core.js';
-import { coreItem } from '../items/core-item.js';
 import { whatNext } from '../records/what-next.js';
-import { supremeRoll } from '../records/supreme-roll.js';
+
+import { sunGod } from '../supreme/sun-god.js';
 
 export const part4 = [
   {
@@ -29,14 +22,7 @@ export const part4 = [
     ],
   },
 
-  lairSeon,
-  moralPrinciples,
-  scenes,
-  scenePulseUp,
-  sceneQuetiapine,
-  battleSeon,
-  core,
-  coreItem,
   whatNext,
-  supremeRoll,
+
+  sunGod,
 ];

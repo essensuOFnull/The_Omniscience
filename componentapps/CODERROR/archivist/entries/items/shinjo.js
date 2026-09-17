@@ -7,7 +7,7 @@ export const shinjo = {
   act: 2,
   kind: 'item',
   parent: 'part3',
-  order: 50,
+  order: 70,
   tags: ['item', 'helmet', 'bog-machine', 'curse', 'dependency'],
   links: ['bog-machine', 'podmirye', 'essence', 'seon'],
   hidden: false,

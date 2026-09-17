@@ -16,51 +16,98 @@ import { looterWarrior } from '../synergies/looter-warrior.js';
 
 import { souls } from '../sections/souls.js';
 import { soulKeeper } from '../supreme/soul-keeper.js';
-import { dive } from '../records/dive.js';
-import { shinjo } from '../items/shinjo.js';
-import { essence } from '../supreme/essence.js';
-import { sunGod } from '../supreme/sun-god.js';
+
 import { kormilitsa } from '../gods/kormilitsa.js';
 import { artifact } from '../gods/artifact.js';
 
+import { essence } from '../supreme/essence.js';
+import { essenceDump } from '../locations/essence-dump.js';
+import { dumpMeeting } from '../scenes/dump-meeting.js';
+import { neurochip } from '../items/neurochip.js';
+import { wasteManipulator } from '../items/waste-manipulator.js';
+import { essenceQuests } from '../records/essence-quests.js';
+
+import { shinjo } from '../items/shinjo.js';
+
+import { podmirye } from '../locations/underworld.js';
+import { bogMachine } from '../gods/bog-machine.js';
+import { dive } from '../records/dive.js';
+
+import { lairSeon } from '../records/lair-seon.js';
+import { moralPrinciples } from '../items/moral-principles.js';
+import { scenes } from '../sections/scenes.js';
+import { scenePulseUp } from '../scenes/pulse-up.js';
+import { sceneQuetiapine } from '../scenes/quetiapine.js';
+import { battleSeon } from '../bosses/battle-seon.js';
+import { supremeRoll } from '../records/supreme-roll.js';
+import { core } from '../bosses/core.js';
+import { coreItem } from '../items/core-item.js';
+
 export const part3 = [
-  {
-    id: 'part3',
-    title: 'Часть III. АКТ 2: РАЗВИТИЕ',
-    part: 'part3',
-    act: 2,
-    kind: 'chapter',
-    parent: null,
-    order: 40,
-    tags: ['act2'],
-    links: ['mage', 'engineer', 'looter', 'warrior', 'synergies',
-            'souls', 'dive', 'shinjo', 'essence', 'kormilitsa', 'artifact'],
-    hidden: false,
-    blocks: [
-      { t: 'em', text: 'Ты больше не безымянный файл. У тебя есть имя. У тебя есть тело. У тебя есть целый мир — и этот мир гораздо больше, чем корзина, из которой ты выбрался. Теперь начинается настоящее.' },
-    ],
-  },
+	{
+		id: 'part3',
+		title: 'Часть III. АКТ 2: РАЗВИТИЕ',
+		part: 'part3',
+		act: 2,
+		kind: 'chapter',
+		parent: null,
+		order: 40,
+		tags: ['act2'],
+		links: [
+			'mage', 'engineer', 'looter', 'warrior',
+			'synergies',
+			'souls', 'soul-keeper',
+			'kormilitsa', 'artifact',
+			'essence', 'essence-dump', 'dump-meeting',
+			'neurochip', 'waste-manipulator', 'essence-quests',
+			'dive', 'shinjo',
+			'sun-god',
+		],
+		hidden: false,
+		blocks: [
+			{ t: 'em', text: 'Ты больше не безымянный файл. У тебя есть имя. У тебя есть тело. У тебя есть целый мир — и этот мир гораздо больше, чем корзина, из которой ты выбрался. Теперь начинается настоящее.' },
+		],
+	},
 
-  classes,
-  mage,
-  engineer,
-  looter,
-  warrior,
+	classes,
+	mage,
+	engineer,
+	looter,
+	warrior,
 
-  synergies,
-  mageEngineer,
-  mageLooter,
-  mageWarrior,
-  engineerWarrior,
-  engineerLooter,
-  looterWarrior,
+	synergies,
+	mageEngineer,
+	mageLooter,
+	mageWarrior,
+	engineerWarrior,
+	engineerLooter,
+	looterWarrior,
 
-  souls,
-  soulKeeper,
-  dive,
-  shinjo,
-  essence,
-  sunGod,
-  kormilitsa,
-  artifact,
+	souls,
+	soulKeeper,
+
+	kormilitsa,
+	artifact,
+
+	essence,
+	essenceDump,
+	dumpMeeting,
+	neurochip,
+	wasteManipulator,
+	essenceQuests,
+
+	podmirye,
+	bogMachine,
+	dive,
+	shinjo,
+
+	lairSeon,
+	moralPrinciples,
+	scenes,
+	scenePulseUp,
+	sceneQuetiapine,
+	battleSeon,
+	supremeRoll,
+	core,
+	coreItem,
 ];

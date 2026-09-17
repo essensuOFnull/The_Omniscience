@@ -22,10 +22,10 @@ export const prologue = [
     blocks: [],
   },
 
-  seon,
-  firstVoice,
   archivist,
   arkhFile,
+  seon,
+  firstVoice,
   acts,
   endings,
 ];
