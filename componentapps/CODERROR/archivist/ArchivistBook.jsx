@@ -1,345 +1,30 @@
 // src/archivist/ArchivistBook.jsx
-import React, {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useMemo,
-	useRef,
-	useState,
-} from 'react';
-import { generatePaperTexture } from './paperTexture.js';
-import {
-	parseText,
-	segmentsLength,
-	entryTextLength,
-} from './links.js';
-
-const CLICK_THRESHOLD = 6;
-const COMPLETE_THRESHOLD = 0.35;
-const SETTLE_MS = 320;
-
-const SPOIL_TOTAL_MS = 2400;
-const SPOIL_MIN_PER_CHAR_MS = 8;
-const SPOIL_NOTE = 'открыто раньше срока';
-
-const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
-// ─────────────────────────────────────────────────────────────
-//  Ссылка. Живёт внутри текста. Клик — прыжок на запись,
-//  pointerdown — не отдаём родителю, иначе страница перелистнётся.
-// ─────────────────────────────────────────────────────────────
-function BookLink({ entryId, children, onNavigate }) {
-	return (
-		<span
-			className="book-link"
-			role="link"
-			tabIndex={0}
-			onPointerDown={(e) => e.stopPropagation()}
-			onClick={(e) => {
-				e.stopPropagation();
-				onNavigate?.(entryId);
-			}}
-			onKeyDown={(e) => {
-				if (e.key === 'Enter' || e.key === ' ') {
-					e.preventDefault();
-					onNavigate?.(entryId);
-				}
-			}}
-		>
-			{children}
-		</span>
-	);
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Рендер сегментов с бюджетом видимых символов.
 //
-//  budget — сколько символов доступно этому куску текста.
-//  Возвращает [reactNode, consumed] — второй элемент нужен
-//  верхнему уровню, чтобы вычесть его из общего счётчика
-//  и передать остаток следующим блокам.
-// ─────────────────────────────────────────────────────────────
-function renderSegments(segments, budget, onNavigate) {
-	const parts = [];
-	let left = budget;
-	let consumed = 0;
+// Свод. Оркестратор: пул текстур, обложка, разметка разворота.
+//
+// Тяжёлая логика разложена по соседним модулям:
+//   useBookPages  — замер и разбиение записей на страницы
+//   useBookFlip   — состояние листа и drag
+//   BookPage      — рендер одной страницы (включая spoiler)
+//   EntryFlow     — разбор блоков записи в JSX
+//   BookCover     — обложка с логотипом
+//   BookNav       — кнопки ←/→ и счётчик
+//
+// — Архивариус
 
-	for (let i = 0; i < segments.length; i++) {
-		const s = segments[i];
-		const len = s.text.length;
+import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+	generatePaperTexture,
+	generateCoverTexture,
+} from './paperTexture.js';
+import { useBookPages } from './useBookPages.js';
+import { useBookFlip } from './useBookFlip.js';
+import EntryFlow from './EntryFlow.jsx';
+import BookPage from './BookPage.jsx';
+import BookCover from './BookCover.jsx';
+import BookNav from './BookNav.jsx';
+import { COVER_OPEN_MS, SETTLE_MS } from './bookConstants.js';
 
-		if (left <= 0) {
-			// весь сегмент — скрытый хвост
-			parts.push(
-				<span key={`h${i}`} style={{ visibility: 'hidden' }}>
-					{s.text}
-				</span>
-			);
-			continue;
-		}
-
-		if (left >= len) {
-			// полностью видим
-			if (s.t === 'link') {
-				parts.push(
-					<BookLink key={`l${i}`} entryId={s.id} onNavigate={onNavigate}>
-						{s.text}
-					</BookLink>
-				);
-			} else {
-				parts.push(s.text);
-			}
-			left -= len;
-			consumed += len;
-		} else {
-			// видна только часть
-			const head = s.text.slice(0, left);
-			const tail = s.text.slice(left);
-			if (head) parts.push(head);
-			if (tail) {
-				parts.push(
-					<span key={`t${i}`} style={{ visibility: 'hidden' }}>
-						{tail}
-					</span>
-				);
-			}
-			consumed += left;
-			left = 0;
-		}
-	}
-
-	return [parts, consumed];
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Рендер одного блока. budget — тот же контракт.
-// ─────────────────────────────────────────────────────────────
-function renderBlock(block, budget, onNavigate) {
-	switch (block.t) {
-		case 'p':
-		case 'em':
-		case 'strong':
-		case 'quote':
-		case 'pre': {
-			const segments = parseText(block.text || '');
-			const [node, consumed] = renderSegments(segments, budget, onNavigate);
-			switch (block.t) {
-				case 'p':
-					return [<p key="p">{node}</p>, consumed];
-				case 'em':
-					return [<p key="p" className="book-em">{node}</p>, consumed];
-				case 'strong':
-					return [<p key="p" className="book-strong">{node}</p>, consumed];
-				case 'quote':
-					return [
-						<blockquote key="q">
-							{node}
-							{block.caption && consumed >= segmentsLength(segments) && (
-								<footer>{block.caption}</footer>
-							)}
-						</blockquote>,
-						consumed,
-					];
-				case 'pre':
-					return [<pre key="pre" className="book-pre">{node}</pre>, consumed];
-			}
-			return [null, 0];
-		}
-
-		case 'list': {
-			const items = [];
-			let left = budget;
-			let consumed = 0;
-			(block.items || []).forEach((it, i) => {
-				const segments = parseText(it);
-				const [node, c] = renderSegments(segments, left, onNavigate);
-				items.push(<li key={i}>{node}</li>);
-				left -= c;
-				consumed += c;
-			});
-			const list = block.ordered ? (
-				<ol key="list">{items}</ol>
-			) : (
-				<ul key="list">{items}</ul>
-			);
-			return [list, consumed];
-		}
-
-		case 'hr':
-			return budget > 0 ? [<hr key="hr" />, 0] : [null, 0];
-
-		default:
-			return [null, 0];
-	}
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Весь поток записи: заголовок + блоки. Общий бюджет символов
-//  распределяется между блоками в порядке их следования.
-// ─────────────────────────────────────────────────────────────
-function EntryFlow({ entry, revealed = Infinity, onNavigate }) {
-	const blocks = entry.blocks || [];
-	let left = revealed;
-	const out = [];
-
-	if (entry.title) {
-		out.push(
-			<h3 key="__title" className="book-page-title">
-				{entry.title}
-			</h3>
-		);
-	}
-	if (entry.subtitle) {
-		out.push(
-			<div key="__sub" className="book-page-subtitle">
-				{entry.subtitle}
-			</div>
-		);
-	}
-
-	blocks.forEach((b, i) => {
-		const [node, consumed] = renderBlock(b, left, onNavigate);
-		if (node) out.push(<React.Fragment key={i}>{node}</React.Fragment>);
-		left -= consumed;
-	});
-
-	return <>{out}</>;
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Контент одной страницы.
-// ─────────────────────────────────────────────────────────────
-function PageContent({ page, pageSize, spoiledAt, fullySpoiled, onSpoil, onNavigate }) {
-	if (!page) {
-		return <div className="book-page-content book-page-empty">·</div>;
-	}
-	const { entry, columnIndex } = page;
-
-	if (entry.hidden === 'spoiler') {
-		return (
-			<SpoilerEntry
-				entry={entry}
-				alreadySpoiled={!!fullySpoiled || !!spoiledAt?.[entry.id]}
-				onSpoil={onSpoil}
-				onNavigate={onNavigate}
-			/>
-		);
-	}
-
-	return (
-		<div className="book-page-content">
-			<div className="book-page-columns-outer">
-				<div
-					className="book-page-columns-inner"
-					style={{
-						columnWidth: `${pageSize.width}px`,
-						columnGap: 0,
-						columnFill: 'auto',
-						transform: `translateX(${-columnIndex * pageSize.width}px)`,
-					}}
-				>
-					<EntryFlow entry={entry} onNavigate={onNavigate} />
-				</div>
-			</div>
-		</div>
-	);
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Скрытая запись.
-// ─────────────────────────────────────────────────────────────
-function SpoilerEntry({ entry, alreadySpoiled, onSpoil, onNavigate }) {
-	const [open, setOpen] = useState(!!alreadySpoiled);
-	const [revealed, setRevealed] = useState(alreadySpoiled ? Infinity : 0);
-
-	const totalChars = useMemo(() => entryTextLength(entry), [entry]);
-
-	useEffect(() => {
-		if (!open || alreadySpoiled) {
-			setRevealed(Infinity);
-			return;
-		}
-		const perChar = SPOIL_TOTAL_MS / Math.max(1, totalChars);
-		if (perChar < SPOIL_MIN_PER_CHAR_MS) {
-			setRevealed(totalChars);
-			return;
-		}
-		let i = 0;
-		const t = setInterval(() => {
-			i++;
-			setRevealed(i);
-			if (i >= totalChars) clearInterval(t);
-		}, perChar);
-		return () => clearInterval(t);
-	}, [open, alreadySpoiled, totalChars]);
-
-	if (!open) {
-		return (
-			<div
-				className="book-page-content book-page-spoiler"
-				role="button"
-				tabIndex={0}
-				onPointerDown={(e) => e.stopPropagation()}
-				onClick={(e) => {
-					e.stopPropagation();
-					setOpen(true);
-					onSpoil?.(entry.id);
-				}}
-				onKeyDown={(e) => {
-					if (e.key === 'Enter' || e.key === ' ') {
-						e.preventDefault();
-						setOpen(true);
-						onSpoil?.(entry.id);
-					}
-				}}
-			>
-				<div className="book-spoiler-rect" aria-label="запись" />
-			</div>
-		);
-	}
-
-	const done = revealed >= totalChars;
-
-	return (
-		<div className="book-page-content book-page-spoiler-open">
-			<EntryFlow entry={entry} revealed={revealed} onNavigate={onNavigate} />
-			{done && <div className="book-spoiler-note">{SPOIL_NOTE}</div>}
-		</div>
-	);
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Замер и разбиение на страницы.
-// ─────────────────────────────────────────────────────────────
-function useBookPages(entries, pageSize) {
-	const measureRef = useRef(null);
-	const [pages, setPages] = useState(null);
-
-	useLayoutEffect(() => {
-		if (!pageSize.width || !pageSize.height) return;
-		const host = measureRef.current;
-		if (!host) return;
-
-		const nodes = host.querySelectorAll('[data-measure-entry]');
-		const result = [];
-		entries.forEach((entry, i) => {
-			const el = nodes[i];
-			const cols = el
-				? Math.max(1, Math.round(el.scrollWidth / pageSize.width))
-				: 1;
-			for (let c = 0; c < cols; c++) {
-				result.push({ entry, columnIndex: c, totalColumns: cols });
-			}
-		});
-		setPages(result);
-	}, [entries, pageSize.width, pageSize.height]);
-
-	return { pages, measureRef };
-}
-
-// ─────────────────────────────────────────────────────────────
-//  Книга.
-// ─────────────────────────────────────────────────────────────
 export default function ArchivistBook({
 	entries,
 	spoiledAt = {},
@@ -347,6 +32,9 @@ export default function ArchivistBook({
 	onSpoil,
 	onClose,
 }) {
+	// ── размер страницы ────────────────────────────────────────
+	// Скрытый зонд той же геометрии, что настоящая страница.
+	// ResizeObserver пересчитывает при смене размеров окна.
 	const pageProbeRef = useRef(null);
 	const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
 
@@ -373,225 +61,99 @@ export default function ArchivistBook({
 		return () => ro.disconnect();
 	}, []);
 
+	// ── пагинация ──────────────────────────────────────────────
 	const { pages, measureRef } = useBookPages(entries, pageSize);
-	const ready = pages && pages.length > 0;
+	const ready = !!pages && pages.length > 0;
 
-	// ── замерный офскрин ─────────────────────────────────────────
-	const measureLayer = (
-		<div ref={measureRef} className="book-measure-host" aria-hidden="true">
-			{pageSize.width > 0 &&
-				entries.map((entry) => (
-					<div
-						key={entry.id}
-						data-measure-entry
-						className="book-measure-entry book-page-columns-inner"
-						style={{
-							width: pageSize.width,
-							height: pageSize.height,
-							columnWidth: `${pageSize.width}px`,
-							columnGap: 0,
-							columnFill: 'auto',
-						}}
-					>
-						{entry.hidden === 'spoiler' ? (
-							<div style={{ height: '100%' }} />
-						) : (
-							<EntryFlow entry={entry} />
-						)}
-					</div>
-				))}
-		</div>
-	);
+	// ── пул текстур ────────────────────────────────────────────
+	// Четыре слота: [левая, правая, стендбай-1, стендбай-2].
+	// Ротация — в onSettle от useBookFlip.
+	//
+	//   next → [L, R, S1, S2]  →  [S2, S1, new, new]
+	//   prev → [L, R, S1, S2]  →  [S2, S1, new, new]
+	//
+	// Симметрично. Что едет на лист, что остаётся на статике —
+	// разобрано в texFor() ниже.
+	const [pageTex, setPageTex] = useState(() => [
+		generatePaperTexture(),
+		generatePaperTexture(),
+		generatePaperTexture(),
+		generatePaperTexture(),
+	]);
+	const [coverTex] = useState(() => generateCoverTexture(840, 560));
 
-	// ── флип ─────────────────────────────────────────────────────
-	const [leftIdx, setLeftIdx] = useState(0);
-	const [rightIdx, setRightIdx] = useState(1);
-	const [flip, setFlip] = useState(null);
-	const dragRef = useRef(null);
-	const settleTimerRef = useRef(null);
-
-	useEffect(() => {
-		const tex = generatePaperTexture(512, 512);
-		document.documentElement.style.setProperty(
-			'--paper-texture',
-			`url(${tex})`
-		);
+	const rotateTextures = useCallback(() => {
+		setPageTex(([, , c, d]) => [
+			d,
+			c,
+			generatePaperTexture(),
+			generatePaperTexture(),
+		]);
 	}, []);
 
-	useEffect(() => () => clearTimeout(settleTimerRef.current), []);
+	// ── флип ───────────────────────────────────────────────────
+	const {
+		leftIdx,
+		rightIdx,
+		flip,
+		currentSpread,
+		totalSpreads,
+		canPrev,
+		canNext,
+		goPrev,
+		goNext,
+		goToEntry,
+		pointerHandlers,
+	} = useBookFlip(pages, ready, rotateTextures);
 
-	useEffect(() => {
-		setLeftIdx(0);
-		setRightIdx(1);
-		setFlip(null);
-	}, [entries]);
+	// ── обложка ────────────────────────────────────────────────
+	const [coverOpened, setCoverOpened] = useState(false);
+	const [coverOpening, setCoverOpening] = useState(false);
 
-	const totalSpreads = ready ? Math.ceil(pages.length / 2) : 0;
-	const currentSpread = rightIdx >> 1;
-	const canPrev = ready && leftIdx > 0;
-	const canNext = ready && currentSpread + 1 < totalSpreads;
+	const openCover = useCallback(() => {
+		if (coverOpening || coverOpened) return;
+		setCoverOpening(true);
+		setTimeout(() => {
+			setCoverOpened(true);
+			setCoverOpening(false);
+		}, COVER_OPEN_MS);
+	}, [coverOpening, coverOpened]);
 
-	// ── навигация по ссылкам ────────────────────────────────────
-	// Прыгаем на разворот, где запись начинается. Первая колонка.
-	// Если запись короткая и уже видна — всё равно прыгаем; это
-	// предсказуемее, чем «ничего не произошло».
-	const goToEntry = useCallback(
-		(id) => {
-			if (!ready) return;
-			const idx = pages.findIndex(
-				(p) => p.entry.id === id && p.columnIndex === 0
-			);
-			if (idx < 0) {
-				console.warn('[archivist] ссылка ведёт в никуда:', id);
-				return;
-			}
-			const spreadStart = idx % 2 === 0 ? idx : idx - 1;
-			const right = Math.min(spreadStart + 1, pages.length - 1);
-			setLeftIdx(spreadStart);
-			setRightIdx(right);
-			setFlip(null);
-		},
-		[pages, ready]
-	);
-
-	const beginFlip = (direction) => {
-		if (direction === 'next') {
-			if (!canNext) return;
-			setRightIdx(rightIdx + 2);
-			setFlip({
-				direction,
-				frontIdx: rightIdx,
-				backIdx: rightIdx + 1,
-				angle: 0,
-				dragging: false,
-			});
+	// ── какая текстура куда идёт ───────────────────────────────
+	//
+	// Слоты и их роль в конкретный момент:
+	//   'left'      — статичная левая страница
+	//   'right'     — статичная правая
+	//   'flipFront' — передняя грань листа (то, что видно в начале)
+	//   'flipBack'  — задняя грань (то, что видно после 90°)
+	//
+	const texFor = (role) => {
+		if (!flip) {
+			if (role === 'left') return pageTex[0];
+			if (role === 'right') return pageTex[1];
+			return null;
+		}
+		if (flip.direction === 'next') {
+			if (role === 'left') return pageTex[0]; // уходит под лист
+			if (role === 'right') return pageTex[2]; // новая правая
+			if (role === 'flipFront') return pageTex[1]; // старый правый лист
+			if (role === 'flipBack') return pageTex[3]; // новая левая
 		} else {
-			if (!canPrev) return;
-			setLeftIdx(leftIdx - 2);
-			setFlip({
-				direction,
-				frontIdx: leftIdx,
-				backIdx: leftIdx - 1,
-				angle: 0,
-				dragging: false,
-			});
+			if (role === 'left') return pageTex[3]; // новая левая
+			if (role === 'right') return pageTex[1]; // уходит под лист
+			if (role === 'flipFront') return pageTex[0]; // старый левый лист
+			if (role === 'flipBack') return pageTex[2]; // новая правая
 		}
+		return null;
 	};
 
-	const settleComplete = () => {
-		setFlip((f) => {
-			if (!f) return null;
-			if (f.direction === 'next') setLeftIdx(f.backIdx);
-			else setRightIdx(f.backIdx);
-			return null;
-		});
-	};
+	const paperStyle = (role) => ({
+		'--paper-texture': `url(${texFor(role)})`,
+	});
 
-	const settleCancel = () => {
-		setFlip((f) => {
-			if (!f) return null;
-			if (f.direction === 'next') setRightIdx(f.frontIdx);
-			else setLeftIdx(f.frontIdx);
-			return null;
-		});
-	};
-
-	const animateTo = (targetAngle, onDone) => {
-		setFlip((f) =>
-			f ? { ...f, angle: targetAngle, dragging: false } : null
-		);
-		clearTimeout(settleTimerRef.current);
-		settleTimerRef.current = setTimeout(onDone, SETTLE_MS);
-	};
-
-	const flyFlip = (direction) => {
-		const target = direction === 'next' ? -180 : 180;
-		beginFlip(direction);
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				animateTo(target, settleComplete);
-			});
-		});
-	};
-
-	const goNext = () => {
-		if (!canNext || flip) return;
-		flyFlip('next');
-	};
-
-	const goPrev = () => {
-		if (!canPrev || flip) return;
-		flyFlip('prev');
-	};
-
-	const onPointerDown = (e) => {
-		if (flip || !ready) return;
-		const rect = e.currentTarget.getBoundingClientRect();
-		const isRight = e.clientX - rect.left >= rect.width / 2;
-		if (isRight && !canNext) return;
-		if (!isRight && !canPrev) return;
-
-		dragRef.current = {
-			side: isRight ? 'next' : 'prev',
-			startX: e.clientX,
-			halfWidth: rect.width / 2,
-			moved: false,
-		};
-		e.currentTarget.setPointerCapture(e.pointerId);
-	};
-
-	const onPointerMove = (e) => {
-		const d = dragRef.current;
-		if (!d) return;
-		const dx = e.clientX - d.startX;
-
-		if (!d.moved) {
-			if (Math.abs(dx) < CLICK_THRESHOLD) return;
-			d.moved = true;
-			beginFlip(d.side);
-		}
-
-		const progress =
-			d.side === 'next'
-				? clamp01(-dx / d.halfWidth)
-				: clamp01(dx / d.halfWidth);
-		const angle = d.side === 'next' ? -180 * progress : 180 * progress;
-
-		setFlip((f) => (f ? { ...f, angle, dragging: true } : f));
-	};
-
-	const onPointerUp = (e) => {
-		const d = dragRef.current;
-		if (!d) return;
-		dragRef.current = null;
-		try {
-			e.currentTarget.releasePointerCapture(e.pointerId);
-		} catch {}
-
-		if (!d.moved) {
-			flyFlip(d.side);
-			return;
-		}
-
-		setFlip((f) => {
-			if (!f) return null;
-			const progress = Math.abs(f.angle) / 180;
-			const complete = progress > COMPLETE_THRESHOLD;
-			const target = complete
-				? f.direction === 'next'
-					? -180
-					: 180
-				: 0;
-
-			clearTimeout(settleTimerRef.current);
-			settleTimerRef.current = setTimeout(
-				complete ? settleComplete : settleCancel,
-				SETTLE_MS
-			);
-
-			return { ...f, angle: target, dragging: false };
-		});
-	};
+	// ── разметка ───────────────────────────────────────────────
+	// Пока обложка не открыта — pointer-события разворота молчат.
+	const spreadHandlers = coverOpened ? pointerHandlers : {};
 
 	return (
 		<div className="archivist-book-wrap">
@@ -604,13 +166,9 @@ export default function ArchivistBook({
 			</button>
 
 			<div className="book-stage">
-				<div
-					className="book-spread"
-					onPointerDown={onPointerDown}
-					onPointerMove={onPointerMove}
-					onPointerUp={onPointerUp}
-					onPointerCancel={onPointerUp}
-				>
+				<div className="book-spread" {...spreadHandlers}>
+					{/* Скрытый зонд: та же геометрия, что у настоящей страницы.
+              Нужен только чтобы измерить pageSize через CSS. */}
 					<div
 						ref={pageProbeRef}
 						className="book-page book-page-left"
@@ -626,8 +184,14 @@ export default function ArchivistBook({
 						<div className="book-page-content" />
 					</div>
 
-					<div className="book-page book-page-left">
-						<PageContent
+					<div
+						className={
+							'book-page book-page-left' +
+							((coverOpening || coverOpened) ? '' : ' book-page-behind-cover')
+						}
+						style={paperStyle('left')}
+					>
+						<BookPage
 							page={ready ? pages[leftIdx] : null}
 							pageSize={pageSize}
 							spoiledAt={spoiledAt}
@@ -636,8 +200,9 @@ export default function ArchivistBook({
 							onNavigate={goToEntry}
 						/>
 					</div>
-					<div className="book-page book-page-right">
-						<PageContent
+
+					<div className="book-page book-page-right" style={paperStyle('right')}>
+						<BookPage
 							page={ready ? pages[rightIdx] : null}
 							pageSize={pageSize}
 							spoiledAt={spoiledAt}
@@ -657,8 +222,11 @@ export default function ArchivistBook({
 									: `transform ${SETTLE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
 							}}
 						>
-							<div className="book-flip-face book-flip-front">
-								<PageContent
+							<div
+								className="book-flip-face book-flip-front"
+								style={paperStyle('flipFront')}
+							>
+								<BookPage
 									page={pages[flip.frontIdx]}
 									pageSize={pageSize}
 									spoiledAt={spoiledAt}
@@ -667,8 +235,11 @@ export default function ArchivistBook({
 									onNavigate={goToEntry}
 								/>
 							</div>
-							<div className="book-flip-face book-flip-back">
-								<PageContent
+							<div
+								className="book-flip-face book-flip-back"
+								style={paperStyle('flipBack')}
+							>
+								<BookPage
 									page={pages[flip.backIdx]}
 									pageSize={pageSize}
 									spoiledAt={spoiledAt}
@@ -679,22 +250,54 @@ export default function ArchivistBook({
 							</div>
 						</div>
 					)}
+
+					{!coverOpened && (
+						<BookCover
+							coverTex={coverTex}
+							opening={coverOpening}
+							onOpen={openCover}
+						/>
+					)}
 				</div>
 
-				<div className="book-nav">
-					<button onClick={goPrev} disabled={!canPrev || !!flip} aria-label="назад">
-						←
-					</button>
-					<span className="book-nav-pager">
-						{ready ? `${currentSpread + 1} / ${totalSpreads}` : '…'}
-					</span>
-					<button onClick={goNext} disabled={!canNext || !!flip} aria-label="вперёд">
-						→
-					</button>
-				</div>
+				<BookNav
+					currentSpread={currentSpread}
+					totalSpreads={totalSpreads}
+					canPrev={canPrev}
+					canNext={canNext}
+					onPrev={goPrev}
+					onNext={goNext}
+					disabled={!!flip}
+					ready={ready}
+				/>
 			</div>
 
-			{measureLayer}
+			{/* Замерный офскрин: каждая запись лежит в блоке высотой
+          ровно в страницу. scrollWidth покажет, во сколько колонок
+          она разложилась. */}
+			<div ref={measureRef} className="book-measure-host" aria-hidden="true">
+				{pageSize.width > 0 &&
+					entries.map((entry) => (
+						<div
+							key={entry.id}
+							data-measure-entry
+							className="book-measure-entry book-page-columns-inner"
+							style={{
+								width: pageSize.width,
+								height: pageSize.height,
+								columnWidth: `${pageSize.width}px`,
+								columnGap: 0,
+								columnFill: 'auto',
+							}}
+						>
+							{entry.hidden === 'spoiler' ? (
+								<div style={{ height: '100%' }} />
+							) : (
+								<EntryFlow entry={entry} />
+							)}
+						</div>
+					))}
+			</div>
 		</div>
 	);
 }

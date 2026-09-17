@@ -1,13 +1,13 @@
 import React from 'react';
 
-export default function Logo({ cellHeight }) {
+export default function Logo({ cellHeight, scale = 1 }) {
 	return (
 		<pre
 			style={{
 				position: 'absolute',
 				left: '50%',
 				top: `${cellHeight}px`,
-				transform: 'translate(-50%, 0)',
+				transform: `translate(-50%, 0) scale(${scale})`,
 				maxWidth: 'fit-content',
 				maxHeight: 'min-content',
 				color: 'transparent',

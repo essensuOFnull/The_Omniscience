@@ -1,6 +1,7 @@
 // src/archivist/ArchivistRoom.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import ArchivistFigure from './ArchivistFigure.jsx';
+import ArchivistDecorations from './ArchivistDecorations.jsx';
 
 export default function ArchivistRoom({
   lines,
@@ -102,6 +103,7 @@ export default function ArchivistRoom({
           alt=""
           draggable={false}
         />
+        <ArchivistDecorations />
       </div>
 
       <div className="archivist-text">

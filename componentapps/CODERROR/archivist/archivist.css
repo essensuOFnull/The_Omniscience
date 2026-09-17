@@ -665,3 +665,295 @@
   filter: brightness(1.15) saturate(1.08);
   transition: filter 600ms ease;
 }
+
+/* ─────────────── левая страница под обложкой ─────────────── */
+
+/*
+ * Пока обложка закрыта, левая страница не «спрятана» — она
+ * откинута вправо, как если бы её перелистнули. Разворачивается
+ * обратно одновременно с обложкой: обе крутятся вокруг корешка,
+ * одна с 0° на −180°, другая со 180° на 0°. Дырок нет.
+ *
+ * transform-origin: right center — корешок.
+ * backface-visibility: hidden — с изнанки страницу не видно,
+ * до открытия её и не должно быть видно.
+ *
+ * Длительность = COVER_OPEN_MS в bookConstants.js. Если меняешь
+ * одно — меняй и другое.
+ */
+.book-page-left {
+  transform-origin: right center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform 900ms cubic-bezier(0.45, 0.05, 0.55, 0.95);
+  will-change: transform;
+}
+
+.book-page-left.book-page-behind-cover {
+  transform: rotateY(180deg);
+}
+
+/* Зонд (скрытая копия для замера) не участвует в этой истории. */
+.book-page-left[aria-hidden='true'] {
+  transition: none;
+  transform: none;
+}
+
+/* ─────────────── обложка Свода ─────────────── */
+
+/*
+ * Обложка. Живёт в правой половине разворота. Крутится
+ * вокруг левой кромки — это корешок. 3D-перспективу берёт
+ * от .book-spread, отдельный perspective-контейнер не нужен:
+ * так обложка делит точку схода с перелистыванием страниц.
+ */
+.book-cover-flip {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  transform-origin: left center;
+  transform: rotateY(0deg);
+  transition: transform 900ms cubic-bezier(0.45, 0.05, 0.55, 0.95);
+  cursor: pointer;
+  pointer-events: auto;
+  transform-style: preserve-3d;
+  will-change: transform;
+  z-index: 20;
+}
+
+.book-cover-flip.is-opening {
+  transform: rotateY(-180deg);
+}
+
+/* Обе грани обложки. backface-visibility: hidden — чтобы
+   с изнанки не просвечивало лицо и наоборот. */
+.book-cover-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ── лицо: кожа, тиснение, логотип ─────────────────────────── */
+
+.book-cover-front {
+  background-color: #1e1008;
+  background-image: var(--cover-texture, none);
+  background-size: cover;
+  border-radius: 2px 8px 8px 2px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(200, 160, 80, 0.06),
+    inset 0 0 100px rgba(0, 0, 0, 0.5);
+}
+
+/* Корешок — тёмная полоса у левой кромки, с мягким сгибом. */
+.book-cover-front::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.75) 0%,
+    rgba(0, 0, 0, 0.25) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+/* Обрез страниц — тонкие полоски у правой кромки. Намёк,
+   что под обложкой лежат страницы. */
+.book-cover-front::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 5px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    #d8c8a8 0px,
+    #d8c8a8 1px,
+    #b8a888 1px,
+    #b8a888 2px
+  );
+  border-radius: 0 3px 3px 0;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.25);
+}
+
+/* ── изнанка: эндпапир ────────────────────────────────────── */
+
+.book-cover-back {
+  transform: rotateY(180deg);
+  background-color: #ede0c8;
+  background-image: var(--paper-texture, none);
+  background-size: cover;
+  border-radius: 8px 2px 2px 8px;
+  box-shadow:
+    inset 0 0 80px rgba(120, 80, 40, 0.15),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.book-cover-back-note {
+  position: absolute;
+  left: 32px;
+  bottom: 32px;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(80, 50, 20, 0.45);
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+
+/* ── надписи на лице ──────────────────────────────────────── */
+
+.book-cover-logo-band {
+  position: absolute;
+  top: 8%;
+  left: 0;
+  right: 0;
+  height: 180px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.book-cover-title {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  transform: translate(-50%, -50%);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 26px;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+  color: #c8a860;
+  text-shadow:
+    0 0 16px rgba(200, 160, 80, 0.35),
+    0 1px 0 rgba(0, 0, 0, 0.8);
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.book-cover-subtitle {
+  position: absolute;
+  left: 50%;
+  top: 63%;
+  transform: translate(-50%, -50%);
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  color: rgba(200, 168, 96, 0.6);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.book-cover-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  color: rgba(200, 168, 96, 0.5);
+  text-transform: lowercase;
+  pointer-events: none;
+  animation: archivist-cover-pulse 2.4s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+@keyframes archivist-cover-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.85; }
+}
+
+/* ─────────────── предметы на столе ─────────────── */
+
+/*
+ * Слой украшений. Лежит поверх рамки сцены, но под текстом
+ * и под кнопками. Обязательно после стола в дереве — иначе
+ * стол перекроет предметы.
+ */
+.archivist-decorations {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
+/*
+ * Предмет.
+ *
+ *   --deco-x  центр «подошвы» по горизонтали, % от рамки
+ *   --deco-y  где предмет касается стола,   % от рамки
+ *   --deco-h  высота спрайта,               % от рамки
+ *   --deco-ox/--deco-oy/--deco-rot — дрейф
+ *
+ * transform-origin: center bottom — предмет крутится вокруг
+ * точки, которой стоит на столе. Это важно: иначе при повороте
+ * он «уезжает» в сторону.
+ */
+.archivist-deco {
+  position: absolute;
+  left: var(--deco-x);
+  top: var(--deco-y);
+  height: var(--deco-h);
+  width: auto;
+  transform:
+    translate(-50%, -100%)
+    translate(var(--deco-ox, 0), var(--deco-oy, 0))
+    rotate(var(--deco-rot, 0deg));
+  transform-origin: center bottom;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  /* Мягкая тень от предмета. По Y — 2px вниз, без размытия:
+     пиксель-арт не любит сглаживания. */
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+
+/*
+ * Свечение под свечкой. Сама свечка статична — а вот пятно
+ * света под ней дышит. Раз в секунду неглубокий вдох-выдох,
+ * плюс одиночный сбой на 43-й секунде (не совпадает с 5s-циклом
+ * общей комнаты, поэтому двойное мерцание читается).
+ */
+.archivist-deco-glow {
+  position: absolute;
+  left: var(--deco-x);
+  top: var(--deco-y);
+  width: 120px;
+  height: 120px;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 55%,
+    rgba(255, 200, 120, 0.22) 0%,
+    rgba(255, 180, 80, 0.08) 35%,
+    rgba(255, 160, 60, 0) 70%
+  );
+  mix-blend-mode: screen;
+  animation: archivist-candle-breathe 4.7s ease-in-out infinite;
+  z-index: 10;
+}
+
+@keyframes archivist-candle-breathe {
+  0%, 100% { opacity: 0.65; transform: translate(-50%, -100%) scale(1); }
+  30%      { opacity: 0.85; transform: translate(-50%, -100%) scale(1.04); }
+  55%      { opacity: 0.55; transform: translate(-50%, -100%) scale(0.98); }
+  72%      { opacity: 0.9;  transform: translate(-50%, -100%) scale(1.02); }
+}
