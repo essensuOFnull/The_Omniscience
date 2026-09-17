@@ -1,9 +1,10 @@
 // src/archivist/ArchivistRoom.jsx
 import React, { useEffect, useRef, useState } from 'react';
+import ArchivistFigure from './ArchivistFigure.jsx';
 
 export default function ArchivistRoom({
   lines,
-  variant = 'idle',     // 'greeting' | 'idle' | 'moment'
+  variant = 'idle',
   onDone,
   bookOpen,
   onToggleBook,
@@ -15,7 +16,29 @@ export default function ArchivistRoom({
   const timerRef = useRef(null);
   const text = lines[index] || '';
 
-  // Сброс при смене сцены (родитель меняет `lines` только на новое открытие).
+  // ── рамка сцены: соотношение сторон берём из натуральных
+  //    размеров картинки стула. Если картинки ещё не загружены —
+  //    работает дефолт 1, потом пересчитается.
+  const frameRef = useRef(null);
+  const chairRef = useRef(null);
+
+  useEffect(() => {
+    const img = chairRef.current;
+    if (!img) return;
+    const apply = () => {
+      if (img.naturalWidth > 0 && img.naturalHeight > 0 && frameRef.current) {
+        frameRef.current.style.setProperty(
+          '--workspace-aspect',
+          String(img.naturalWidth / img.naturalHeight)
+        );
+      }
+    };
+    if (img.complete) apply();
+    else img.addEventListener('load', apply, { once: true });
+    return () => img.removeEventListener('load', apply);
+  }, []);
+
+  // Сброс при смене сцены.
   useEffect(() => {
     setIndex(0);
     setSceneDone(false);
@@ -38,7 +61,7 @@ export default function ArchivistRoom({
   }, [index, text]);
 
   const handleClick = () => {
-    if (bookOpen) return;                  // книга сверху — клики туда
+    if (bookOpen) return;
     if (!done) {
       clearTimeout(timerRef.current);
       setTyped(text);
@@ -62,12 +85,24 @@ export default function ArchivistRoom({
     >
       <div className="archivist-flicker" />
 
-      <img
-        className="archivist-portrait"
-        src={'../../../componentapps/CODERROR/archivist/archivist.png'}
-        alt=""
-        draggable={false}
-      />
+      {/* Сцена. Рамка держит пропорции стула/стола; фигура внутри
+          позиционируется процентами от рамки, а не от окна. */}
+      <div ref={frameRef} className="archivist-workspace-frame">
+        <img
+          ref={chairRef}
+          className="archivist-layer"
+          src={'../../../componentapps/CODERROR/archivist/archivist_chair.png'}
+          alt=""
+          draggable={false}
+        />
+        <ArchivistFigure className="archivist-figure" />
+        <img
+          className="archivist-layer"
+          src={'../../../componentapps/CODERROR/archivist/archivist_table.png'}
+          alt=""
+          draggable={false}
+        />
+      </div>
 
       <div className="archivist-text">
         <span>{typed}</span>

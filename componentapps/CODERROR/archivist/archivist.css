@@ -47,31 +47,6 @@
   70%      { opacity: 0.5 }
 }
 
-/* ─── портрет ─── */
-.archivist-portrait {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  height: 100%;
-  width: auto;
-  max-width: none;
-  object-fit: contain;
-  object-position: bottom center;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-drag: none;
-  z-index: 1;
-}
-
-/* момент «отложил бумаги» — становится чуть светлее */
-.archivist-room--moment .archivist-portrait {
-  filter: brightness(1.15) saturate(1.08);
-  transition: filter 600ms ease;
-}
-
 /* ─── текст ─── */
 .archivist-text {
   position: absolute;
@@ -618,4 +593,75 @@
   outline: 1px dotted rgba(106, 74, 42, 0.6);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+/* ───────────────────────── сцена ───────────────────────── */
+
+/*
+ * Рамка сцены. Держит пропорции картинок стула/стола, чтобы
+ * фигура не «плавала» по ширине при смене пропорций окна.
+ * --workspace-aspect подставляется из ArchivistRoom после
+ * загрузки картинки стула. Дефолт 1 — на случай, если картинка
+ * ещё не пришла.
+ */
+.archivist-workspace-frame {
+  --workspace-aspect: 1;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  height: 100%;
+  aspect-ratio: var(--workspace-aspect);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+/* Один слой сцены: стул или стол. Растягивается по рамке. */
+.archivist-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/*
+ * Фигура Архивариуса.
+ *
+ * Все проценты — от рамки сцены, а не от окна. Крутить здесь:
+ *
+ *   --figure-x  центр фигуры по горизонтали, % ширины рамки
+ *   --figure-y  центр фигуры по вертикали,   % высоты рамки
+ *   --figure-h  высота фигуры,               % высоты рамки
+ *
+ * Ширина считается от высоты через aspect-ratio канваса (200/250).
+ * Если фигура не садится на стул — двигай --figure-y в первую
+ * очередь. Если чуть в сторону — --figure-x.
+ */
+.archivist-figure {
+  --figure-x: 58%;
+  --figure-y: 25%;
+  --figure-h: 40%;
+
+  position: absolute;
+  left: var(--figure-x);
+  top: var(--figure-y);
+  height: var(--figure-h);
+  aspect-ratio: 220 / 250;   /* было: 200 / 250 */
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* момент «отложил бумаги» — становится чуть светлее */
+.archivist-room--moment .archivist-workspace-frame {
+  filter: brightness(1.15) saturate(1.08);
+  transition: filter 600ms ease;
 }
