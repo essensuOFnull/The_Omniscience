@@ -33,6 +33,9 @@ import { podmirye } from '../locations/underworld.js';
 import { bogMachine } from '../gods/bog-machine.js';
 import { dive } from '../records/dive.js';
 
+import { ifTree } from '../locations/if-tree.js';
+import { ifWood } from '../items/if-wood.js';
+
 import { lairSeon } from '../records/lair-seon.js';
 import { moralPrinciples } from '../items/moral-principles.js';
 import { scenes } from '../sections/scenes.js';
@@ -100,6 +103,9 @@ export const part3 = [
 	bogMachine,
 	dive,
 	shinjo,
+
+	ifTree,
+	ifWood,
 
 	lairSeon,
 	moralPrinciples,
