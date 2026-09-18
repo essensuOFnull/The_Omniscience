@@ -6,6 +6,9 @@ import { archivist } from '../supreme/archivist.js';
 import { arkhFile } from '../items/arkh-file.js';
 import { acts } from '../meta/acts.js';
 import { endings } from '../meta/endings.js';
+import { gods } from '../records/gods.js';
+import { planetCore } from '../records/planet-core.js';
+import {vesselSemiotics} from '../meta/vessel_semiotics.js'
 
 export const prologue = [
   {
@@ -24,8 +27,11 @@ export const prologue = [
 
   archivist,
   arkhFile,
+  gods,
   seon,
   firstVoice,
   acts,
   endings,
+  planetCore,
+  vesselSemiotics
 ];

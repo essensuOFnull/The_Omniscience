@@ -3,8 +3,6 @@
 import { worldFirst } from '../records/world-first.js';
 import { cleanup } from '../records/cleanup.js';
 import { voidEntry } from '../locations/void.js';
-import { gods } from '../records/gods.js';
-import { planetCore } from '../records/planet-core.js';
 
 export const part1 = [
   {
@@ -24,6 +22,4 @@ export const part1 = [
   worldFirst,
   cleanup,
   voidEntry,
-  gods,
-  planetCore,
 ];
