@@ -7,7 +7,6 @@ export const gods = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 70,
   tags: ['gods', 'supreme', 'pantheon', 'meta'],
   links: ['seon', 'sun-god', 'bog-machine', 'kormilitsa', 'essence', 'soul-keeper'],
   hidden: false,

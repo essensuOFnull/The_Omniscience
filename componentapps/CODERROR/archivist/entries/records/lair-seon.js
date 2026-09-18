@@ -7,7 +7,6 @@ export const lairSeon = {
   act: 3,
   kind: 'record',
   parent: 'part4',
-  order: 10,
   tags: ['act3', 'lair', 'shop', 'energy-drinks'],
   links: ['seon', 'moral-principles', 'archivist'],
   hidden: false,

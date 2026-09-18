@@ -8,7 +8,6 @@ export const podmirye = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 50,
   tags: ['location', 'podmirye', 'bog-machine'],
   links: ['bog-machine', 'dive', 'shinjo'],
   hidden: false,

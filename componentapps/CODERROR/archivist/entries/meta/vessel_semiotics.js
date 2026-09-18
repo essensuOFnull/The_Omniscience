@@ -13,7 +13,6 @@ export const vesselSemiotics = {
   act: null,
   kind: 'meta',
   parent: 'meta',
-  order: 20,
   tags: ['meta', 'world', 'science', 'vessels', 'names', 'memory'],
   links: ['archivist', 'podmirye', 'arkh-file'],
   hidden: false,

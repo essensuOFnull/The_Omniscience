@@ -7,7 +7,6 @@ export const souls = {
   act: 2,
   kind: 'section',
   parent: 'part3',
-  order: 30,
   tags: ['act2', 'souls', 'boss'],
   links: ['soul-keeper', 'mage', 'seon'],
   hidden: false,

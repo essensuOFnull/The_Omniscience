@@ -8,7 +8,6 @@ export const soulKeeper = {
   kind: 'boss',
   nature: 'supreme',
   parent: 'part3',
-  order: 35,
   tags: ['act2', 'boss', 'supreme', 'souls', 'dushnaya'],
   links: ['souls', 'seon'],
   hidden: false,

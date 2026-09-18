@@ -8,7 +8,6 @@ export const artifact = {
   kind: 'entity',
   nature: 'god',
   parent: 'part3',
-  order: 45,
   tags: ['entity', 'god', 'item', 'kormilitsa', 'real-event', 'reincarnation'],
   links: ['kormilitsa'],
   hidden: false,

@@ -7,7 +7,6 @@ export const lostDataKeeper = {
   act: 1,
   kind: 'boss',
   parent: 'part2',
-  order: 60,
   tags: ['act1', 'boss', 'keeper', 'song'],
   links: ['keeper-fate', 'after-victory', 'space-empty'],
   hidden: false,

@@ -7,7 +7,6 @@ export const dumpMeeting = {
   act: 2,
   kind: 'scene',
   parent: 'part3',
-  order: 56,
   tags: ['act2', 'scene', 'essence', 'quest', 'mandatory'],
   links: ['essence', 'essence-dump', 'neurochip', 'waste-manipulator'],
   hidden: false,

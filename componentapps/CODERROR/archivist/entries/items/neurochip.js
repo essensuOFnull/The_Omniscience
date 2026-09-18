@@ -7,7 +7,6 @@ export const neurochip = {
   act: 2,
   kind: 'item',
   parent: 'part3',
-  order: 57,
   tags: ['act2', 'item', 'essence', 'neurochip', 'quest-reward'],
   links: ['essence', 'dump-meeting', 'waste-manipulator'],
   hidden: false,

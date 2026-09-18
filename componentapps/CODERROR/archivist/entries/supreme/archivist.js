@@ -8,7 +8,6 @@ export const archivist = {
   kind: 'entity',
   nature: 'supreme',
   parent: 'prologue',
-  order: 30,
   tags: ['meta', 'entity', 'supreme', 'archivist', 'apocrypha'],
   links: ['seon', 'podmirye', 'arkh-file'],
   hidden: false,

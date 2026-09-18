@@ -7,7 +7,6 @@ export const start = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 10,
   tags: ['act1', 'player-js', 'symbols'],
   links: ['cleanup', 'space-empty', 'access-rights'],
   hidden: false,

@@ -7,7 +7,6 @@ export const scenes = {
   act: 3,
   kind: 'section',
   parent: 'part4',
-  order: 30,
   tags: ['act3', 'scenes', 'one-time'],
   links: ['scene-pulse-up', 'scene-quetiapine'],
   hidden: false,

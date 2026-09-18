@@ -7,7 +7,6 @@ export const terminal = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 90,
   tags: ['act1', 'terminal', 'dd', 'end-act1'],
   links: ['dd', 'lost-data-keeper', 'access-rights', 'world-first', 'part3'],
   hidden: false,

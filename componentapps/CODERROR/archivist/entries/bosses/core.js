@@ -7,7 +7,6 @@ export const core = {
   act: 3,
   kind: 'boss',
   parent: 'part4',
-  order: 50,
   tags: ['act3', 'boss', 'core', 'meta', 'admin'],
   links: ['seon', 'battle-seon', 'core-item', 'archivist'],
   hidden: 'spoiler',

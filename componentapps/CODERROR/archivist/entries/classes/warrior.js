@@ -7,7 +7,6 @@ export const warrior = {
   act: 2,
   kind: 'class',
   parent: 'classes',
-  order: 40,
   tags: ['class', 'warrior', 'melee', 'tank'],
   links: ['mage-warrior', 'engineer-warrior', 'looter-warrior'],
   hidden: false,

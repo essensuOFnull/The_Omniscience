@@ -9,7 +9,6 @@ export const front = [
     act: 0,
     kind: 'front',
     parent: null,
-    order: 0,
     tags: ['meta', 'front-matter'],
     links: [],
     hidden: false,

@@ -8,7 +8,6 @@ export const seon = {
   kind: 'entity',
   nature: 'supreme',
   parent: 'prologue',
-  order: 10,
   tags: ['meta', 'entity', 'supreme', 'system', 'four-facets', 'core'],
   links: ['archivist', 'bog-machine', 'podmirye', 'acts', 'endings'],
   hidden: false,

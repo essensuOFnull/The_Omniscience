@@ -7,7 +7,6 @@ export const worldFirst = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 10,
   tags: ['world', 'character', 'dd', 'birth'],
   links: ['void', 'cleanup', 'space-empty', 'terminal', 'dd'],
   hidden: false,

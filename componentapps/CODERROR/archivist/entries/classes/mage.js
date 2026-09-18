@@ -7,7 +7,6 @@ export const mage = {
   act: 2,
   kind: 'class',
   parent: 'classes',
-  order: 10,
   tags: ['class', 'mage', 'spells', 'souls', 'mana'],
   links: ['souls', 'shinjo'],
   hidden: false,

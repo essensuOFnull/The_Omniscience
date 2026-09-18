@@ -7,7 +7,6 @@ export const ifWood = {
   act: 2,
   kind: 'item',
   parent: 'part3',
-  order: 59,
   tags: ['act2', 'item', 'if-tree', 'code', 'scripting', 'this'],
   links: ['if-tree', 'access-rights'],
   hidden: false,

@@ -7,7 +7,6 @@ export const tower = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 50,
   tags: ['act1', 'location', 'tower'],
   links: ['space-empty'],
   hidden: false,

@@ -14,12 +14,11 @@ import { dd } from '../mechanics/dd.js';
 export const part2 = [
   {
     id: 'part2',
-    title: 'Часть II. АКТ 1: ВЫЖИВАНИЕ',
+    title: 'АКТ 1: ВЫЖИВАНИЕ',
     part: 'part2',
     act: 1,
     kind: 'chapter',
     parent: null,
-    order: 30,
     tags: ['act1'],
     links: ['start', 'goal-act1', 'access-rights', 'collectible', 'tower',
             'lost-data-keeper', 'after-victory', 'keeper-fate', 'terminal'],

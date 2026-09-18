@@ -7,7 +7,6 @@ export const mageWarrior = {
   act: 2,
   kind: 'synergy',
   parent: 'synergies',
-  order: 30,
   tags: ['synergy', 'mage', 'warrior', 'enchant'],
   links: ['mage', 'warrior'],
   hidden: false,

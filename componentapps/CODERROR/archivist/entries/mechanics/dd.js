@@ -7,7 +7,6 @@ export const dd = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 95,
   tags: ['act1', 'terminal', 'dd', 'command', 'name'],
   links: ['terminal', 'world-first', 'access-rights'],
   hidden: 'spoiler',

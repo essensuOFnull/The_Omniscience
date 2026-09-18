@@ -7,7 +7,6 @@ export const scenePulseUp = {
   act: 3,
   kind: 'scene',
   parent: 'scenes',
-  order: 10,
   tags: ['scene', 'tam', 'pulse-up', 'one-time'],
   links: ['seon', 'moral-principles'],
   hidden: false,

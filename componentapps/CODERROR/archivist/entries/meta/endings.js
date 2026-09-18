@@ -10,7 +10,6 @@ export const endings = {
   act: 0,
   kind: 'record',
   parent: 'prologue',
-  order: 50,
   tags: ['meta', 'endings'],
   links: ['acts', 'seon', 'sun-god'],
   hidden: false,

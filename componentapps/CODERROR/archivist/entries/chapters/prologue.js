@@ -18,7 +18,6 @@ export const prologue = [
     act: 0,
     kind: 'chapter',
     parent: null,
-    order: 10,
     tags: ['meta'],
     links: ['seon', 'first-voice', 'archivist', 'acts', 'endings'],
     hidden: false,

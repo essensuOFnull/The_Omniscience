@@ -7,7 +7,6 @@ export const sceneQuetiapine = {
   act: 3,
   kind: 'scene',
   parent: 'scenes',
-  order: 20,
   tags: ['scene', 'numurin', 'quetiapine', 'core-item', 'moral-principles', 'one-time'],
   links: ['moral-principles', 'core-item', 'seon'],
   hidden: false,

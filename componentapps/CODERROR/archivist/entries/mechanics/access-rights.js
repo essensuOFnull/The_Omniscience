@@ -7,7 +7,6 @@ export const accessRights = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 30,
   tags: ['act1', 'mechanics', 'access-rights', 'permanent'],
   links: ['terminal', 'dd', 'seon'],
   hidden: false,

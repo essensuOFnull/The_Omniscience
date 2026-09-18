@@ -7,7 +7,6 @@ export const keeperFate = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 80,
   tags: ['act1', 'keeper', 'aftermath'],
   links: ['lost-data-keeper'],
   hidden: false,

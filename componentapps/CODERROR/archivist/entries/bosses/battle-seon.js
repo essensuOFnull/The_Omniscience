@@ -7,7 +7,6 @@ export const battleSeon = {
   act: 3,
   kind: 'boss',
   parent: 'part4',
-  order: 40,
   tags: ['act3', 'boss', 'facets', 'core'],
   links: ['seon', 'core', 'core-item'],
   hidden: false,

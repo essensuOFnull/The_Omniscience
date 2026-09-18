@@ -9,7 +9,6 @@ export const essence = {
   kind: 'entity',
   nature: 'supreme',
   parent: 'part3',
-  order: 50,
   tags: ['entity', 'supreme', 'scientist', 'bioengineering', 'bog-machine', 'shinjo', 'moral-damage'],
   links: ['bog-machine', 'podmirye', 'shinjo', 'archivist'],
   hidden: false,

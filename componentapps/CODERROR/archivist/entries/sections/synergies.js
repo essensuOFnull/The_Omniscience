@@ -7,7 +7,6 @@ export const synergies = {
   act: 2,
   kind: 'section',
   parent: 'part3',
-  order: 20,
   tags: ['act2', 'synergies'],
   links: ['mage-engineer', 'mage-looter', 'mage-warrior',
           'engineer-warrior', 'engineer-looter', 'looter-warrior'],

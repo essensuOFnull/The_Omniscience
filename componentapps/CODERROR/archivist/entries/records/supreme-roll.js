@@ -7,7 +7,6 @@ export const supremeRoll = {
   act: 3,
   kind: 'record',
   parent: 'part4',
-  order: 80,
   tags: ['act3', 'supreme-roll', 'seon', 'klyaty'],
   links: ['collectible', 'seon', 'battle-seon'],
   hidden: 'spoiler',

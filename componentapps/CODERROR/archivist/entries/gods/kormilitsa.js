@@ -8,7 +8,6 @@ export const kormilitsa = {
   kind: 'entity',
   nature: 'god',
   parent: 'part3',
-  order: 40,
   tags: ['entity', 'god', 'goddess', 'luck', 'dump', 'symbiosis'],
   links: ['artifact', 'looter'],
   hidden: false,

@@ -7,7 +7,6 @@ export const classes = {
   act: 2,
   kind: 'section',
   parent: 'part3',
-  order: 10,
   tags: ['act2', 'classes'],
   links: ['mage', 'engineer', 'looter', 'warrior'],
   hidden: false,

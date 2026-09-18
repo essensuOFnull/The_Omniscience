@@ -7,7 +7,6 @@ export const essenceQuests = {
   act: 2,
   kind: 'record',
   parent: 'part3',
-  order: 59,
   tags: ['act2', 'quests', 'essence'],
   links: ['essence', 'waste-manipulator', 'neurochip'],
   hidden: false,

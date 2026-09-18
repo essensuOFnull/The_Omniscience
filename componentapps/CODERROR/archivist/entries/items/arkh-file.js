@@ -7,7 +7,6 @@ export const arkhFile = {
   act: 0,
   kind: 'item',
   parent: 'prologue',
-  order: 35,
   tags: ['meta', 'save', 'archivist'],
   links: ['archivist'],
   hidden: 'spoiler',

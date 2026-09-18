@@ -7,7 +7,6 @@ export const afterVictory = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 70,
   tags: ['act1', 'choice', 'numurin', 'sprite-access'],
   links: ['lost-data-keeper', 'keeper-fate', 'access-rights', 'seon'],
   hidden: false,

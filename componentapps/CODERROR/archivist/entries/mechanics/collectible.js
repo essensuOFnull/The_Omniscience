@@ -7,7 +7,6 @@ export const collectible = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 40,
   tags: ['act1', 'zip', 'supreme-roll', 'whip'],
   links: ['supreme-roll', 'tower', 'seon'],
   hidden: false,

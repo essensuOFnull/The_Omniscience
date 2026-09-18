@@ -7,7 +7,6 @@ export const engineerWarrior = {
   act: 2,
   kind: 'synergy',
   parent: 'synergies',
-  order: 40,
   tags: ['synergy', 'engineer', 'warrior', 'tank', 'tech-melee'],
   links: ['engineer', 'warrior'],
   hidden: false,

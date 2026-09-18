@@ -7,7 +7,6 @@ export const looter = {
   act: 2,
   kind: 'class',
   parent: 'classes',
-  order: 30,
   tags: ['class', 'looter', 'luck', 'throwables'],
   links: ['kormilitsa', 'mage-looter'],
   hidden: false,

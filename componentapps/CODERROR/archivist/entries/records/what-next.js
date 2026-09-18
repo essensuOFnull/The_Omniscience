@@ -7,7 +7,6 @@ export const whatNext = {
   act: 3,
   kind: 'record',
   parent: 'part4',
-  order: 70,
   tags: ['act3', 'after'],
   links: ['core', 'seon'],
   hidden: 'spoiler',

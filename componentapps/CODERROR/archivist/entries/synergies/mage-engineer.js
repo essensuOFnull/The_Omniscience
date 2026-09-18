@@ -7,7 +7,6 @@ export const mageEngineer = {
   act: 2,
   kind: 'synergy',
   parent: 'synergies',
-  order: 10,
   tags: ['synergy', 'mage', 'engineer', 'weapon-spells'],
   links: ['mage', 'engineer'],
   hidden: false,

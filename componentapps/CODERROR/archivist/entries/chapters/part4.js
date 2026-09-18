@@ -7,12 +7,11 @@ import { sunGod } from '../supreme/sun-god.js';
 export const part4 = [
   {
     id: 'part4',
-    title: 'Часть IV. АКТ 3: БОЖЕСТВЕННОСТЬ',
+    title: 'АКТ 3: БОЖЕСТВЕННОСТЬ',
     part: 'part4',
     act: 3,
     kind: 'chapter',
     parent: null,
-    order: 50,
     tags: ['act3'],
     links: ['lair-seon', 'moral-principles', 'scenes', 'battle-seon',
             'core', 'core-item', 'what-next', 'supreme-roll'],

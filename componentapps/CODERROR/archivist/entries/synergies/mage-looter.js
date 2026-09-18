@@ -7,7 +7,6 @@ export const mageLooter = {
   act: 2,
   kind: 'synergy',
   parent: 'synergies',
-  order: 20,
   tags: ['synergy', 'mage', 'looter', 'luck', 'spell'],
   links: ['mage', 'looter', 'kormilitsa'],
   hidden: false,

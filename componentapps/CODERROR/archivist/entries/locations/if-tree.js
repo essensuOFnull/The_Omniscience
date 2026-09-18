@@ -7,7 +7,6 @@ export const ifTree = {
   act: 2,
   kind: 'location',
   parent: 'part3',
-  order: 57,
   tags: ['act2', 'location', 'if-tree', 'code', 'dangerous', 'setRoom'],
   links: ['if-wood', 'access-rights', 'setRoom'],
   hidden: false,

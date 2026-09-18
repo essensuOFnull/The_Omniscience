@@ -7,7 +7,6 @@ export const dive = {
   act: 2,
   kind: 'record',
   parent: 'part3',
-  order: 60,
   tags: ['act2', 'podmirye', 'bog-machine', 'dive', 'ending'],
   links: ['podmirye', 'bog-machine', 'shinjo', 'seon'],
   hidden: false,

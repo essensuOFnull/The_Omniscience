@@ -49,12 +49,11 @@ import { coreItem } from '../items/core-item.js';
 export const part3 = [
 	{
 		id: 'part3',
-		title: 'Часть III. АКТ 2: РАЗВИТИЕ',
+		title: 'АКТ 2: РАЗВИТИЕ',
 		part: 'part3',
 		act: 2,
 		kind: 'chapter',
 		parent: null,
-		order: 40,
 		tags: ['act2'],
 		links: [
 			'mage', 'engineer', 'looter', 'warrior',

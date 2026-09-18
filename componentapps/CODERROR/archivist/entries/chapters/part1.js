@@ -7,12 +7,11 @@ import { voidEntry } from '../locations/void.js';
 export const part1 = [
   {
     id: 'part1',
-    title: 'Часть I. До начала',
+    title: 'До начала',
     part: 'part1',
     act: 0,
     kind: 'chapter',
     parent: null,
-    order: 20,
     tags: ['world', 'before'],
     links: ['world-first', 'void', 'cleanup', 'podmirye', 'bog-machine', 'gods', 'planet-core'],
     hidden: false,

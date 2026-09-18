@@ -7,7 +7,6 @@ export const voidEntry = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 20,
   tags: ['world', 'void', 'ssd', 'entropy', 'location', 'act1'],
   links: ['start', 'tower', 'lost-data-keeper'],
   hidden: false,

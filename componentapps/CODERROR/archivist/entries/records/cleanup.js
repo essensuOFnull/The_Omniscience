@@ -7,7 +7,6 @@ export const cleanup = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 30,
   tags: ['world', 'player-js'],
   links: ['start', 'part2'],
   hidden: false,

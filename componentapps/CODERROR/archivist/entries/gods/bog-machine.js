@@ -8,7 +8,6 @@ export const bogMachine = {
   kind: 'entity',
   nature: 'god',
   parent: 'part1',
-  order: 60,
   tags: ['entity', 'god', 'podmirye', 'bog-machine', 'rain'],
   links: ['podmirye', 'dive', 'shinjo', 'essence', 'sun-god'],
   hidden: false,

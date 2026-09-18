@@ -7,7 +7,6 @@ export const firstVoice = {
   act: 0,
   kind: 'record',
   parent: 'prologue',
-  order: 20,
   tags: ['meta', 'voice'],
   links: ['seon'],
   hidden: false,

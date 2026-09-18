@@ -7,7 +7,6 @@ export const acts = {
   act: 0,
   kind: 'record',
   parent: 'prologue',
-  order: 40,
   tags: ['meta', 'acts'],
   links: ['seon', 'part2', 'part3', 'part4'],
   hidden: false,

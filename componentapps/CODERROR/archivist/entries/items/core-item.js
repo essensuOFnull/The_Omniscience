@@ -7,7 +7,6 @@ export const coreItem = {
   act: 3,
   kind: 'item',
   parent: 'part4',
-  order: 60,
   tags: ['act3', 'item', 'core', 'accessory', 'summon'],
   links: ['core', 'seon', 'scene-quetiapine'],
   hidden: false,

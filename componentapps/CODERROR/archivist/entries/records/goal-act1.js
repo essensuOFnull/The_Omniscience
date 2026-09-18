@@ -7,7 +7,6 @@ export const goalAct1 = {
   act: 1,
   kind: 'record',
   parent: 'part2',
-  order: 20,
   tags: ['act1', 'goal'],
   links: ['terminal', 'space-empty'],
   hidden: false,

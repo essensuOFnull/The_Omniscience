@@ -7,7 +7,6 @@ export const moralPrinciples = {
   act: 3,
   kind: 'item',
   parent: 'part4',
-  order: 20,
   tags: ['act3', 'item', 'access-rights', 'dup-menu'],
   links: ['lair-seon', 'seon', 'access-rights'],
   hidden: false,

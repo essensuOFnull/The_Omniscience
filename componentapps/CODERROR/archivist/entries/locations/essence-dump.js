@@ -7,7 +7,6 @@ export const essenceDump = {
   act: 2,
   kind: 'location',
   parent: 'part3',
-  order: 55,
   tags: ['act2', 'location', 'dump', 'essence', 'dangerous'],
   links: ['essence', 'dump-meeting', 'neurochip', 'waste-manipulator'],
   hidden: false,

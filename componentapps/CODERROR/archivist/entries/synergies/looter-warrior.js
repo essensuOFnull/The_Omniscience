@@ -7,7 +7,6 @@ export const looterWarrior = {
   act: 2,
   kind: 'synergy',
   parent: 'synergies',
-  order: 60,
   tags: ['synergy', 'warrior', 'looter', 'crit', 'assassin'],
   links: ['warrior', 'looter'],
   hidden: false,

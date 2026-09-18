@@ -7,7 +7,6 @@ export const wasteManipulator = {
   act: 2,
   kind: 'item',
   parent: 'part3',
-  order: 58,
   tags: ['act2', 'item', 'essence', 'craft', 'waste-manipulator'],
   links: ['essence', 'neurochip', 'essence-dump', 'essence-quests', 'looter'],
   hidden: false,

@@ -8,7 +8,6 @@ export const sunGod = {
   kind: 'entity',
   nature: 'supreme',
   parent: 'part3',
-  order: 80,
   tags: ['supreme', 'sun', 'gods', 'ending'],
   links: ['gods', 'endings', 'bog-machine', 'planet-core'],
   hidden: false,

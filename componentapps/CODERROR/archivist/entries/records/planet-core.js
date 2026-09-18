@@ -7,7 +7,6 @@ export const planetCore = {
   act: 0,
   kind: 'record',
   parent: 'part1',
-  order: 80,
   tags: ['canon', 'meatball'],
   links: ['bog-machine', 'sun-god'],
   hidden: false,

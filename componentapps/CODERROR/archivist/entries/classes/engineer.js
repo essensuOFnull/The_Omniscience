@@ -7,7 +7,6 @@ export const engineer = {
   act: 2,
   kind: 'class',
   parent: 'classes',
-  order: 20,
   tags: ['class', 'engineer', 'modules', 'weapons'],
   links: ['mage-engineer'],
   hidden: false,
