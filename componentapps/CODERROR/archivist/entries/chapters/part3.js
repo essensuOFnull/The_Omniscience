@@ -38,12 +38,10 @@ import { ifWood } from '../items/if-wood.js';
 
 import { lairSeon } from '../records/lair-seon.js';
 import { moralPrinciples } from '../items/moral-principles.js';
-import { scenes } from '../sections/scenes.js';
 import { scenePulseUp } from '../scenes/pulse-up.js';
 import { sceneQuetiapine } from '../scenes/quetiapine.js';
 import { battleSeon } from '../bosses/battle-seon.js';
 import { supremeRoll } from '../records/supreme-roll.js';
-import { core } from '../bosses/core.js';
 import { coreItem } from '../items/core-item.js';
 
 export const part3 = [
@@ -63,7 +61,7 @@ export const part3 = [
 			'essence', 'essence-dump', 'dump-meeting',
 			'neurochip', 'waste-manipulator', 'essence-quests',
 			'dive', 'shinjo',
-			'sun-god',
+			'battle-seon'
 		],
 		hidden: false,
 		blocks: [
@@ -108,11 +106,9 @@ export const part3 = [
 
 	lairSeon,
 	moralPrinciples,
-	scenes,
 	scenePulseUp,
 	sceneQuetiapine,
 	battleSeon,
 	supremeRoll,
-	core,
 	coreItem,
 ];
