@@ -121,9 +121,9 @@ function buildFragment() {
 	const rimB = f(RIM_B);
 
 	const winner = f(W - 2 * MARGIN_X);
-  //const winner = f(H - 2 * MARGIN_Y); // прости, не удержался — см. ниже
+	//const winner = f(H - 2 * MARGIN_Y); // прости, не удержался — см. ниже
 
-  return /* glsl */ `
+	return /* glsl */ `
     precision highp float;
 
     in vec2 vUV;              // было: in vec2 vTextureCoord;
@@ -192,15 +192,19 @@ export default function ArchivistFigure({ className, style }) {
 		const host = hostRef.current;
 		if (!host) return;
 
-		let app = null;
+		// Локальные app и uniformGroup: НЕ через внешние переменные
+		// замыкания. Cleanup трогает только то, что инициализация
+		// уже успешно выставила. Если init не дошёл до конца —
+		// cleanup ничего не делает, destroy делает сам init.
+		let localApp = null;
 		let raf = 0;
 		let cancelled = false;
 		let t0 = 0;
-		let uniformGroup = null;
+		let localUniformGroup = null;
 
 		(async () => {
 			try {
-				app = new Application();
+				const app = new Application();
 				await app.init({
 					width: W,
 					height: H,
@@ -210,14 +214,14 @@ export default function ArchivistFigure({ className, style }) {
 					autoDensity: false,
 					preference: 'webgl',
 					powerPreference: 'low-power',
-					// Свой rAF-цикл ниже. Встроенный тикер выключен —
-					// один хозяин у времени, один — у рендера.
 					autoStart: false,
 					sharedTicker: false,
 				});
 
+				// Размонтировались, пока init шёл — гасим то,
+				// что успели создать, и уходим.
 				if (cancelled) {
-					app.destroy(true);
+					try { app.destroy(true); } catch { }
 					return;
 				}
 
@@ -232,10 +236,7 @@ export default function ArchivistFigure({ className, style }) {
 				sprite.height = H;
 				app.stage.addChild(sprite);
 
-				// Живая группа. Держим ссылку и мутируем .uniforms.uTime —
-				// именно её читает шейдер. Прошлый вариант работал с копией,
-				// поэтому «время» в шейдере всегда было нулём.
-				uniformGroup = new UniformGroup({
+				const uniformGroup = new UniformGroup({
 					uTime: { value: 0, type: 'f32' },
 				});
 
@@ -250,19 +251,20 @@ export default function ArchivistFigure({ className, style }) {
 
 				t0 = performance.now();
 
-				// Единственный цикл. Обновляет время и сразу рендерит —
-				// между «поменял» и «нарисовал» нет кадра.
 				const loop = () => {
-					if (cancelled || !app) return;
+					if (cancelled) return;
 					const t = (performance.now() - t0) * 0.001;
 					uniformGroup.uniforms.uTime = t;
 					app.renderer.render(app.stage);
 					raf = requestAnimationFrame(loop);
 				};
 				raf = requestAnimationFrame(loop);
+
+				// Только теперь отдаём наружу. С этого момента
+				// cleanup — единственный владелец.
+				localApp = app;
+				localUniformGroup = uniformGroup;
 			} catch (e) {
-				// WebGL не поднялся — не роняем комнату. Просто пустое
-				// место там, где должен быть силуэт. Архивариус подождёт.
 				console.warn('[archivist] фигура не инициализирована:', e);
 			}
 		})();
@@ -271,11 +273,11 @@ export default function ArchivistFigure({ className, style }) {
 			cancelled = true;
 			if (raf) cancelAnimationFrame(raf);
 			raf = 0;
-			if (app) {
-				try { app.destroy(true); } catch { }
-				app = null;
+			if (localApp) {
+				try { localApp.destroy(true); } catch { }
+				localApp = null;
 			}
-			uniformGroup = null;
+			localUniformGroup = null;
 		};
 	}, []);
 

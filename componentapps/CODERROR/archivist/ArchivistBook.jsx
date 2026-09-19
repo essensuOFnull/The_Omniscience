@@ -1,20 +1,29 @@
 // src/archivist/ArchivistBook.jsx
 //
-// Свод. Оркестратор: пул текстур, обложка, разметка разворота.
+// Свод. Оркестратор: пул текстур, обложка, разметка разворота,
+// оглавление слева.
 //
 // Тяжёлая логика разложена по соседним модулям:
 //   useBookPages  — замер и разбиение записей на страницы
-//   useBookFlip   — состояние листа и drag
+//   useBookFlip   — состояние листа, drag, зажатие, прыжок
 //   BookPage      — рендер одной страницы (включая spoiler)
 //   EntryFlow     — разбор блоков записи в JSX
 //   BookCover     — обложка с логотипом
-//   BookNav       — кнопки ←/→ и счётчик
+//   BookNav       — ←/→, счётчик, номер разворота
+//   BookToc       — свиток с оглавлением и поиском
 //
 // — Архивариус
 
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import {
-	generatePaperTexture,
+	generatePaperTexturePool,
 	generateCoverTexture,
 } from './paperTexture.js';
 import { useBookPages } from './useBookPages.js';
@@ -23,7 +32,71 @@ import EntryFlow from './EntryFlow.jsx';
 import BookPage from './BookPage.jsx';
 import BookCover from './BookCover.jsx';
 import BookNav from './BookNav.jsx';
-import { COVER_OPEN_MS, SETTLE_MS } from './bookConstants.js';
+import BookToc from './BookToc.jsx';
+import { COVER_OPEN_MS } from './bookConstants.js';
+
+// ── нормализация дерева записей в плоский список ─────────────
+//
+// entries/index.js может отдать:
+//   • массив — пропускаем насквозь;
+//   • объект-дерево по частям/актам — обходим рекурсивно;
+//   • что-то неожиданное — вернём [] и расскажем в консоль.
+//
+// Запись узнаём по паре (id + (blocks | title)). Обход идёт
+// по всем ключам, кроме blocks/links: это контент записи, а не
+// дети, туда лезть нельзя.
+//
+// — Архивариус
+function flattenEntries(input) {
+	if (!input) {
+		console.warn('[archivist] entries пуст:', input);
+		return [];
+	}
+	if (Array.isArray(input)) return input;
+	if (typeof input !== 'object') {
+		console.warn('[archivist] entries — не массив и не объект:', typeof input);
+		return [];
+	}
+
+	const out = [];
+	const seen = new Set();
+	const SKIP_KEYS = new Set(['blocks', 'links', 'tags', 'parent', 'children']);
+
+	const walk = (node, depth) => {
+		if (!node) return;
+		if (Array.isArray(node)) {
+			for (const item of node) walk(item, depth + 1);
+			return;
+		}
+		if (typeof node !== 'object') return;
+		// Защита от цикла — глубина 12, дальше уже не дерево.
+		if (depth > 12) return;
+
+		if (node.id && (node.blocks || node.title) && !seen.has(node.id)) {
+			seen.add(node.id);
+			out.push(node);
+		}
+
+		for (const key of Object.keys(node)) {
+			if (SKIP_KEYS.has(key)) continue;
+			walk(node[key], depth + 1);
+		}
+	};
+
+	walk(input, 0);
+
+	if (out.length === 0) {
+		console.warn(
+			'[archivist] flattenEntries не нашёл ни одной записи. ' +
+			'Верхний уровень:',
+			Array.isArray(input) ? 'array' : Object.keys(input).slice(0, 12)
+		);
+	} else {
+		console.info(`[archivist] flattenEntries: ${out.length} записей`);
+	}
+
+	return out;
+}
 
 export default function ArchivistBook({
 	entries,
@@ -32,9 +105,9 @@ export default function ArchivistBook({
 	onSpoil,
 	onClose,
 }) {
+	// ── плоский список ─────────────────────────────────────────
+	const safeEntries = useMemo(() => flattenEntries(entries), [entries]);
 	// ── размер страницы ────────────────────────────────────────
-	// Скрытый зонд той же геометрии, что настоящая страница.
-	// ResizeObserver пересчитывает при смене размеров окна.
 	const pageProbeRef = useRef(null);
 	const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
 
@@ -62,34 +135,53 @@ export default function ArchivistBook({
 	}, []);
 
 	// ── пагинация ──────────────────────────────────────────────
-	const { pages, measureRef } = useBookPages(entries, pageSize);
+	const { pages, measureRef } = useBookPages(safeEntries, pageSize);
 	const ready = !!pages && pages.length > 0;
 
-	// ── пул текстур ────────────────────────────────────────────
-	// Четыре слота: [левая, правая, стендбай-1, стендбай-2].
-	// Ротация — в onSettle от useBookFlip.
+	// ── пул текстур (Pixi) ────────────────────────────────────
 	//
-	//   next → [L, R, S1, S2]  →  [S2, S1, new, new]
-	//   prev → [L, R, S1, S2]  →  [S2, S1, new, new]
-	//
-	// Симметрично. Что едет на лист, что остаётся на статике —
-	// разобрано в texFor() ниже.
-	const [pageTex, setPageTex] = useState(() => [
-		generatePaperTexture(),
-		generatePaperTexture(),
-		generatePaperTexture(),
-		generatePaperTexture(),
-	]);
-	const [coverTex] = useState(() => generateCoverTexture(840, 560));
+	// Генерируется один раз при открытии книги. Дальше — только
+	// переиспользование: ротация слотов идёт по кругу, новых
+	// текстур в полёте не появляется. Это и есть главная
+	// разница с прошлой версией — она пекла две свежие бумажки
+	// на каждый флип и захлёбывалась.
+	const POOL_SIZE = 8;
+	const [texPool, setTexPool] = useState(null);
+	const [coverTex, setCoverTex] = useState(null);
+	const [pageTex, setPageTex] = useState([null, null, null, null]);
+	const poolCursorRef = useRef(0);
+
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const [pool, cover] = await Promise.all([
+					generatePaperTexturePool(POOL_SIZE),
+					generateCoverTexture(840, 560),
+				]);
+				if (cancelled) return;
+				setTexPool(pool);
+				setCoverTex(cover);
+				setPageTex([pool[0], pool[1], pool[2], pool[3]]);
+				poolCursorRef.current = 4;
+			} catch (e) {
+				console.warn('[archivist] текстуры не сгенерировались:', e);
+			}
+		})();
+		return () => { cancelled = true; };
+	}, []);
 
 	const rotateTextures = useCallback(() => {
-		setPageTex(([, , c, d]) => [
-			d,
-			c,
-			generatePaperTexture(),
-			generatePaperTexture(),
-		]);
-	}, []);
+		if (!texPool) return;
+		setPageTex(([, , c, d]) => {
+			const n = texPool.length;
+			const a = texPool[poolCursorRef.current % n];
+			poolCursorRef.current = (poolCursorRef.current + 1) % n;
+			const b = texPool[poolCursorRef.current % n];
+			poolCursorRef.current = (poolCursorRef.current + 1) % n;
+			return [d, c, a, b];
+		});
+	}, [texPool]);
 
 	// ── флип ───────────────────────────────────────────────────
 	const {
@@ -102,7 +194,10 @@ export default function ArchivistBook({
 		canNext,
 		goPrev,
 		goNext,
+		goToPage,
 		goToEntry,
+		startHold,
+		stopHold,
 		pointerHandlers,
 	} = useBookFlip(pages, ready, rotateTextures);
 
@@ -120,13 +215,6 @@ export default function ArchivistBook({
 	}, [coverOpening, coverOpened]);
 
 	// ── какая текстура куда идёт ───────────────────────────────
-	//
-	// Слоты и их роль в конкретный момент:
-	//   'left'      — статичная левая страница
-	//   'right'     — статичная правая
-	//   'flipFront' — передняя грань листа (то, что видно в начале)
-	//   'flipBack'  — задняя грань (то, что видно после 90°)
-	//
 	const texFor = (role) => {
 		if (!flip) {
 			if (role === 'left') return pageTex[0];
@@ -134,25 +222,59 @@ export default function ArchivistBook({
 			return null;
 		}
 		if (flip.direction === 'next') {
-			if (role === 'left') return pageTex[0]; // уходит под лист
-			if (role === 'right') return pageTex[2]; // новая правая
-			if (role === 'flipFront') return pageTex[1]; // старый правый лист
-			if (role === 'flipBack') return pageTex[3]; // новая левая
+			if (role === 'left') return pageTex[0];
+			if (role === 'right') return pageTex[2];
+			if (role === 'flipFront') return pageTex[1];
+			if (role === 'flipBack') return pageTex[3];
 		} else {
-			if (role === 'left') return pageTex[3]; // новая левая
-			if (role === 'right') return pageTex[1]; // уходит под лист
-			if (role === 'flipFront') return pageTex[0]; // старый левый лист
-			if (role === 'flipBack') return pageTex[2]; // новая правая
+			if (role === 'left') return pageTex[3];
+			if (role === 'right') return pageTex[1];
+			if (role === 'flipFront') return pageTex[0];
+			if (role === 'flipBack') return pageTex[2];
 		}
 		return null;
 	};
 
-	const paperStyle = (role) => ({
-		'--paper-texture': `url(${texFor(role)})`,
-	});
+	const paperStyle = (role) => {
+		const url = texFor(role);
+		return url ? { '--paper-texture': `url(${url})` } : {};
+	};
+
+	// ── горячие клавиши ←/→ ───────────────────────────────────
+	//
+	// Держим в capture, чтобы работало из любого места внутри
+	// оверлея. Esc и F1 обрабатывает Archivist.jsx — их не
+	// трогаем.
+	useEffect(() => {
+		if (!coverOpened) return;
+		const onKey = (e) => {
+			if (e.key === 'ArrowLeft') {
+				e.preventDefault();
+				goPrev();
+			} else if (e.key === 'ArrowRight') {
+				e.preventDefault();
+				goNext();
+			}
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, [goPrev, goNext, coverOpened]);
+
+	// ── прыжок из оглавления ──────────────────────────────────
+	//
+	// Если обложка ещё закрыта — открываем её на лету. Не
+	// блокируем прыжок: пусть открытие и перелёт идут
+	// параллельно, к моменту когда обложка откинется — уже
+	// будет нужный разворот.
+	const onTocNavigate = useCallback(
+		(id) => {
+			if (!coverOpened && !coverOpening) openCover();
+			goToEntry(id);
+		},
+		[coverOpened, coverOpening, openCover, goToEntry]
+	);
 
 	// ── разметка ───────────────────────────────────────────────
-	// Пока обложка не открыта — pointer-события разворота молчат.
 	const spreadHandlers = coverOpened ? pointerHandlers : {};
 
 	return (
@@ -165,10 +287,11 @@ export default function ArchivistBook({
 				×
 			</button>
 
+			<BookToc entries={safeEntries} onNavigate={onTocNavigate} />
+
 			<div className="book-stage">
 				<div className="book-spread" {...spreadHandlers}>
-					{/* Скрытый зонд: та же геометрия, что у настоящей страницы.
-              Нужен только чтобы измерить pageSize через CSS. */}
+					{/* Скрытый зонд той же геометрии. */}
 					<div
 						ref={pageProbeRef}
 						className="book-page book-page-left"
@@ -198,6 +321,7 @@ export default function ArchivistBook({
 							fullySpoiled={fullySpoiled}
 							onSpoil={onSpoil}
 							onNavigate={goToEntry}
+							pageNumber={ready && pages[leftIdx] ? leftIdx + 1 : null}
 						/>
 					</div>
 
@@ -209,18 +333,26 @@ export default function ArchivistBook({
 							fullySpoiled={fullySpoiled}
 							onSpoil={onSpoil}
 							onNavigate={goToEntry}
+							pageNumber={ready && pages[rightIdx] ? rightIdx + 1 : null}
 						/>
 					</div>
 
 					{flip && ready && (
 						<div
-							className={`book-flip book-flip-${flip.direction}`}
-							style={{
-								transform: `rotateY(${flip.angle}deg)`,
-								transition: flip.dragging
-									? 'none'
-									: `transform ${SETTLE_MS}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-							}}
+							className={
+								`book-flip book-flip-${flip.direction}` +
+								(flip.animate ? ' is-auto' : '')
+							}
+							style={
+								flip.animate
+									? undefined
+									: {
+										transform: `rotateY(${flip.angle}deg)`,
+										transition: flip.dragging
+											? 'none'
+											: `transform 320ms cubic-bezier(0.4, 0, 0.2, 1)`,
+									}
+							}
 						>
 							<div
 								className="book-flip-face book-flip-front"
@@ -233,6 +365,7 @@ export default function ArchivistBook({
 									fullySpoiled={fullySpoiled}
 									onSpoil={onSpoil}
 									onNavigate={goToEntry}
+									pageNumber={flip.frontIdx + 1}
 								/>
 							</div>
 							<div
@@ -246,6 +379,7 @@ export default function ArchivistBook({
 									fullySpoiled={fullySpoiled}
 									onSpoil={onSpoil}
 									onNavigate={goToEntry}
+									pageNumber={flip.backIdx + 1}
 								/>
 							</div>
 						</div>
@@ -267,17 +401,17 @@ export default function ArchivistBook({
 					canNext={canNext}
 					onPrev={goPrev}
 					onNext={goNext}
-					disabled={!!flip}
+					onHoldStart={startHold}
+					onJump={goToPage}
 					ready={ready}
+					disabled={!coverOpened}
 				/>
 			</div>
 
-			{/* Замерный офскрин: каждая запись лежит в блоке высотой
-          ровно в страницу. scrollWidth покажет, во сколько колонок
-          она разложилась. */}
+			{/* Замерный офскрин — без изменений. */}
 			<div ref={measureRef} className="book-measure-host" aria-hidden="true">
 				{pageSize.width > 0 &&
-					entries.map((entry) => (
+					safeEntries.map((entry) => (
 						<div
 							key={entry.id}
 							data-measure-entry
