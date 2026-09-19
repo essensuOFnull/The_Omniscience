@@ -8,6 +8,7 @@ import { acts } from '../meta/acts.js';
 import { endings } from '../meta/endings.js';
 import { goal } from '../meta/goal.js';
 import { gods } from '../records/gods.js';
+import { supremeNature } from '../records/supreme-nature.js';
 import { planetCore } from '../records/planet-core.js';
 import { vesselSemiotics } from '../meta/vessel_semiotics.js';
 
@@ -21,7 +22,7 @@ export const prologue = [
     parent: null,
     order: 10,
     tags: ['meta'],
-    links: ['seon', 'first-voice', 'archivist', 'acts', 'endings', 'goal'],
+    links: ['seon', 'first-voice', 'archivist', 'acts', 'endings', 'goal', 'gods', 'supreme-nature'],
     hidden: false,
     blocks: [],
   },
@@ -29,6 +30,7 @@ export const prologue = [
   archivist,
   arkhFile,
   gods,
+  supremeNature,
   seon,
   firstVoice,
   acts,
