@@ -6,9 +6,10 @@ import { archivist } from '../supreme/archivist.js';
 import { arkhFile } from '../items/arkh-file.js';
 import { acts } from '../meta/acts.js';
 import { endings } from '../meta/endings.js';
+import { goal } from '../meta/goal.js';
 import { gods } from '../records/gods.js';
 import { planetCore } from '../records/planet-core.js';
-import {vesselSemiotics} from '../meta/vessel_semiotics.js'
+import { vesselSemiotics } from '../meta/vessel_semiotics.js';
 
 export const prologue = [
   {
@@ -18,8 +19,9 @@ export const prologue = [
     act: 0,
     kind: 'chapter',
     parent: null,
+    order: 10,
     tags: ['meta'],
-    links: ['seon', 'first-voice', 'archivist', 'acts', 'endings'],
+    links: ['seon', 'first-voice', 'archivist', 'acts', 'endings', 'goal'],
     hidden: false,
     blocks: [],
   },
@@ -31,6 +33,7 @@ export const prologue = [
   firstVoice,
   acts,
   endings,
+  goal,
   planetCore,
-  vesselSemiotics
+  vesselSemiotics,
 ];

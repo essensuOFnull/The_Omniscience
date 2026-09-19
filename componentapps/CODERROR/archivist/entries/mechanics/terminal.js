@@ -11,7 +11,7 @@ export const terminal = {
   links: ['dd', 'lost-data-keeper', 'access-rights', 'world-first', 'part3'],
   hidden: false,
   blocks: [
-    { t: 'p', text: 'Побеждён босс — открывается дверь. За ней — заветный терминал.' },
+    { t: 'p', text: 'Побеждён босс — открывается дверь. За ней — терминал.' },
     { t: 'p', text: 'В терминале вбито 2 символа: [[dd|dd]].' },
     { t: 'p', text: 'Игрок:' },
     { t: 'list', ordered: false, items: [

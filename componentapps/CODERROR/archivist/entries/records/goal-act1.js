@@ -2,7 +2,7 @@
 
 export const goalAct1 = {
   id: 'goal-act1',
-  title: 'Цель акта',
+  title: 'Путь акта',
   part: 'part2',
   act: 1,
   kind: 'record',
@@ -12,5 +12,6 @@ export const goalAct1 = {
   hidden: false,
   blocks: [
     { t: 'p', text: 'Найти [[terminal|терминал]] с [[access-rights|правом доступа]]. Время ограничено. Локация разлагается.' },
+    { t: 'p', text: 'Но это не цель. Это путь. Ты можешь пойти по нему. Или не пойти.' },
   ],
 };
