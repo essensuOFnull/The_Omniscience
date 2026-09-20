@@ -51,6 +51,10 @@ import { battleSeon } from '../bosses/battle-seon.js';
 import { supremeRoll } from '../records/supreme-roll.js';
 import { coreItem } from '../items/core-item.js';
 
+import { bindings } from '../mechanics/bindings.js';
+import { configFiles } from '../mechanics/config-files.js';
+import { carrier } from '../mechanics/carrier.js';
+
 export const part3 = [
 	{
 		id: 'part3',
@@ -84,6 +88,9 @@ export const part3 = [
 	descent,
 	inventorySlots,
 	recordingPoints,
+	bindings,
+	configFiles,
+	carrier,
 
 	classes,
 	mage,
