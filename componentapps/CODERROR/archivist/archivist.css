@@ -146,6 +146,43 @@
 	background: rgba(200, 184, 154, 0.1);
 }
 
+/* ─────────────── отдать свод ─────────────── */
+
+/*
+ * Кнопка экспорта. Стоит слева от закрытия. Тот же язык:
+ * прозрачный фон, тонкая рамка, monospace. Но шире — потому
+ * что это не иконка, это реплика.
+ */
+.archivist-book-export {
+  position: absolute;
+  top: 20px;
+  right: 72px;              /* 24 + 36 (крестик) + 12 зазор */
+  height: 36px;
+  padding: 0 16px;
+  z-index: 100;
+  background: transparent;
+  color: #c8b89a;
+  border: 1px solid rgba(200, 184, 154, 0.3);
+  border-radius: 4px;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: lowercase;
+  cursor: pointer;
+  user-select: none;
+  transition: background 150ms, border-color 150ms, color 150ms;
+}
+
+.archivist-book-export:hover {
+  background: rgba(200, 184, 154, 0.08);
+  border-color: rgba(200, 184, 154, 0.55);
+}
+
+.archivist-book-export:focus-visible {
+  outline: 1px dotted rgba(200, 184, 154, 0.7);
+  outline-offset: 2px;
+}
+
 .book-stage {
 	display: flex;
 	flex-direction: column;

@@ -34,6 +34,7 @@ import BookCover from './BookCover.jsx';
 import BookNav from './BookNav.jsx';
 import BookToc from './BookToc.jsx';
 import { COVER_OPEN_MS } from './bookConstants.js';
+import BookExportButton from './BookExportButton.jsx';
 
 // ── нормализация дерева записей в плоский список ─────────────
 //
@@ -279,6 +280,7 @@ export default function ArchivistBook({
 
 	return (
 		<div className="archivist-book-wrap">
+			<BookExportButton entries={safeEntries} />
 			<button
 				className="archivist-book-close"
 				onClick={onClose}
