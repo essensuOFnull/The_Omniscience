@@ -1,5 +1,12 @@
 // src/archivist/entries/chapters/part3.js
 
+import { awakening } from '../records/awakening.js';
+import { receiver } from '../entities/receiver.js';
+import { gatherers } from '../records/gatherers.js';
+import { descent } from '../locations/descent.js';
+import { inventorySlots } from '../mechanics/inventory-slots.js';
+import { recordingPoints } from '../mechanics/recording-points.js';
+
 import { classes } from '../sections/classes.js';
 import { mage } from '../classes/mage.js';
 import { engineer } from '../classes/engineer.js';
@@ -54,6 +61,8 @@ export const part3 = [
 		parent: null,
 		tags: ['act2'],
 		links: [
+			'awakening', 'receiver', 'gatherers', 'descent',
+			'inventory-slots', 'recording-points',
 			'mage', 'engineer', 'looter', 'warrior',
 			'synergies',
 			'souls', 'soul-keeper',
@@ -61,13 +70,20 @@ export const part3 = [
 			'essence', 'essence-dump', 'dump-meeting',
 			'neurochip', 'waste-manipulator', 'essence-quests',
 			'dive', 'shinjo',
-			'battle-seon'
+			'battle-seon',
 		],
 		hidden: false,
 		blocks: [
 			{ t: 'em', text: 'Ты больше не безымянный файл. У тебя есть имя. У тебя есть тело. У тебя есть целый мир — и этот мир гораздо больше, чем корзина, из которой ты выбрался. Теперь начинается настоящее.' },
 		],
 	},
+
+	awakening,
+	receiver,
+	gatherers,
+	descent,
+	inventorySlots,
+	recordingPoints,
 
 	classes,
 	mage,
