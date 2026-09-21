@@ -8,9 +8,10 @@ import { acts } from '../meta/acts.js';
 import { endings } from '../meta/endings.js';
 import { goal } from '../meta/goal.js';
 import { gods } from '../records/gods.js';
-import { supremeNature } from '../records/supreme-nature.js';
+import { supremeNature } from '../meta/supreme-nature.js';
 import { planetCore } from '../records/planet-core.js';
 import { vesselSemiotics } from '../meta/vessel_semiotics.js';
+import { npcNature } from '../meta/npc-nature.js';
 
 export const prologue = [
   {
@@ -31,6 +32,7 @@ export const prologue = [
   arkhFile,
   gods,
   supremeNature,
+  npcNature,
   seon,
   firstVoice,
   acts,
