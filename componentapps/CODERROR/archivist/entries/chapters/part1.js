@@ -3,6 +3,8 @@
 import { worldFirst } from '../records/world-first.js';
 import { cleanup } from '../records/cleanup.js';
 import { voidEntry } from '../locations/void.js';
+import { planetCore } from '../records/planet-core.js';
+import { vesselSemiotics } from '../meta/vessel_semiotics.js';
 
 export const part1 = [
   {
@@ -19,6 +21,8 @@ export const part1 = [
   },
 
   worldFirst,
+  planetCore,
+  vesselSemiotics,
   cleanup,
   voidEntry,
 ];

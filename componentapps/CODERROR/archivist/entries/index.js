@@ -10,6 +10,7 @@ import { part1 } from './chapters/part1.js';
 import { part2 } from './chapters/part2.js';
 import { part3 } from './chapters/part3.js';
 import { part4 } from './chapters/part4.js';
+import { epilogue } from './chapters/epilogue.js';
 
 export const entries = [
   ...front,
@@ -18,6 +19,7 @@ export const entries = [
   ...part2,
   ...part3,
   ...part4,
+  ...epilogue,
 ];
 
 export const entriesById = Object.fromEntries(
