@@ -1,14 +1,24 @@
-import React, { useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Box } from '@mui/material';
 import Taskbar from './Taskbar';
 import Overview from './Overview';
 import Window from './Window';
-import windowAnimations from '../themes/window_animations';
+import { useSetting } from '../settings/useSettings';
+import defaultAnimations from '../../themes/window_animations/default';
+import noneAnimations from '../../themes/window_animations/none';
 
 export default function DesktopWorkspace({ desktopId, state, actions, config, apps, active }) {
   const viewportRef = useRef(null);
   const desktopState = state.desktops[desktopId];
   const { windows, isOverviewOpened } = desktopState || { windows: {}, isOverviewOpened: false };
+
+  const animationsEnabled = useSetting('animationsEnabled');
+  const customAnimations  = useSetting('customAnimations');
+
+  const animations = useMemo(() => {
+    if (!animationsEnabled) return noneAnimations;
+    return customAnimations || defaultAnimations;
+  }, [animationsEnabled, customAnimations]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -31,26 +41,19 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
   }, [desktopId, isOverviewOpened, actions]);
 
   return (
-    <Box
-      sx={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        display: active ? 'flex' : 'none',
-        flexDirection: 'column',
-        bgcolor: 'transparent',
-        overflow: 'hidden',
-        zIndex: active ? 1 : 0,
-      }}
-    >
+    <Box sx={{
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      display: active ? 'flex' : 'none',
+      flexDirection: 'column', bgcolor: 'transparent',
+      overflow: 'hidden', zIndex: active ? 1 : 0,
+    }}>
       <Box
         ref={viewportRef}
         sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}
         onClick={(e) => { if (e.target === e.currentTarget) actions.focusWindow(desktopId, null); }}
       >
-        <Overview state={{ ...desktopState, windows }} actions={actions} config={config} apps={apps} desktopId={desktopId} />
+        <Overview state={{ ...desktopState, windows }} actions={actions}
+          config={config} apps={apps} desktopId={desktopId} />
         {Object.entries(windows || {}).map(([id, win]) => {
           const app = apps.find(a => a.id === win.appId) || null;
           return (
@@ -61,21 +64,16 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
               state={{ ...desktopState, windows }}
               actions={actions}
               config={config}
-              animations={windowAnimations}
+              animations={animations}
               desktopId={desktopId}
               active={active}
             />
           );
         })}
       </Box>
-      <Taskbar
-        state={{ ...desktopState, windows }}
-        actions={actions}
-        config={config}
-        menuButtonClick={toggleOverview}
-        apps={apps}
-        desktopId={desktopId}
-      />
+      <Taskbar state={{ ...desktopState, windows }} actions={actions}
+        config={config} menuButtonClick={toggleOverview}
+        apps={apps} desktopId={desktopId} />
     </Box>
   );
 }

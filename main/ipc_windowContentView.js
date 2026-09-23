@@ -1,6 +1,23 @@
 import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
 
+// ============================================================
+// Резолвер preload — выбирает themed/clean в зависимости
+// от текущего состояния темы. Если renderer попросил кастомный
+// preload (не наш reactPreload / reactPreloadNoTheme), уважаем его.
+// ============================================================
+function resolvePreload(requested) {
+	const themeEnabled = global.themeEnabled !== false;
+	const themedPath = global.paths.reactPreload;
+	const cleanPath = global.paths.reactPreloadNoTheme;
+
+	if (!requested) return themeEnabled ? themedPath : cleanPath;
+	if (requested === themedPath || requested === cleanPath) {
+		return themeEnabled ? themedPath : cleanPath;
+	}
+	return requested;
+}
+
 function createWindowContentView(windowId, { url, preload, initialBounds }) {
 	if (global.windowContentViews[windowId]) {
 		// Если уже существует, просто обновляем URL (опционально)
@@ -12,16 +29,20 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 		return entry.view;
 	}
 
+	// 👇 Запоминаем «желаемый» preload, а фактический выбираем резолвером
+	const requestedPreload = preload;
+	const actualPreload = resolvePreload(preload);
+
 	const view = new WebContentsView({
 		webPreferences: {
-			preload: preload,
+			preload: actualPreload,
 			nodeIntegration: false,
 			contextIsolation: true,
 			transparent: true,
 			backgroundColor: '#00000000',
 			sandbox: false,
 			webSecurity: true,
-			webviewTag: false
+			webviewTag: false,
 		},
 	});
 
@@ -46,22 +67,17 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 				canGoBack,
 				canGoForward,
 				loading: isLoading,
-				error: errorInfo || null,   // <-- передаём ошибку, если есть
+				error: errorInfo || null,
 			});
 		}
 	};
 
 	// События, после которых обновляем статус
-	// вместо прямого присоединения sendNavigationUpdate оборачиваем
 	webContents.on('did-navigate', () => sendNavigationUpdate());
 	webContents.on('did-navigate-in-page', () => sendNavigationUpdate());
-	webContents.on('did-start-loading', () => {
-		sendNavigationUpdate();
-	});
+	webContents.on('did-start-loading', () => sendNavigationUpdate());
 	webContents.on('did-stop-loading', () => sendNavigationUpdate());
-	webContents.on('page-title-updated', (e, title) => {
-		sendNavigationUpdate();
-	});
+	webContents.on('page-title-updated', () => sendNavigationUpdate());
 
 	// Обработка ошибок загрузки
 	webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -85,9 +101,10 @@ function createWindowContentView(windowId, { url, preload, initialBounds }) {
 		scale: 1,
 		zIndex: 0,
 		url: url || 'about:blank',
+		requestedPreload,   // 👈 для пересоздания при смене темы
 	};
 
-	view._navListeners = [sendNavigationUpdate]; // можно потом отписаться
+	view._navListeners = [sendNavigationUpdate];
 
 	return view;
 }
@@ -133,7 +150,7 @@ function setWindowContentZIndex(windowId, zIndex) {
 	}
 	for (const [, e] of entries) {
 		global.mainWindow.contentView.addChildView(e.view);
-		e.view.setBounds(e.bounds); // восстанавливаем bounds
+		e.view.setBounds(e.bounds);
 	}
 }
 
@@ -143,9 +160,55 @@ function getWindowView(windowId) {
 	return entry?.view;
 }
 
+// ============================================================
+// Пересоздание всех view с новым preload.
+// Вызывается при переключении тумблера темы.
+// ============================================================
+function recreateAllViews() {
+	const snapshots = Object.entries(global.windowContentViews || {}).map(([id, e]) => ({
+		id,
+		url: e.url,
+		bounds: e.bounds,
+		scale: e.scale || 1,
+		zIndex: e.zIndex || 0,
+		requestedPreload: e.requestedPreload,
+	}));
+
+	if (snapshots.length === 0) return;
+
+	// 1. Уничтожаем все view
+	for (const snap of snapshots) destroyWindowContentView(snap.id);
+
+	// 2. Пересоздаём с новым preload (resolvePreload сам выберет нужный)
+	for (const snap of snapshots) {
+		createWindowContentView(snap.id, {
+			url: snap.url,
+			preload: snap.requestedPreload,
+			initialBounds: snap.bounds,
+		});
+
+		const entry = global.windowContentViews[snap.id];
+		if (!entry) continue;
+
+		entry.zIndex = snap.zIndex;
+
+		if (snap.scale !== 1) {
+			entry.view.webContents.setZoomFactor(snap.scale);
+			entry.scale = snap.scale;
+		}
+	}
+
+	// 3. Восстанавливаем z-порядок (один вызов — сортирует все)
+	const last = snapshots[snapshots.length - 1];
+	setWindowContentZIndex(last.id, last.zIndex);
+}
+
 export default function () {
-	// Глобальное хранилище: windowId -> { view, bounds, scale, zIndex, url }
+	// Глобальное хранилище: windowId -> { view, bounds, scale, zIndex, url, requestedPreload }
 	global.windowContentViews = {};
+
+	// 👇 Стартовое состояние темы. Дальше обновляется через IPC.
+	if (global.themeEnabled === undefined) global.themeEnabled = true;
 
 	ipcMain.on('create-window-content-view', (event, data) => {
 		createWindowContentView(data.windowId, {
@@ -205,7 +268,6 @@ export default function () {
 		}
 	});
 
-	// Также добавим возможность остановить загрузку
 	ipcMain.on('window-stop-load', (event, windowId) => {
 		const view = getWindowView(windowId);
 		if (view?.webContents?.isLoading?.()) {
@@ -224,5 +286,15 @@ export default function () {
 			canGoForward: webContents.navigationHistory.canGoForward?.() || false,
 			loading: webContents.isLoading?.() || false,
 		};
+	});
+
+	// ============================================================
+	// Тема включена/выключена → пересоздаём все view с новым preload.
+	// Никакого reload() — preload фиксирован на всю жизнь view,
+	// поэтому destroy + create заново.
+	// ============================================================
+	ipcMain.on('theme:enabled-changed', (_e, enabled) => {
+		global.themeEnabled = !!enabled;
+		recreateAllViews();
 	});
 }

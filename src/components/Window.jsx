@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback,useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Box } from '@mui/material';
 import TitleBar from './TitleBar';
@@ -70,8 +70,25 @@ export default function Window({ windowId, app, state, actions, config, animatio
 
   const variant = win.animationVariant || 'create';
   const variantConfig = animations?.[variant] || {};
-  const initial = { ...baseInitial, ...variantConfig.initial };
-  const animate = { ...baseAnimate, ...variantConfig.animate };
+
+  const initial = useMemo(() => ({
+    ...baseInitial,
+    ...variantConfig.initial
+  }), [initialGhost, variant]);
+
+  const animateKey = JSON.stringify({
+    cx: offscreenGhost.centerX,
+    cy: offscreenGhost.centerY,
+    w: offscreenGhost.width,
+    h: offscreenGhost.height,
+    top: topOffset,
+    variant,
+  });
+
+  const animate = useMemo(() => ({
+    ...baseAnimate,
+    ...variantConfig.animate,
+  }), [animateKey]);
 
   const showResizeHandles = !isGrid && !win.maximized && !win.minimized && !win.closing;
   const contentScale = win.contentScale > 0 ? win.contentScale : 1;
@@ -95,6 +112,8 @@ export default function Window({ windowId, app, state, actions, config, animatio
         sx={{
           width: '100%', height: '100%',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          bgcolor: 'background.paper',    // 👈 фильтр перекрасит
+          color: 'text.primary',           // 👈 и текст
           boxShadow: isFocused ? 4 : 2,
           borderRadius: win.maximized ? 0 : 3,
           border: '1px solid',
@@ -137,17 +156,17 @@ export default function Window({ windowId, app, state, actions, config, animatio
             transition={animations?.setContentScale?.animate?.transition || { duration: 0.3 }}
           >
             <Box
-				ref={contentRef}
-				sx={{
-					minWidth:'100%',
-					width: '100%',
-					maxWidth: '100%',
-					minHeight:'100%',
-					height: '100%',
-					maxHeight: '100%',
-					overflow: 'hidden',
-				}}
-			/>
+              ref={contentRef}
+              sx={{
+                minWidth: '100%',
+                width: '100%',
+                maxWidth: '100%',
+                minHeight: '100%',
+                height: '100%',
+                maxHeight: '100%',
+                overflow: 'hidden',
+              }}
+            />
           </motion.div>
         </Box>
 

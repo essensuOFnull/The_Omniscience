@@ -3,11 +3,31 @@ import { AppBar, Toolbar, Box, IconButton, Typography } from '@mui/material';
 import LanguageIcon from '@mui/icons-material/Language';
 import BaseWindowButtons from './BaseWindowButtons';
 import AddressBar from './AddressBar';
+import SettingsPanel from './SettingsPanel'; // 👈 панель настроек
 
 export default function TitleBar({
-	app, windowId, desktopId, win, isFocused, isGrid, actions, pageTitle, currentUrl, onTitleMouseDown, setCurrentUrl, navigateTo, goBack, goForward, reload, loading, canGoBack, canGoForward
+	app,
+	windowId,
+	desktopId,
+	win,
+	isFocused,
+	isGrid,
+	actions,
+	pageTitle,
+	currentUrl,
+	onTitleMouseDown,
+	setCurrentUrl,
+	navigateTo,
+	goBack,
+	goForward,
+	reload,
+	loading,
+	canGoBack,
+	canGoForward,
+	onOpenSettings, // 👈 опциональный внешний обработчик (если родитель хочет сам управлять панелью)
 }) {
 	const [browserMode, setBrowserMode] = useState(app?.type === 'browser');
+	const [settingsOpen, setSettingsOpen] = useState(false); // 👈 локальное состояние панели
 
 	const toggleBrowserMode = useCallback(() => setBrowserMode(prev => !prev), []);
 
@@ -37,6 +57,15 @@ export default function TitleBar({
 		else actions.maximizeWindow(desktopId, windowId);
 	}, [desktopId, windowId, actions, win, isGrid]);
 
+	// 👈 Если родитель передал onOpenSettings — используем его, иначе открываем локальную панель
+	const handleOpenSettings = useCallback(() => {
+		if (onOpenSettings) {
+			onOpenSettings(windowId, desktopId);
+		} else {
+			setSettingsOpen(true);
+		}
+	}, [onOpenSettings, windowId, desktopId]);
+
 	return (
 		<>
 			<AppBar position="static" color="transparent" elevation={0} sx={{ minHeight: 36 }}>
@@ -47,9 +76,13 @@ export default function TitleBar({
 					sx={{ minHeight: 36, px: 1, cursor: win.maximized || win.closing ? 'default' : 'move' }}
 				>
 					<Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden' }}>
-						{app?.icon ? <img src={app.icon} width="16" height="16" alt="" /> : <span>📄</span>}
-						<Typography variant="body2" noWrap sx={{userSelect:'none'}}>
-							{browserMode ? (pageTitle || currentUrl || 'Новая вкладка') : (pageTitle || app?.title || 'Окно')}
+						{app?.icon
+							? <img src={app.icon} width="16" height="16" alt="" />
+							: <span>📄</span>}
+						<Typography variant="body2" noWrap sx={{ userSelect: 'none' }}>
+							{browserMode
+								? (pageTitle || currentUrl || 'Новая вкладка')
+								: (pageTitle || app?.title || 'Окно')}
 						</Typography>
 					</Box>
 					<Box sx={{ display: 'flex', gap: 0.5 }}>
@@ -58,6 +91,7 @@ export default function TitleBar({
 								size="small"
 								onClick={toggleBrowserMode}
 								sx={{ color: browserMode ? 'primary.main' : 'text.secondary' }}
+								title="Переключить режим браузера"
 							>
 								<LanguageIcon fontSize="small" />
 							</IconButton>
@@ -67,23 +101,37 @@ export default function TitleBar({
 							onMaximize={handleMaximize}
 							onClose={closeWindow}
 							isMaximized={win.maximized}
+							onSettings={handleOpenSettings} // 👈 шестеренка окна
 						/>
 					</Box>
 				</Toolbar>
 			</AppBar>
-			{browserMode?<AddressBar
-				win={win}
-				app={app}
-				currentUrl={currentUrl}
-				setCurrentUrl={setCurrentUrl}
-				navigateTo={navigateTo}
-				goBack={goBack}
-				goForward={goForward}
-				reload={reload}
-				loading={loading}
-				canGoBack={canGoBack}
-				canGoForward={canGoForward}
-			/>:<></>}
+
+			{browserMode ? (
+				<AddressBar
+					win={win}
+					app={app}
+					currentUrl={currentUrl}
+					setCurrentUrl={setCurrentUrl}
+					navigateTo={navigateTo}
+					goBack={goBack}
+					goForward={goForward}
+					reload={reload}
+					loading={loading}
+					canGoBack={canGoBack}
+					canGoForward={canGoForward}
+				/>
+			) : null}
+
+			{/* 👈 Локальная панель настроек (используется, если родитель не передал onOpenSettings) */}
+			{!onOpenSettings && (
+				<SettingsPanel
+					open={settingsOpen}
+					onClose={() => setSettingsOpen(false)}
+					windowId={windowId}
+					desktopId={desktopId}
+				/>
+			)}
 		</>
 	);
 }
