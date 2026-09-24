@@ -1,21 +1,17 @@
-// src/archivist/ArchivistRoom.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import ArchivistFigure from './ArchivistFigure.jsx';
 import ArchivistDecorations from './ArchivistDecorations.jsx';
+import { useSpeechTypewriter } from '../../../speech/index.js';
 
 export default function ArchivistRoom({
-  lines,
-  variant = 'idle',
-  onDone,
-  bookOpen,
-  onToggleBook,
+  lines, variant = 'idle', onDone, bookOpen, onToggleBook,
 }) {
   const [index, setIndex] = useState(0);
-  const [typed, setTyped] = useState('');
-  const [done, setDone] = useState(false);
   const [sceneDone, setSceneDone] = useState(false);
-  const timerRef = useRef(null);
   const text = lines[index] || '';
+
+  const voice = variant === 'moment' ? 'archivist_moment' : 'archivist';
+  const { typed, done, skip } = useSpeechTypewriter(text, { voice });
 
   // ── рамка сцены: соотношение сторон берём из натуральных
   //    размеров картинки стула. Если картинки ещё не загружены —
@@ -45,28 +41,11 @@ export default function ArchivistRoom({
     setSceneDone(false);
   }, [lines]);
 
-  // Печатающая машинка.
-  useEffect(() => {
-    setTyped('');
-    setDone(false);
-    clearTimeout(timerRef.current);
-    let i = 0;
-    const tick = () => {
-      if (i >= text.length) { setDone(true); return; }
-      setTyped(text.slice(0, i + 1));
-      i++;
-      timerRef.current = setTimeout(tick, 26 + Math.random() * 46);
-    };
-    timerRef.current = setTimeout(tick, 220);
-    return () => clearTimeout(timerRef.current);
-  }, [index, text]);
-
   const handleClick = () => {
     if (bookOpen) return;
     if (!done) {
-      clearTimeout(timerRef.current);
-      setTyped(text);
-      setDone(true);
+      // Досрочно раскрыть — и заткнуть голос.
+      skip();
       return;
     }
     if (index + 1 >= lines.length) {
@@ -86,8 +65,6 @@ export default function ArchivistRoom({
     >
       <div className="archivist-flicker" />
 
-      {/* Сцена. Рамка держит пропорции стула/стола; фигура внутри
-          позиционируется процентами от рамки, а не от окна. */}
       <div ref={frameRef} className="archivist-workspace-frame">
         <img
           ref={chairRef}

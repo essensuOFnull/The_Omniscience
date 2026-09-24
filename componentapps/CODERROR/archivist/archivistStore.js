@@ -9,7 +9,6 @@
 // в браузере, не для игры. В игре всегда есть .arkh.
 //
 // — Архивариус
-
 const ARKH_PATH = 'saves/.arkh';
 const FALLBACK_KEY = 'archivist:arkh-fallback:v1';
 const FLUSH_DELAY_MS = 400;
