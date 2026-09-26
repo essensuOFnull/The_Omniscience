@@ -26,7 +26,7 @@ if (!injectAllStyles()) {
 }
 
 // Базовая укладка — нужна всегда, независимо от темы
-const BASE_CSS = `html, body { margin: 0; padding: 0; overflow: hidden; }`;
+const BASE_CSS = `html{ margin: 0; padding: 0; overflow: auto; height: 100%; }`;
 
 export default async function () {
   const tmpDir = path.join(global.paths.projectRoot, '.temp');
