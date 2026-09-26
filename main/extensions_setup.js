@@ -27,7 +27,7 @@ export default async function() {
 		const tmpDir = path.join(global.paths.projectRoot, '.temp');
 		await mkdir(tmpDir, { recursive: true });
 		const filterPath = path.join(tmpDir, 'filterPreload.js');
-		await writeFile(filterPath, global._.theme_css_filter, 'utf-8');
+		await writeFile(filterPath, `${global._.theme_css_filter}`, 'utf-8');
 		console.log('filterPreload.js written for registration');
 
 		// 1. Preload chrome-extensions
