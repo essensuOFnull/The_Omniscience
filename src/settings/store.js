@@ -11,13 +11,20 @@ const defaultSettings = {
   },
   background: {
     type: 'image',
-    source: '../images/background.jpg',
+    source: 'public/images/background.jpg',
     color: '#000000',
     opacity: 1,
     componentName: 'Background',
   },
   animationsEnabled: true,
   customAnimations: null,
+  // Список вкладок Overview. Порядок = порядок в массиве.
+  // settings — locked, его нельзя скрыть или удалить.
+  overviewTabs: [
+    { id: 'apps-list', visible: true },
+    { id: 'settings', visible: true, locked: true },
+    { id: 'web-search', visible: true },
+  ],
 };
 
 function loadSettings() {

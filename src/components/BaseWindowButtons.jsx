@@ -9,27 +9,15 @@ import CloseIcon from '@mui/icons-material/Close';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import FilterNoneIcon from '@mui/icons-material/FilterNone';
-import SettingsIcon from '@mui/icons-material/Settings';
 
 export default function BaseWindowButtons({
   onMinimize,
   onMaximize,
   onClose,
   isMaximized,
-  onSettings, // Новый проп
 }) {
   return (
     <Box sx={{ display: 'flex', gap: 0.5, zIndex: 1, WebkitAppRegion: 'no-drag' }}>
-      {onSettings && (
-        <IconButton
-          size="small"
-          onClick={onSettings}
-          sx={{ color: '#fff' }}
-          title="Настройки окна"
-        >
-          <SettingsIcon fontSize="small" />
-        </IconButton>
-      )}
       <IconButton size="small" onClick={onMinimize} sx={{ color: '#fff' }}>
         <MinimizeIcon fontSize="small" />
       </IconButton>

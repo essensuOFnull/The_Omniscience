@@ -1,4 +1,4 @@
-import React, { useRef, useCallback,useMemo } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Box } from '@mui/material';
 import TitleBar from './TitleBar';
@@ -13,23 +13,23 @@ export default function Window({ windowId, app, state, actions, config, animatio
   if (!win) return null;
 
   const isFocused = state.focusedWindowId === windowId;
-  const isGrid = state.isOverviewOpened && state.overviewTab === 1;
-  const overviewScrollTop = state.overviewScrollTop || 0;
 
   const contentRef = useRef(null);
-  const titleBarRef = useRef(null);
   const frameRef = useRef(null);
 
   const desktopOffset = useDesktopOffset();
-  const { currentUrl, pageTitle, loading, canGoBack, canGoForward, setCurrentUrl, navigateTo, goBack, goForward, reload } =
-    useWindowNavigation(windowId, win.url, app?.url);
+
+  const {
+    currentUrl, pageTitle, loading, canGoBack, canGoForward,
+    setCurrentUrl, navigateTo, goBack, goForward, reload,
+  } = useWindowNavigation(windowId, win.url, app?.url);
 
   const { viewCreated, sendUpdate } = useContentView(
-    windowId, win, app, config, contentRef, desktopOffset, isGrid, overviewScrollTop, active
+    windowId, win, app, config, contentRef, desktopOffset, active, desktopId
   );
 
   const { handleTitleMouseDown, onResizeMouseDown } = useWindowDragResize(
-    desktopId, windowId, win, state, actions, isFocused, isGrid, contentRef
+    desktopId, windowId, win, state, actions, isFocused, contentRef
   );
 
   const onAnimationComplete = useCallback(() => {
@@ -37,8 +37,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
     sendUpdate();
   }, [desktopId, actions, windowId, sendUpdate]);
 
-  // Вычисляем позиционирование и анимацию
-  const topOffset = (isGrid && state.gridViewport?.top != null) ? state.gridViewport.top - overviewScrollTop : 0;
   const ghost = win.ghost;
   const initialGhost = win.initialGhost || ghost;
 
@@ -50,7 +48,8 @@ export default function Window({ windowId, app, state, actions, config, animatio
     width: initialGhost.width,
     height: initialGhost.height,
   };
-  const hiddenInOverview = state.isOverviewOpened && !isGrid;
+
+  const hiddenInOverview = state.isOverviewOpened;
   const viewportWidth = state.viewport?.width || window.innerWidth;
   const viewportHeight = state.viewport?.height || window.innerHeight;
   const viewportCenterX = state.viewport?.centerX ?? viewportWidth / 2;
@@ -61,7 +60,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 
   const baseAnimate = {
     left: offscreenGhost.centerX,
-    top: offscreenGhost.centerY + topOffset,
+    top: offscreenGhost.centerY,
     x: '-50%',
     y: '-50%',
     width: offscreenGhost.width,
@@ -73,7 +72,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
 
   const initial = useMemo(() => ({
     ...baseInitial,
-    ...variantConfig.initial
+    ...variantConfig.initial,
   }), [initialGhost, variant]);
 
   const animateKey = JSON.stringify({
@@ -81,7 +80,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
     cy: offscreenGhost.centerY,
     w: offscreenGhost.width,
     h: offscreenGhost.height,
-    top: topOffset,
     variant,
   });
 
@@ -90,8 +88,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
     ...variantConfig.animate,
   }), [animateKey]);
 
-  const showResizeHandles = !isGrid && !win.maximized && !win.minimized && !win.closing;
-  const contentScale = win.contentScale > 0 ? win.contentScale : 1;
+  const showResizeHandles = !win.maximized && !win.minimized && !win.closing;
 
   return (
     <motion.div
@@ -99,26 +96,18 @@ export default function Window({ windowId, app, state, actions, config, animatio
       initial={initial}
       animate={animate}
       onAnimationComplete={onAnimationComplete}
-      onClick={(e) => {
-        if (isGrid && !win.closing) {
-          e.stopPropagation();
-          actions.closeOverview(desktopId);
-          actions.focusWindow(desktopId, windowId);
-        }
-      }}
     >
       <Box
         ref={frameRef}
         sx={{
           width: '100%', height: '100%',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          bgcolor: 'background.paper',    // 👈 фильтр перекрасит
-          color: 'text.primary',           // 👈 и текст
+          bgcolor: 'background.paper',
+          color: 'text.primary',
           boxShadow: isFocused ? 4 : 2,
           borderRadius: win.maximized ? 0 : 3,
           border: '1px solid',
           borderColor: isFocused ? 'primary.main' : 'divider',
-          cursor: isGrid ? 'pointer' : 'default',
         }}
       >
         <TitleBar
@@ -127,12 +116,10 @@ export default function Window({ windowId, app, state, actions, config, animatio
           desktopId={desktopId}
           win={win}
           isFocused={isFocused}
-          isGrid={isGrid}
           actions={actions}
           pageTitle={pageTitle}
           currentUrl={currentUrl}
           onTitleMouseDown={handleTitleMouseDown}
-
           setCurrentUrl={setCurrentUrl}
           navigateTo={navigateTo}
           goBack={goBack}
@@ -144,30 +131,16 @@ export default function Window({ windowId, app, state, actions, config, animatio
         />
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
-          <motion.div
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              transformOrigin: 'top left',
-              width: '100%', height: '100%',
-              pointerEvents: isGrid ? 'none' : 'auto',
+          <Box
+            ref={contentRef}
+            sx={{
+              flex: 1,
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
               userSelect: 'none',
             }}
-            animate={{ scale: contentScale }}
-            transition={animations?.setContentScale?.animate?.transition || { duration: 0.3 }}
-          >
-            <Box
-              ref={contentRef}
-              sx={{
-                minWidth: '100%',
-                width: '100%',
-                maxWidth: '100%',
-                minHeight: '100%',
-                height: '100%',
-                maxHeight: '100%',
-                overflow: 'hidden',
-              }}
-            />
-          </motion.div>
+          />
         </Box>
 
         {showResizeHandles && <ResizeHandles onResizeMouseDown={onResizeMouseDown} />}

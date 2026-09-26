@@ -4,19 +4,18 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import DesktopWorkspace from './DesktopWorkspace';
 import DesktopBar from './DesktopBar';
-import { windowManager,initialState } from '../state/windowManager';
+import { windowManager, initialState } from '../state/windowManager';
+import useViewStateBridge from '../hooks/useViewStateBridge';
+import useThemeSync from '../hooks/useThemeSync';
 
 import VoidPoem from './VoidPoem';
 
-const {getNewId, getNewZ}=windowManager;
+const { getNewId, getNewZ } = windowManager;
 
 const TAB_BAR_HEIGHT = 35;
 
-// Соответствие позиционных аргументов вызовов actions именам полей payload
 const ACTION_ARG_NAMES = {
 	setViewport: ['rect'],
-	setGridViewport: ['rect'],
-	setOverviewScrollTop: ['scrollTop'],
 	setOverviewTab: ['tab'],
 	focusWindow: ['windowId'],
 	closeWindow: ['windowId'],
@@ -33,7 +32,6 @@ export default function Desktop({ rootBar }) {
 	const [config, setConfig] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
 	const [apps, setApps] = useState([]);
 
-	// Редуктор для управления всеми десктопами
 	const reducer = useCallback((state, action) => {
 		const handler = windowManager[action.type];
 		if (!handler) return state;
@@ -42,11 +40,13 @@ export default function Desktop({ rootBar }) {
 
 	const [state, dispatch] = useReducer(reducer, undefined, initialState);
 
-	// Всегда актуальное состояние для обработчика обновления вкладок
+	// 🔌 Мост shell ↔ views
+	useViewStateBridge(state, dispatch);
+	useThemeSync();
+
 	const stateRef = useRef(state);
 	stateRef.current = state;
 
-	// Действия – обёртка, добавляющая desktopId
 	const actions = useMemo(() => {
 		const createAction = (type) => (desktopId, ...args) => {
 			const argNames = ACTION_ARG_NAMES[type];
@@ -65,9 +65,7 @@ export default function Desktop({ rootBar }) {
 		return result;
 	}, []);
 
-	// Инициализация первого рабочего стола
 	useEffect(() => {
-		// Создаём первый рабочий стол при загрузке компонента
 		if (Object.keys(stateRef.current.desktops).length === 0) {
 			const desktopId = getNewId();
 			actions.createDesktop(desktopId);
@@ -75,7 +73,6 @@ export default function Desktop({ rootBar }) {
 		}
 	}, [actions]);
 
-	// Управление DesktopBar: обновляем его при изменении десктопов
 	useEffect(() => {
 		const desktopsArray = Object.entries(state.desktops).map(([id, desktop], index) => ({
 			id,
@@ -122,14 +119,10 @@ export default function Desktop({ rootBar }) {
 		}
 	}, [state.desktops, state.activeDesktopId, actions, rootBar]);
 
-	// Получение списка приложений
 	useEffect(() => {
 		window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => { });
 	}, []);
 
-
-
-	// Рендерим все десктопы (скрывая неактивные)
 	return (
 		<Box
 			sx={{
@@ -144,7 +137,7 @@ export default function Desktop({ rootBar }) {
 				overflow: 'hidden',
 			}}
 		>
-			{Object.keys(state.desktops).length>0&&Object.keys(state.desktops).map(desktopId => (
+			{Object.keys(state.desktops).length > 0 && Object.keys(state.desktops).map(desktopId => (
 				<DesktopWorkspace
 					key={desktopId}
 					desktopId={desktopId}
@@ -156,7 +149,7 @@ export default function Desktop({ rootBar }) {
 				/>
 			))}
 			{Object.keys(state.desktops).length === 0 && (
-				<VoidPoem/>
+				<VoidPoem />
 			)}
 		</Box>
 	);

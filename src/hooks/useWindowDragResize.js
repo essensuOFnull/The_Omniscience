@@ -44,12 +44,19 @@ function getSnapGeometry(snap, viewport) {
   }
 }
 
-export default function useWindowDragResize(desktopId, windowId, win, state, actions, isFocused, isGrid, contentRef) {
+export default function useWindowDragResize(desktopId, windowId, win, state, actions, isFocused, contentRef) {
   // Защита от отсутствия viewport
-  const viewport = state.viewport || { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight, centerX: window.innerWidth / 2, centerY: window.innerHeight / 2 };
+  const viewport = state.viewport || {
+    left: 0,
+    top: 0,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    centerX: window.innerWidth / 2,
+    centerY: window.innerHeight / 2,
+  };
 
   const handleTitleMouseDown = useCallback((e) => {
-    if (isGrid || win.maximized || win.closing) return;
+    if (win.maximized || win.closing) return;
     e.preventDefault();
     if (!isFocused) actions.focusWindow(desktopId, windowId);
     if (contentRef.current) contentRef.current.style.pointerEvents = 'none';
@@ -85,14 +92,16 @@ export default function useWindowDragResize(desktopId, windowId, win, state, act
         win.snapped ? null : undefined
       );
     };
+
     const onUp = () => {
       if (contentRef.current) contentRef.current.style.pointerEvents = '';
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  }, [desktopId, windowId, actions, isGrid, isFocused, win, contentRef, viewport]);
+  }, [desktopId, windowId, actions, isFocused, win, contentRef, viewport]);
 
   const onResizeMouseDown = useCallback((direction) => (e) => {
     if (win.maximized || win.closing) return;
@@ -127,11 +136,13 @@ export default function useWindowDragResize(desktopId, windowId, win, state, act
 
       actions.setWindowRect(desktopId, windowId, newCX, newCY, newW, newH);
     };
+
     const onUp = () => {
       if (contentRef.current) contentRef.current.style.pointerEvents = '';
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [desktopId, windowId, actions, isFocused, win, contentRef, viewport]);

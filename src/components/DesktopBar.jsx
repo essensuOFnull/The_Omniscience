@@ -9,11 +9,9 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 
 import BaseWindowButtons from './BaseWindowButtons';
-import SettingsPanel from './SettingsPanel'; // 👈 импорт панели настроек
 
 const DesktopBar = ({ desktops, activeDesktopId, onCreateDesktop, onSwitchDesktop, onDeleteDesktop }) => {
 	const [isMaximized, setIsMaximized] = useState(true);
-	const [settingsOpen, setSettingsOpen] = useState(false); // 👈 состояние панели настроек
 	const desktopsContainerRef = useRef(null);
 
 	// Подписка на изменения состояния окна (maximize/fullscreen)
@@ -49,9 +47,6 @@ const DesktopBar = ({ desktops, activeDesktopId, onCreateDesktop, onSwitchDeskto
 			container.scrollLeft += e.deltaY;
 		}
 	};
-
-	// 👈 обработчик открытия настроек — по ТЗ это глобальные настройки
-	const handleOpenSettings = () => setSettingsOpen(true);
 
 	return (
 		<>
@@ -143,17 +138,9 @@ const DesktopBar = ({ desktops, activeDesktopId, onCreateDesktop, onSwitchDeskto
 						onMaximize={handleMaximize}
 						onClose={handleClose}
 						isMaximized={isMaximized}
-						onSettings={handleOpenSettings} // 👈 прокидываем обработчик
 					/>
 				</Toolbar>
 			</AppBar>
-
-			{/* 👈 Панель настроек поверх всего интерфейса.
-			    position fixed + zIndex выше AppBar, чтобы перекрывала всё */}
-			<SettingsPanel
-				open={settingsOpen}
-				onClose={() => setSettingsOpen(false)}
-			/>
 		</>
 	);
 };

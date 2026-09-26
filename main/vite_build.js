@@ -38,7 +38,6 @@ export default async function () {
   <script type="module" src="./Index.jsx"></script>
 </body>
 </html>`;
-        // Исправлено: передаём путь и данные
         fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
       }
 
@@ -53,7 +52,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App windowId={window.__APP_WINDOW_ID__} />
   </React.StrictMode>
 );`;
-        // Исправлено
         fs.writeFileSync(mainJsxPath, mainContent, 'utf-8');
       }
 
@@ -68,10 +66,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       alias: {
         '@src': srcDir,
         '@public': publicDir,
+        '@viewRuntime': path.join(srcDir, 'viewRuntime', 'index.js'),
+        '@themes': path.join(rootDir, 'themes'),
       },
     },
     build: {
-      outDir: distDir,           // в новых версиях Vite – outDir, а не distDir
+      outDir: distDir,
       emptyOutDir: true,
       rollupOptions: { input },
     },
@@ -82,7 +82,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         async writeBundle() {
           const webappsDir = global.paths.webappsDir;
           if (fs.existsSync(webappsDir)) {
-            // webapps теперь копируются прямо в dist/webapps
             const dest = path.join(distDir, 'webapps');
             fs.cpSync(webappsDir, dest, { recursive: true });
           }

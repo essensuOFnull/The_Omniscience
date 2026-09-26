@@ -1,4 +1,4 @@
-import * as allActions from './windowManager/actions/index';
+import * as allActions from './windowManager/index';
 import * as helpers from './windowManager/helpers';
 import { initialState } from './windowManager/initialState';
 

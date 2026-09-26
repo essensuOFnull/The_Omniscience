@@ -3,7 +3,6 @@ import { AppBar, Toolbar, Box, IconButton, Typography } from '@mui/material';
 import LanguageIcon from '@mui/icons-material/Language';
 import BaseWindowButtons from './BaseWindowButtons';
 import AddressBar from './AddressBar';
-import SettingsPanel from './SettingsPanel'; // 👈 панель настроек
 
 export default function TitleBar({
 	app,
@@ -11,7 +10,6 @@ export default function TitleBar({
 	desktopId,
 	win,
 	isFocused,
-	isGrid,
 	actions,
 	pageTitle,
 	currentUrl,
@@ -24,10 +22,8 @@ export default function TitleBar({
 	loading,
 	canGoBack,
 	canGoForward,
-	onOpenSettings, // 👈 опциональный внешний обработчик (если родитель хочет сам управлять панелью)
 }) {
 	const [browserMode, setBrowserMode] = useState(app?.type === 'browser');
-	const [settingsOpen, setSettingsOpen] = useState(false); // 👈 локальное состояние панели
 
 	const toggleBrowserMode = useCallback(() => setBrowserMode(prev => !prev), []);
 
@@ -52,19 +48,9 @@ export default function TitleBar({
 
 	const handleMaximize = useCallback(() => {
 		if (win.closing) return;
-		if (isGrid) actions.closeOverview(desktopId);
 		if (win.maximized) actions.unmaximizeWindow(desktopId, windowId);
 		else actions.maximizeWindow(desktopId, windowId);
-	}, [desktopId, windowId, actions, win, isGrid]);
-
-	// 👈 Если родитель передал onOpenSettings — используем его, иначе открываем локальную панель
-	const handleOpenSettings = useCallback(() => {
-		if (onOpenSettings) {
-			onOpenSettings(windowId, desktopId);
-		} else {
-			setSettingsOpen(true);
-		}
-	}, [onOpenSettings, windowId, desktopId]);
+	}, [desktopId, windowId, actions, win]);
 
 	return (
 		<>
@@ -101,7 +87,6 @@ export default function TitleBar({
 							onMaximize={handleMaximize}
 							onClose={closeWindow}
 							isMaximized={win.maximized}
-							onSettings={handleOpenSettings} // 👈 шестеренка окна
 						/>
 					</Box>
 				</Toolbar>
@@ -122,16 +107,6 @@ export default function TitleBar({
 					canGoForward={canGoForward}
 				/>
 			) : null}
-
-			{/* 👈 Локальная панель настроек (используется, если родитель не передал onOpenSettings) */}
-			{!onOpenSettings && (
-				<SettingsPanel
-					open={settingsOpen}
-					onClose={() => setSettingsOpen(false)}
-					windowId={windowId}
-					desktopId={desktopId}
-				/>
-			)}
 		</>
 	);
 }

@@ -61,10 +61,10 @@ export default async function () {
     themedFilter,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
+    global._.view_state_ipc,
   ].join('\n\n');
 
   // ==== Чистый preload (без темы) ====
-  // Никакого css_filter_core — только базовая укладка, чтобы не было margin/scrollbar
   const cleanInject = buildInjectStylesFunction(BASE_CSS);
 
   const cleanPreload = [
@@ -72,6 +72,7 @@ export default async function () {
     cleanInject,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
+    global._.view_state_ipc,
   ].join('\n\n');
 
   await Promise.all([

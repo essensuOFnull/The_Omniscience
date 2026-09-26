@@ -1,8 +1,9 @@
 export default function () {
   global.$.ipc_mainWindow();
   global.$.ipc_windowContentView();
+  global.$.ipc_viewState();
   global.$.ipc_getAppsList();
   global.$.ipc_getConfig();
   global.$.ipc_registerWebview();
-  global.$.ipc_theme();          // 👈 новая строка
+  global.$.ipc_theme();
 }
