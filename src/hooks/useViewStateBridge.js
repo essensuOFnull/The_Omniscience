@@ -54,19 +54,20 @@ export default function useViewStateBridge(state, dispatch) {
 		const api = window.electron_desktop_API;
 		if (!api) return;
 
-		const offDispatch = api.on('shell:view-dispatch', ({ type, payload }) => {
-			// Спецтип: не reducer, а settingsStore
+		const offDispatch = api.on('shell:view-dispatch', (msg) => {
+			const { type, payload } = msg || {};
+			if (!type) return;
 			if (type === 'updateSetting') {
 				const { path, value } = payload || {};
-				if (typeof path === 'string') {
-					settingsStore.update(path, value);
-				}
+				if (typeof path === 'string') settingsStore.update(path, value);
 				return;
 			}
 			dispatch({ type, payload });
 		});
 
-		const offSubscribe = api.on('shell:view-subscribe', ({ fromId, paths }) => {
+		const offSubscribe = api.on('shell:view-subscribe', (msg) => {
+			const { fromId, paths } = msg || {};
+			if (!fromId || !Array.isArray(paths)) return;
 			for (const path of paths) {
 				const key = `${fromId}:${path}`;
 				subscribersRef.current.set(key, { fromId, path });
@@ -82,7 +83,9 @@ export default function useViewStateBridge(state, dispatch) {
 			}
 		});
 
-		const offUnsubscribe = api.on('shell:view-unsubscribe', ({ fromId, paths }) => {
+		const offUnsubscribe = api.on('shell:view-unsubscribe', (msg) => {
+			const { fromId, paths } = msg || {};
+			if (!fromId || !Array.isArray(paths)) return;
 			for (const path of paths) {
 				const key = `${fromId}:${path}`;
 				subscribersRef.current.delete(key);
@@ -90,7 +93,9 @@ export default function useViewStateBridge(state, dispatch) {
 			}
 		});
 
-		const offGone = api.on('shell:view-gone', ({ fromId }) => {
+		const offGone = api.on('shell:view-gone', (msg) => {
+			const { fromId } = msg || {};
+			if (!fromId) return;
 			for (const key of [...subscribersRef.current.keys()]) {
 				if (key.startsWith(`${fromId}:`)) {
 					subscribersRef.current.delete(key);

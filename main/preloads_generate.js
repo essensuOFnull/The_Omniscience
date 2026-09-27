@@ -25,32 +25,86 @@ if (!injectAllStyles()) {
 }`;
 }
 
-// Базовая укладка — нужна всегда, независимо от темы
 const BASE_CSS = `html{ margin: 0; padding: 0; overflow: auto; height: 100%; }`;
 
 export default async function () {
   const tmpDir = path.join(global.paths.projectRoot, '.temp');
   await mkdir(tmpDir, { recursive: true });
 
-  // Читаем цветовую схему (тема)
   const colorSchemeName = global.config.color_scheme || 'default';
   const schemePath = path.join(global.paths.projectRoot, 'themes', 'color_schemes', `${colorSchemeName}.css`);
   let schemeCSS;
   try {
     schemeCSS = await readFile(schemePath, 'utf-8');
-    console.log(`[Preloads] Color scheme "${colorSchemeName}" loaded.`);
   } catch (err) {
     console.error(`[Preloads] Failed to load color scheme "${colorSchemeName}":`, err.message);
-    schemeCSS = `/* fallback */ :root { color-scheme: dark; }`;
+    schemeCSS = `:root { color-scheme: dark; }`;
   }
 
-  // Читаем ядро фильтра
   const coreTemplate = await readFile(
     path.join(global.paths.projectRoot, 'texts', 'css_filter_core.js'),
     'utf-8'
   );
 
-  // ==== Тематизированный preload ====
+  // 👇 Читаем собранный React-бандл frame-runtime
+  let frameRuntimeBundle = '';
+  try {
+    frameRuntimeBundle = await readFile(path.join(tmpDir, 'frame-runtime.js'), 'utf-8');
+    console.log('проверка');
+  } catch (err) {
+    console.error('[Preloads] frame-runtime.js not found — did you run buildFrameRuntime?', err.message);
+  }
+
+  // Финальный вызов mountFrame после загрузки бандла
+const frameBootstrap = `
+(function () {
+  console.log('[frameBoot] start');
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('noFrame') === '1') { console.log('[frameBoot] noFrame, skip'); return; }
+  } catch (_) {}
+
+  if (!window.OmniFrame || typeof window.OmniFrame.mountFrame !== 'function') {
+    console.log('[frameBoot] OmniFrame.mountFrame отсутствует — abort');
+    return;
+  }
+
+  function doMount() {
+    console.log('[frameBoot] invoking get-window-id');
+    ipcRenderer.invoke('frame:get-window-id').then(function (windowId) {
+      console.log('[frameBoot] got windowId =', windowId);
+      if (!windowId) return;
+      try {
+        window.OmniFrame.mountFrame({ windowId: windowId, ipcRenderer: ipcRenderer });
+        console.log('[frameBoot] mountFrame returned');
+      } catch (e) {
+        console.error('[frameBoot] mountFrame threw:', e);
+      }
+    }).catch(function (e) {
+      console.log('[frameBoot] get-window-id failed:', e);
+    });
+  }
+
+  function onReady() {
+    console.log('[frameBoot] DOM ready, readyState =', document.readyState);
+    if (!document.documentElement || !document.head || !document.body) {
+      // крайне маловероятно, но на всякий — retry через rAF
+      console.log('[frameBoot] doc incomplete, retrying via rAF');
+      requestAnimationFrame(onReady);
+      return;
+    }
+    doMount();
+  }
+
+  if (document.readyState === 'loading') {
+    console.log('[frameBoot] waiting for DOMContentLoaded');
+    document.addEventListener('DOMContentLoaded', onReady, { once: true });
+  } else {
+    onReady();
+  }
+})();
+`;
+
   const themedInject = buildInjectStylesFunction(schemeCSS + '\n' + BASE_CSS);
   const themedFilter = coreTemplate
     .replace('/* __REGISTER_PROPERTIES__ */', '')
@@ -58,21 +112,26 @@ export default async function () {
 
   const themedPreload = [
     global._.imports,
+    frameRuntimeBundle,
     themedFilter,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
+    global._.frame_ipc,
+    frameBootstrap,
   ].join('\n\n');
 
-  // ==== Чистый preload (без темы) ====
   const cleanInject = buildInjectStylesFunction(BASE_CSS);
 
   const cleanPreload = [
     global._.imports,
+    frameRuntimeBundle,
     cleanInject,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
+    global._.frame_ipc,
+    frameBootstrap,
   ].join('\n\n');
 
   await Promise.all([

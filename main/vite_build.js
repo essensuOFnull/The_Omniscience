@@ -10,6 +10,7 @@ export default async function () {
   const componentappsDir = global.paths.componentappsDir;
   const rendererIndexHtml = path.join(rootDir, 'src', 'index.html');
 
+  // 👇 убрали frame — собирается отдельно через esbuild
   const input = {
     main: rendererIndexHtml,
   };
@@ -73,6 +74,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     build: {
       outDir: distDir,
       emptyOutDir: true,
+      sourcemap: true,
       rollupOptions: { input },
     },
     publicDir: path.join(rootDir, 'public'),

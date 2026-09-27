@@ -23,13 +23,6 @@ export default async function() {
 		});
 		console.log('[Extensions] CSP disabled for all sites in session');
 
-		// 0. Создаём временный файл фильтра для регистрации
-		const tmpDir = path.join(global.paths.projectRoot, '.temp');
-		await mkdir(tmpDir, { recursive: true });
-		const filterPath = path.join(tmpDir, 'filterPreload.js');
-		await writeFile(filterPath, `${global._.theme_css_filter}`, 'utf-8');
-		console.log('filterPreload.js written for registration');
-
 		// 1. Preload chrome-extensions
 		try {
 			const extPreloadUrl = import.meta.resolve('electron-chrome-extensions/preload');
@@ -43,18 +36,6 @@ export default async function() {
 		} catch (err) {
 			console.error('[Extensions] Failed to register chrome-extensions preload:', err.message);
 			return;
-		}
-
-		// 2. Preload фильтра (через filePath)
-		try {
-			await defaultSession.registerPreloadScript({
-				id: 'omniscience-filter',
-				type: 'frame',
-				filePath: filterPath,
-			});
-			console.log('[Extensions] Omniscience filter preload registered');
-		} catch (err) {
-			console.error('[Extensions] Failed to register filter preload:', err.message);
 		}
 
 		// 3. Резолвер сессии

@@ -33,9 +33,11 @@ export default async function () {
             preload: global.paths.reactPreload,
             autoplayPolicy: "no-user-gesture-required",
             webSecurity: true,
-            webviewTag: false,
+            webviewTag: true,
         },
     });
+
+    global.$.ipc_dragManager();
 
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 

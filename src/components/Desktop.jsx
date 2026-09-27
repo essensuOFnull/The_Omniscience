@@ -7,6 +7,7 @@ import DesktopBar from './DesktopBar';
 import { windowManager, initialState } from '../state/windowManager';
 import useViewStateBridge from '../hooks/useViewStateBridge';
 import useThemeSync from '../hooks/useThemeSync';
+import useScreenDrag from '../hooks/useScreenDrag';
 
 import VoidPoem from './VoidPoem';
 
@@ -64,6 +65,8 @@ export default function Desktop({ rootBar }) {
 		}
 		return result;
 	}, []);
+
+	useScreenDrag(state, actions);
 
 	useEffect(() => {
 		if (Object.keys(stateRef.current.desktops).length === 0) {

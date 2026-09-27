@@ -67,6 +67,7 @@
     "esbuild@0.21.5": true
   },
   "devDependencies": {
-    "electron-rebuild": "^3.2.9"
+    "electron-rebuild": "^3.2.9",
+    "esbuild": "^0.28.2"
   }
 }

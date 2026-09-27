@@ -16,6 +16,7 @@ export default function useTabContentView(viewId, app, containerRef, { desktopId
 		const qs = new URLSearchParams();
 		if (desktopId) qs.set('desktopId', desktopId);
 		if (tabId) qs.set('tabId', tabId);
+		qs.set('noFrame', '1');
 		const url = `${base}${sep}${qs.toString()}`;
 
 		const preload = app.preloadPath || null;
