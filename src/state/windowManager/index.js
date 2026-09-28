@@ -20,4 +20,3 @@ export { setOverviewTab } from './actions/setOverviewTab';
 export { createDesktop } from './actions/createDesktop';
 export { switchDesktop } from './actions/switchDesktop';
 export { closeDesktop } from './actions/closeDesktop';
-export { updateFrameState } from './actions/updateFrameState';

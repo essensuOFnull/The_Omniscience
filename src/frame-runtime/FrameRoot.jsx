@@ -11,11 +11,11 @@ const darkTheme = createTheme({
   },
 });
 
-// Размеры в пикселях при scale = 1
 const BASE_CELL = 28;
 const BASE_GAP = 1;
 const BASE_PAD = 4;
-const EDGE_INSET = 16; // отступ от края viewport, если панель не перемещали
+const EDGE_INSET = 16;
+const COL_MULT = 5.3; // 1 + 1 + 1.3 + 1 + 1
 
 export default function FrameRoot({ ctx }) {
   const { windowId, ipcRenderer } = ctx;
@@ -38,6 +38,9 @@ export default function FrameRoot({ ctx }) {
   });
 
   const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
+
+  // 👇 ЛОКАЛЬНАЯ позиция панели. null = "использовать дефолт".
+  const [panelPos, setPanelPos] = useState({ x: null, y: null });
 
   // ---- Props от shell ----
   useEffect(() => {
@@ -95,17 +98,45 @@ export default function FrameRoot({ ctx }) {
     return () => window.removeEventListener('resize', update);
   }, []);
 
-  // ---- Pointer lock: drag окна / resize окна / move панели ----
+  // ---- Размеры панели ----
+  const scale = props.frameState?.panelScale ?? 1;
+  const cell = BASE_CELL * scale;
+  const gap = BASE_GAP * scale;
+  const pad = BASE_PAD * scale;
+
+  const panelW = cell * COL_MULT + gap * 4 + pad * 2;
+  const panelH = cell * 3 + gap * 2 + pad * 2;
+
+  const defaultX = vp.w - panelW - EDGE_INSET;
+  const defaultY = vp.h - panelH - EDGE_INSET;
+
+  const rawX = panelPos.x ?? defaultX;
+  const rawY = panelPos.y ?? defaultY;
+
+  // Клампим внутри viewport, чтобы панель не улетела за края
+  const panelX = Math.max(0, Math.min(vp.w - panelW, rawX));
+  const panelY = Math.max(0, Math.min(vp.h - panelH, rawY));
+
+  // ---- Pointer lock: window drag / window resize / panel move ----
   const modeRef = useRef(null);
+  const panelDragRef = useRef({ startX: 0, startY: 0 });
 
   useEffect(() => {
     const onMove = (e) => {
       if (!document.pointerLockElement || !modeRef.current) return;
       const m = modeRef.current;
+
       if (m === 'drag') {
         ipcRenderer.send('frame:drag-delta', { windowId, dx: e.movementX, dy: e.movementY });
       } else if (m === 'panelMove') {
-        ipcRenderer.send('frame:move-delta', { windowId, dx: e.movementX, dy: e.movementY });
+        // 👇 Локально, без IPC
+        const next = {
+          x: panelDragRef.current.startX + e.movementX,
+          y: panelDragRef.current.startY + e.movementY,
+        };
+        panelDragRef.current.startX = next.x;
+        panelDragRef.current.startY = next.y;
+        setPanelPos(next);
       } else if (m.resize) {
         ipcRenderer.send('frame:resize-delta', {
           windowId, direction: m.resize,
@@ -113,15 +144,17 @@ export default function FrameRoot({ ctx }) {
         });
       }
     };
+
     const finish = () => {
       const m = modeRef.current;
       if (!m) return;
       modeRef.current = null;
       try { document.exitPointerLock?.(); } catch (_) {}
       if (m === 'drag') ipcRenderer.send('frame:drag-end', { windowId });
-      else if (m === 'panelMove') ipcRenderer.send('frame:move-end', { windowId });
       else if (m.resize) ipcRenderer.send('frame:resize-end', { windowId });
+      // panelMove — нечего завершать, локально
     };
+
     const onLockChange = () => { if (!document.pointerLockElement) finish(); };
 
     document.addEventListener('mousemove', onMove);
@@ -135,27 +168,32 @@ export default function FrameRoot({ ctx }) {
   }, [ipcRenderer, windowId]);
 
   // ---- Действия ----
-  const send = (type, payload) => ipcRenderer.send('frame:event', { windowId, type, payload });
-  const updateFrame = (patch) => send('update-frame', { patch });
+  const send = useCallback((type, payload) => {
+    ipcRenderer.send('frame:event', { windowId, type, payload });
+  }, [ipcRenderer, windowId]);
 
+  // ---- Обработчики панели ----
   const onPanelDragStart = useCallback((e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     modeRef.current = 'panelMove';
+    panelDragRef.current.startX = panelX;
+    panelDragRef.current.startY = panelY;
     try {
       const p = document.body.requestPointerLock();
       if (p && p.catch) p.catch(() => {});
     } catch (_) {}
-    ipcRenderer.send('frame:move-start', { windowId });
-  }, [ipcRenderer, windowId]);
+  }, [panelX, panelY]);
 
   const onPanelDoubleClick = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    updateFrame({ x: null, y: null });
+    // Локальный сброс в дефолтный угол
+    setPanelPos({ x: null, y: null });
   }, []);
 
+  // ---- Обработчики окна ----
   const onWindowDragStart = useCallback((e) => {
     if (props.maximized || props.closing || e.button !== 0) return;
     e.preventDefault();
@@ -180,52 +218,30 @@ export default function FrameRoot({ ctx }) {
     ipcRenderer.send('frame:resize-start', { windowId, direction: dir });
   }, [props.maximized, props.closing, ipcRenderer, windowId]);
 
-  const onClose = () => { if (!props.closing) send('close', {}); };
-  const onMinimize = () => { if (!props.closing) send('minimize', {}); };
-  const onMaximize = () => { if (!props.closing) send('toggle-maximize', {}); };
-  const onToggleMode = () => setMode((m) => (m === 'control' ? 'search' : 'control'));
+  const onClose = useCallback(() => { if (!props.closing) send('close', {}); }, [props.closing, send]);
+  const onMinimize = useCallback(() => { if (!props.closing) send('minimize', {}); }, [props.closing, send]);
+  const onMaximize = useCallback(() => { if (!props.closing) send('toggle-maximize', {}); }, [props.closing, send]);
+  const onToggleMode = useCallback(() => {
+    setMode((m) => (m === 'control' ? 'search' : 'control'));
+  }, []);
 
-  const onNavigateTo = (url) => {
+  const onNavigateTo = useCallback((url) => {
     if (!url) return;
     try {
       if (!/^[a-z]+:/i.test(url)) url = 'https://' + url;
       location.href = url;
     } catch (_) {}
-  };
-  const onBack = () => { try { window.navigation?.back(); } catch (_) {} };
-  const onForward = () => { try { window.navigation?.forward(); } catch (_) {} };
-  const onReload = () => { try { location.reload(); } catch (_) {} };
-
-  // ---- Размеры панели ----
-  const scale = props.frameState?.panelScale ?? 1;
-  const cell = BASE_CELL * scale;
-  const gap = BASE_GAP * scale;
-  const pad = BASE_PAD * scale;
-
-  const panelW = cell * 5 + gap * 4 + pad * 2;
-  const panelH = cell * 3 + gap * 2 + pad * 2;
-
-  // ---- Позиция панели ----
-  const defaultX = vp.w - panelW - EDGE_INSET;
-  const defaultY = vp.h - panelH - EDGE_INSET;
-
-  const rawX = props.frameState?.x ?? defaultX;
-  const rawY = props.frameState?.y ?? defaultY;
-
-  // Клемпим, чтобы панель не выходила за viewport
-  const panelX = Math.max(0, Math.min(vp.w - panelW, rawX));
-  const panelY = Math.max(0, Math.min(vp.h - panelH, rawY));
-
-  // ---- Скрытие панели (по x) ----
-  // Пока просто игнорируем — не реализовано до интеграции с taskbar.
-  // Кнопка x в текущей итерации НЕ используется. См. Panel.jsx.
+  }, []);
+  const onBack = useCallback(() => { try { window.navigation?.back(); } catch (_) {} }, []);
+  const onForward = useCallback(() => { try { window.navigation?.forward(); } catch (_) {} }, []);
+  const onReload = useCallback(() => { try { location.reload(); } catch (_) {} }, []);
 
   return (
     <ThemeProvider theme={darkTheme}>
       <Panel
         x={panelX}
         y={panelY}
-        width={'max-content'}
+        width={panelW}
         height={panelH}
         cell={cell}
         gap={gap}

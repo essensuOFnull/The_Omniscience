@@ -20,5 +20,8 @@
 		resizeDelta: (windowId, direction, dx, dy) =>
 			ipcRenderer.send('frame:resize-delta', { windowId, direction, dx, dy }),
 		endResize: (windowId) => ipcRenderer.send('frame:resize-end', { windowId }),
+		moveStart: (windowId) => ipcRenderer.send('frame:move-start', { windowId }),
+		moveDelta: (windowId, dx, dy) => ipcRenderer.send('frame:move-delta', { windowId, dx, dy }),
+		moveEnd: (windowId) => ipcRenderer.send('frame:move-end', { windowId }),
 	});
 })();

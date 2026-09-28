@@ -32,34 +32,6 @@ function getSnapGeometry(snap, viewport) {
 export default function useScreenDrag(state, actions) {
   let frameMove = null;
 
-  const onFrameMoveStart = (msg) => {
-    const wid = msg?.windowId;
-    if (!wid) return;
-    const found = locate(wid);
-    if (!found) { frameMove = null; return; }
-    const { desktopId, win } = found;
-    const vp = stateRef.current?.desktops?.[desktopId]?.viewport
-      || { width: window.innerWidth, height: window.innerHeight };
-    const f = win.frame || {};
-    const startX = f.x ?? 0;
-    const startY = f.y ?? (vp.height - (f.mode === 'v' ? 200 : 36));
-    frameMove = { windowId: wid, desktopId, startX, startY, accX: 0, accY: 0 };
-    actionsRef.current.focusWindow(desktopId, wid);
-  };
-
-  const onFrameMoveDelta = (msg) => {
-    const wid = msg?.windowId;
-    if (!wid || !frameMove || frameMove.windowId !== wid) return;
-    frameMove.accX += msg.dx;
-    frameMove.accY += msg.dy;
-    actionsRef.current.updateFrameState(frameMove.desktopId, wid, {
-      x: Math.round(frameMove.startX + frameMove.accX),
-      y: Math.round(frameMove.startY + frameMove.accY),
-    });
-  };
-
-  const onFrameMoveEnd = () => { frameMove = null; };
-
   const stateRef = useRef(state);
   const actionsRef = useRef(actions);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -233,9 +205,6 @@ export default function useScreenDrag(state, actions) {
       api.on('shell:frame-resize-start', onResizeStart),
       api.on('shell:frame-resize-delta', onResizeDelta),
       api.on('shell:frame-resize-end', onResizeEnd),
-      api.on('shell:frame-move-start', onFrameMoveStart),
-      api.on('shell:frame-move-delta', onFrameMoveDelta),
-      api.on('shell:frame-move-end', onFrameMoveEnd),
     ];
 
     return () => offs.forEach((o) => typeof o === 'function' && o());

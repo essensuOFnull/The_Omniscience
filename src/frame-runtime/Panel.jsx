@@ -248,7 +248,7 @@ export default function Panel({
           padding: '0 8px',
           overflow: 'hidden',
           fontSize: textSize,
-          width:'max-content'
+          width: '100%',
         }}
       >
         <span style={{

@@ -47,9 +47,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
         if (w.maximized) a.unmaximizeWindow(dId, wId);
         else a.maximizeWindow(dId, wId);
       }
-      else if (type === 'update-frame') {
-        a.updateFrameState(dId, wId, payload?.patch || {});
-      }
     });
     return off;
   }, [windowId]);
@@ -68,7 +65,7 @@ export default function Window({ windowId, app, state, actions, config, animatio
         frameState: win.frame || null,
       },
     });
-  }, [viewCreated, windowId, pageTitle, app?.icon, app?.title, isFocused, win.maximized,win.frame]);
+  }, [viewCreated, windowId, pageTitle, app?.icon, app?.title, isFocused, win.maximized, win.frame]);
 
   const ghost = win.ghost;
   const initialGhost = win.initialGhost || ghost;

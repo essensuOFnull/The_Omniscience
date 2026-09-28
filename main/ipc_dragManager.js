@@ -54,15 +54,4 @@ export default function () {
 		const wc = entry.view?.webContents;
 		if (wc && !wc.isDestroyed()) wc.send('frame:props', data);
 	});
-
-	// Рамка двигается
-	ipcMain.on('frame:move-start', (_e, { windowId }) => {
-		sendToShell('shell:frame-move-start', { windowId });
-	});
-	ipcMain.on('frame:move-delta', (_e, { windowId, dx, dy }) => {
-		sendToShell('shell:frame-move-delta', { windowId, dx, dy });
-	});
-	ipcMain.on('frame:move-end', (_e, { windowId }) => {
-		sendToShell('shell:frame-move-end', { windowId });
-	});
 }
