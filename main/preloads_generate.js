@@ -26,8 +26,17 @@ if (!injectAllStyles()) {
 }
 
 const BASE_CSS = `
-
-`;
+html::before {
+  content: ""!important;
+  position: fixed!important; /* Фиксирует рамку относительно экрана */
+  top: 0!important;
+  left: 0!important;
+  right: 0!important;
+  bottom: 0!important;
+  pointer-events: none!important; /* Чтобы рамка не мешала кликать по элементам под ней */
+  z-index: 9999!important; /* Выносит рамку на самый верхний слой */
+  border:1px dashed cyan!important;
+}`;
 
 export default async function () {
   const tmpDir = path.join(global.paths.projectRoot, '.temp');
@@ -48,65 +57,6 @@ export default async function () {
     'utf-8'
   );
 
-  // 👇 Читаем собранный React-бандл frame-runtime
-  let frameRuntimeBundle = '';
-  try {
-    frameRuntimeBundle = await readFile(path.join(tmpDir, 'frame-runtime.js'), 'utf-8');
-    console.log('проверка');
-  } catch (err) {
-    console.error('[Preloads] frame-runtime.js not found — did you run buildFrameRuntime?', err.message);
-  }
-
-  // Финальный вызов mountFrame после загрузки бандла
-const frameBootstrap = `
-(function () {
-  console.log('[frameBoot] start');
-  try {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('noFrame') === '1') { console.log('[frameBoot] noFrame, skip'); return; }
-  } catch (_) {}
-
-  if (!window.OmniFrame || typeof window.OmniFrame.mountFrame !== 'function') {
-    console.log('[frameBoot] OmniFrame.mountFrame отсутствует — abort');
-    return;
-  }
-
-  function doMount() {
-    console.log('[frameBoot] invoking get-window-id');
-    ipcRenderer.invoke('frame:get-window-id').then(function (windowId) {
-      console.log('[frameBoot] got windowId =', windowId);
-      if (!windowId) return;
-      try {
-        window.OmniFrame.mountFrame({ windowId: windowId, ipcRenderer: ipcRenderer });
-        console.log('[frameBoot] mountFrame returned');
-      } catch (e) {
-        console.error('[frameBoot] mountFrame threw:', e);
-      }
-    }).catch(function (e) {
-      console.log('[frameBoot] get-window-id failed:', e);
-    });
-  }
-
-  function onReady() {
-    console.log('[frameBoot] DOM ready, readyState =', document.readyState);
-    if (!document.documentElement || !document.head || !document.body) {
-      // крайне маловероятно, но на всякий — retry через rAF
-      console.log('[frameBoot] doc incomplete, retrying via rAF');
-      requestAnimationFrame(onReady);
-      return;
-    }
-    doMount();
-  }
-
-  if (document.readyState === 'loading') {
-    console.log('[frameBoot] waiting for DOMContentLoaded');
-    document.addEventListener('DOMContentLoaded', onReady, { once: true });
-  } else {
-    onReady();
-  }
-})();
-`;
-
   const themedInject = buildInjectStylesFunction(schemeCSS + '\n' + BASE_CSS);
   const themedFilter = coreTemplate
     .replace('/* __REGISTER_PROPERTIES__ */', '')
@@ -114,26 +64,22 @@ const frameBootstrap = `
 
   const themedPreload = [
     global._.imports,
-    frameRuntimeBundle,
     themedFilter,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
-    global._.frame_ipc,
-    frameBootstrap,
+    global._.panel_ipc,
   ].join('\n\n');
 
   const cleanInject = buildInjectStylesFunction(BASE_CSS);
 
   const cleanPreload = [
     global._.imports,
-    frameRuntimeBundle,
     cleanInject,
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
-    global._.frame_ipc,
-    frameBootstrap,
+    global._.panel_ipc,
   ].join('\n\n');
 
   await Promise.all([

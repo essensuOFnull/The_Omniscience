@@ -1,9 +1,10 @@
-import React, { useRef, useCallback, useMemo, useEffect } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Box } from '@mui/material';
 import useDesktopOffset from '../hooks/useDesktopOffset';
 import useWindowNavigation from '../hooks/useWindowNavigation';
 import useContentView from '../hooks/useContentView';
+import usePanelView from '../hooks/usePanelView';
 
 export default function Window({ windowId, app, state, actions, config, animations, desktopId, active }) {
   const win = state?.windows?.[windowId];
@@ -22,51 +23,10 @@ export default function Window({ windowId, app, state, actions, config, animatio
     windowId, win, app, config, contentRef, desktopOffset, active, desktopId
   );
 
-  const winRef = useRef(win); winRef.current = win;
-  const actionsRef = useRef(actions); actionsRef.current = actions;
-  const desktopIdRef = useRef(desktopId); desktopIdRef.current = desktopId;
+  // Панель как отдельный view
+  usePanelView({ windowId, win, app, isFocused, pageTitle });
 
-  // Кнопки окна (из preload)
-  useEffect(() => {
-    const api = window.electron_desktop_API;
-    if (!api) return;
-    const off = api.on('shell:frame-event', (msg) => {
-      if (!msg) return;
-      const { windowId: wId, type } = msg;
-      if (wId !== windowId || !type) return;
-      const w = winRef.current, a = actionsRef.current, dId = desktopIdRef.current;
-      if (!w || !a) return;
-
-      if (type === 'close') { if (!w.closing) a.closeWindow(dId, wId); }
-      else if (type === 'minimize') {
-        if (w.closing) return;
-        if (w.minimized) a.unminimizeWindow(dId, wId);
-        else a.minimizeWindow(dId, wId);
-      } else if (type === 'toggle-maximize') {
-        if (w.closing) return;
-        if (w.maximized) a.unmaximizeWindow(dId, wId);
-        else a.maximizeWindow(dId, wId);
-      }
-    });
-    return off;
-  }, [windowId]);
-
-  // Props → preload (title, icon, focus, maximized)
-  useEffect(() => {
-    const api = window.electron_desktop_API;
-    if (!api || !viewCreated) return;
-    api.send('shell:send-to-frame', {
-      windowId,
-      data: {
-        title: pageTitle || app?.title || 'Окно',
-        icon: app?.icon || null,
-        isFocused,
-        maximized: !!win.maximized,
-        frameState: win.frame || null,
-      },
-    });
-  }, [viewCreated, windowId, pageTitle, app?.icon, app?.title, isFocused, win.maximized, win.frame]);
-
+  // Позиционирование окна
   const ghost = win.ghost;
   const initialGhost = win.initialGhost || ghost;
   const hiddenInOverview = state.isOverviewOpened;

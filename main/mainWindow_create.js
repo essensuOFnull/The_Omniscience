@@ -37,7 +37,7 @@ export default async function () {
         },
     });
 
-    global.$.ipc_dragManager();
+    global.$.ipc_panelView();
 
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 

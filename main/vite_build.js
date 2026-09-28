@@ -10,9 +10,9 @@ export default async function () {
   const componentappsDir = global.paths.componentappsDir;
   const rendererIndexHtml = path.join(rootDir, 'src', 'index.html');
 
-  // 👇 убрали frame — собирается отдельно через esbuild
   const input = {
     main: rendererIndexHtml,
+    frame: path.join(rootDir, 'src', 'frame', 'index.html'),
   };
 
   if (fs.existsSync(componentappsDir)) {

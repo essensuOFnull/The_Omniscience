@@ -3,35 +3,7 @@ import { useEffect, useRef } from 'react';
 const MIN_W = 1;
 const MIN_H = 1;
 
-function getSnapGeometry(snap, viewport) {
-  const { width, height } = viewport;
-  const halfW = width / 2;
-  const halfH = height / 2;
-  switch (snap) {
-    case 'top':
-      return { centerX: width / 2, centerY: height / 4, width, height: halfH };
-    case 'bottom':
-      return { centerX: width / 2, centerY: halfH + height / 4, width, height: halfH };
-    case 'left':
-      return { centerX: width / 4, centerY: height / 2, width: halfW, height };
-    case 'right':
-      return { centerX: halfW + width / 4, centerY: height / 2, width: halfW, height };
-    case 'top-left':
-      return { centerX: width / 4, centerY: height / 4, width: halfW, height: halfH };
-    case 'top-right':
-      return { centerX: halfW + width / 4, centerY: height / 4, width: halfW, height: halfH };
-    case 'bottom-left':
-      return { centerX: width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
-    case 'bottom-right':
-      return { centerX: halfW + width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
-    default:
-      return null;
-  }
-}
-
 export default function useScreenDrag(state, actions) {
-  let frameMove = null;
-
   const stateRef = useRef(state);
   const actionsRef = useRef(actions);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -44,7 +16,6 @@ export default function useScreenDrag(state, actions) {
     let drag = null;
     let resize = null;
 
-    // Найти окно в ЛЮБОМ десктопе по windowId
     const locate = (wid) => {
       const st = stateRef.current;
       for (const [desktopId, desktop] of Object.entries(st?.desktops || {})) {
@@ -54,7 +25,7 @@ export default function useScreenDrag(state, actions) {
       return null;
     };
 
-    // ---------- DRAG ----------
+    // ---------- DRAG окна ----------
     const onDragStart = (msg) => {
       const wid = msg?.windowId;
       if (!wid) return;
@@ -83,41 +54,11 @@ export default function useScreenDrag(state, actions) {
       drag.accX += msg.dx;
       drag.accY += msg.dy;
 
-      const st = stateRef.current;
-      const vp = st?.desktops?.[drag.desktopId]?.viewport
-        || { width: window.innerWidth, height: window.innerHeight };
-
-      const newCX = drag.startCX + drag.accX;
-      const newCY = drag.startCY + drag.accY;
-
-      const TH = 24;
-      const left = newCX - drag.width / 2;
-      const right = newCX + drag.width / 2;
-      const top = newCY - drag.height / 2;
-      const bottom = newCY + drag.height / 2;
-
-      let snap = null;
-      if (left <= TH) snap = 'left';
-      else if (right >= vp.width - TH) snap = 'right';
-      if (top <= TH) snap = snap ? `${snap}-top` : 'top';
-      else if (bottom >= vp.height - TH) snap = snap ? `${snap}-bottom` : 'bottom';
-
-      if (snap) {
-        const geo = getSnapGeometry(snap, vp);
-        if (geo) {
-          actionsRef.current.setWindowRect(
-            drag.desktopId, wid,
-            geo.centerX, geo.centerY, geo.width, geo.height,
-            snap
-          );
-          return;   // ← и ничего больше. Никаких сбросов.
-        }
-      }
-
-      // Обычный move — размер возвращаем к исходному
       actionsRef.current.setWindowRect(
         drag.desktopId, wid,
-        newCX, newCY, drag.width, drag.height,
+        drag.startCX + drag.accX,
+        drag.startCY + drag.accY,
+        drag.width, drag.height,
         null
       );
     };
@@ -126,7 +67,7 @@ export default function useScreenDrag(state, actions) {
       if (msg?.windowId && drag && msg.windowId === drag.windowId) drag = null;
     };
 
-    // ---------- RESIZE ----------
+    // ---------- RESIZE окна ----------
     const onResizeStart = (msg) => {
       const wid = msg?.windowId;
       if (!wid) return;
@@ -156,14 +97,13 @@ export default function useScreenDrag(state, actions) {
       resize.accX += msg.dx;
       resize.accY += msg.dy;
 
+      const st = stateRef.current;
+      const vp = st?.desktops?.[resize.desktopId]?.viewport
+        || { width: window.innerWidth, height: window.innerHeight };
+
       const dx = resize.accX;
       const dy = resize.accY;
       const direction = resize.direction;
-
-      const st = stateRef.current;
-      const dId = resize.desktopId;
-      const vp = st?.desktops?.[dId]?.viewport
-        || { width: window.innerWidth, height: window.innerHeight };
 
       const left = resize.startCX - resize.startW / 2;
       const right = resize.startCX + resize.startW / 2;
@@ -199,12 +139,12 @@ export default function useScreenDrag(state, actions) {
     };
 
     const offs = [
-      api.on('shell:frame-drag-start', onDragStart),
-      api.on('shell:frame-drag-delta', onDragDelta),
-      api.on('shell:frame-drag-end', onDragEnd),
+      api.on('shell:frame-drag-start',   onDragStart),
+      api.on('shell:frame-drag-delta',   onDragDelta),
+      api.on('shell:frame-drag-end',     onDragEnd),
       api.on('shell:frame-resize-start', onResizeStart),
       api.on('shell:frame-resize-delta', onResizeDelta),
-      api.on('shell:frame-resize-end', onResizeEnd),
+      api.on('shell:frame-resize-end',   onResizeEnd),
     ];
 
     return () => offs.forEach((o) => typeof o === 'function' && o());

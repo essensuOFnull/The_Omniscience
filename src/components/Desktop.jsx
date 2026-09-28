@@ -45,9 +45,6 @@ export default function Desktop({ rootBar }) {
 	useViewStateBridge(state, dispatch);
 	useThemeSync();
 
-	const stateRef = useRef(state);
-	stateRef.current = state;
-
 	const actions = useMemo(() => {
 		const createAction = (type) => (desktopId, ...args) => {
 			const argNames = ACTION_ARG_NAMES[type];
@@ -66,6 +63,37 @@ export default function Desktop({ rootBar }) {
 		return result;
 	}, []);
 
+	const stateRef = useRef(state);
+	stateRef.current = state;
+	const actionsRef = useRef(actions);
+	actionsRef.current = actions;
+
+	useEffect(() => {
+		const api = window.electron_desktop_API;
+		if (!api) return;
+		const off = api.on('shell:panel-event', ({ windowId, type }) => {
+			if (!windowId || !type) return;
+			let dId = null, w = null;
+			for (const [did, desktop] of Object.entries(stateRef.current.desktops || {})) {
+				if (desktop.windows?.[windowId]) { dId = did; w = desktop.windows[windowId]; break; }
+			}
+			if (!dId || !w) return;
+
+			if (type === 'close') {
+				if (!w.closing) actionsRef.current.closeWindow(dId, windowId);
+			} else if (type === 'minimize') {
+				if (w.closing) return;
+				if (w.minimized) actionsRef.current.unminimizeWindow(dId, windowId);
+				else actionsRef.current.minimizeWindow(dId, windowId);
+			} else if (type === 'toggle-maximize') {
+				if (w.closing) return;
+				if (w.maximized) actionsRef.current.unmaximizeWindow(dId, windowId);
+				else actionsRef.current.maximizeWindow(dId, windowId);
+			}
+		});
+		return off;
+	}, []);
+	
 	useScreenDrag(state, actions);
 
 	useEffect(() => {
