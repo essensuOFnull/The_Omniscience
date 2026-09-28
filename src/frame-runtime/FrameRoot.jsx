@@ -1,19 +1,24 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import TitleBar from './TitleBar.jsx';
+import Panel from './Panel.jsx';
 
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: { main: '#a855f7' },
-    background: { paper: '#2a002a', default: 'transparent' },
+    background: { paper: 'rgba(28,0,28,0.88)', default: 'transparent' },
     text: { primary: '#fff', secondary: 'rgba(255,255,255,0.7)' },
   },
 });
 
+// Размеры в пикселях при scale = 1
+const BASE_CELL = 28;
+const BASE_GAP = 1;
+const BASE_PAD = 4;
+const EDGE_INSET = 16; // отступ от края viewport, если панель не перемещали
+
 export default function FrameRoot({ ctx }) {
   const { windowId, ipcRenderer } = ctx;
-  const hostRef = useRef(null);
 
   const [props, setProps] = useState({
     title: document.title || 'Окно',
@@ -21,9 +26,10 @@ export default function FrameRoot({ ctx }) {
     isFocused: false,
     maximized: false,
     closing: false,
+    frameState: null,
   });
 
-  const [browserMode, setBrowserMode] = useState(false);
+  const [mode, setMode] = useState('control'); // 'control' | 'search'
   const [navState, setNavState] = useState({
     currentUrl: location.href,
     canGoBack: false,
@@ -31,30 +37,16 @@ export default function FrameRoot({ ctx }) {
     loading: false,
   });
 
-  // ---------- Padding на html под высоту нашей панели ----------
-  useEffect(() => {
-    const el = document.getElementById('__omniscience_frame_host__');
-    if (!el) return;
-    hostRef.current = el;
+  const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
 
-    const update = () => {
-      const h = el.offsetHeight;
-      document.documentElement.style.setProperty('padding-top', h + 'px', 'important');
-    };
-    const obs = new ResizeObserver(update);
-    obs.observe(el);
-    update();
-    return () => obs.disconnect();
-  }, [browserMode]);
-
-  // ---------- Props от shell ----------
+  // ---- Props от shell ----
   useEffect(() => {
     const handler = (_e, data) => setProps((p) => ({ ...p, ...(data || {}) }));
     ipcRenderer.on('frame:props', handler);
     return () => ipcRenderer.removeListener('frame:props', handler);
   }, [ipcRenderer]);
 
-  // ---------- Навигационное состояние ----------
+  // ---- Навигация ----
   useEffect(() => {
     const update = () => {
       const nav = window.navigation;
@@ -65,20 +57,28 @@ export default function FrameRoot({ ctx }) {
         loading: false,
       });
     };
+    const onStart = () => setNavState((s) => ({ ...s, loading: true }));
+    const onStop = () => setNavState((s) => ({ ...s, loading: false }));
+
     update();
     window.navigation?.addEventListener('navigatesuccess', update);
-    window.navigation?.addEventListener('navigate', update);
+    window.navigation?.addEventListener('navigate', onStart);
     window.addEventListener('popstate', update);
     window.addEventListener('hashchange', update);
+    window.addEventListener('beforeunload', onStart);
+    window.addEventListener('load', onStop);
+
     return () => {
       window.navigation?.removeEventListener('navigatesuccess', update);
-      window.navigation?.removeEventListener('navigate', update);
+      window.navigation?.removeEventListener('navigate', onStart);
       window.removeEventListener('popstate', update);
       window.removeEventListener('hashchange', update);
+      window.removeEventListener('beforeunload', onStart);
+      window.removeEventListener('load', onStop);
     };
   }, []);
 
-  // ---------- Title ----------
+  // ---- Title ----
   useEffect(() => {
     const update = () => setProps((p) => ({ ...p, title: document.title || p.title }));
     const titleEl = document.querySelector('title');
@@ -88,7 +88,14 @@ export default function FrameRoot({ ctx }) {
     return () => obs.disconnect();
   }, []);
 
-  // ---------- Drag / Resize (pointer lock) ----------
+  // ---- Viewport ----
+  useEffect(() => {
+    const update = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // ---- Pointer lock: drag окна / resize окна / move панели ----
   const modeRef = useRef(null);
 
   useEffect(() => {
@@ -97,6 +104,8 @@ export default function FrameRoot({ ctx }) {
       const m = modeRef.current;
       if (m === 'drag') {
         ipcRenderer.send('frame:drag-delta', { windowId, dx: e.movementX, dy: e.movementY });
+      } else if (m === 'panelMove') {
+        ipcRenderer.send('frame:move-delta', { windowId, dx: e.movementX, dy: e.movementY });
       } else if (m.resize) {
         ipcRenderer.send('frame:resize-delta', {
           windowId, direction: m.resize,
@@ -110,6 +119,7 @@ export default function FrameRoot({ ctx }) {
       modeRef.current = null;
       try { document.exitPointerLock?.(); } catch (_) {}
       if (m === 'drag') ipcRenderer.send('frame:drag-end', { windowId });
+      else if (m === 'panelMove') ipcRenderer.send('frame:move-end', { windowId });
       else if (m.resize) ipcRenderer.send('frame:resize-end', { windowId });
     };
     const onLockChange = () => { if (!document.pointerLockElement) finish(); };
@@ -124,7 +134,29 @@ export default function FrameRoot({ ctx }) {
     };
   }, [ipcRenderer, windowId]);
 
-  const beginDrag = useCallback((e) => {
+  // ---- Действия ----
+  const send = (type, payload) => ipcRenderer.send('frame:event', { windowId, type, payload });
+  const updateFrame = (patch) => send('update-frame', { patch });
+
+  const onPanelDragStart = useCallback((e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    modeRef.current = 'panelMove';
+    try {
+      const p = document.body.requestPointerLock();
+      if (p && p.catch) p.catch(() => {});
+    } catch (_) {}
+    ipcRenderer.send('frame:move-start', { windowId });
+  }, [ipcRenderer, windowId]);
+
+  const onPanelDoubleClick = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    updateFrame({ x: null, y: null });
+  }, []);
+
+  const onWindowDragStart = useCallback((e) => {
     if (props.maximized || props.closing || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -148,13 +180,10 @@ export default function FrameRoot({ ctx }) {
     ipcRenderer.send('frame:resize-start', { windowId, direction: dir });
   }, [props.maximized, props.closing, ipcRenderer, windowId]);
 
-  // ---------- Действия ----------
-  const send = (type, payload) => ipcRenderer.send('frame:event', { windowId, type, payload });
-
   const onClose = () => { if (!props.closing) send('close', {}); };
   const onMinimize = () => { if (!props.closing) send('minimize', {}); };
   const onMaximize = () => { if (!props.closing) send('toggle-maximize', {}); };
-  const onToggleBrowser = () => setBrowserMode((v) => !v);
+  const onToggleMode = () => setMode((m) => (m === 'control' ? 'search' : 'control'));
 
   const onNavigateTo = (url) => {
     if (!url) return;
@@ -167,66 +196,64 @@ export default function FrameRoot({ ctx }) {
   const onForward = () => { try { window.navigation?.forward(); } catch (_) {} };
   const onReload = () => { try { location.reload(); } catch (_) {} };
 
+  // ---- Размеры панели ----
+  const scale = props.frameState?.panelScale ?? 1;
+  const cell = BASE_CELL * scale;
+  const gap = BASE_GAP * scale;
+  const pad = BASE_PAD * scale;
+
+  const panelW = cell * 5 + gap * 4 + pad * 2;
+  const panelH = cell * 3 + gap * 2 + pad * 2;
+
+  // ---- Позиция панели ----
+  const defaultX = vp.w - panelW - EDGE_INSET;
+  const defaultY = vp.h - panelH - EDGE_INSET;
+
+  const rawX = props.frameState?.x ?? defaultX;
+  const rawY = props.frameState?.y ?? defaultY;
+
+  // Клемпим, чтобы панель не выходила за viewport
+  const panelX = Math.max(0, Math.min(vp.w - panelW, rawX));
+  const panelY = Math.max(0, Math.min(vp.h - panelH, rawY));
+
+  // ---- Скрытие панели (по x) ----
+  // Пока просто игнорируем — не реализовано до интеграции с taskbar.
+  // Кнопка x в текущей итерации НЕ используется. См. Panel.jsx.
+
   return (
     <ThemeProvider theme={darkTheme}>
-      <TitleBar
+      <Panel
+        x={panelX}
+        y={panelY}
+        width={'max-content'}
+        height={panelH}
+        cell={cell}
+        gap={gap}
+        pad={pad}
+        mode={mode}
+        scale={scale}
         title={props.title}
         icon={props.icon}
-        browserMode={browserMode}
+        isFocused={props.isFocused}
         maximized={props.maximized}
         closing={props.closing}
-        isFocused={props.isFocused}
-        onMouseDown={beginDrag}
-        onDoubleClick={onMaximize}
-        onToggleBrowser={onToggleBrowser}
-        onMinimize={onMinimize}
-        onMaximize={onMaximize}
-        onClose={onClose}
-        // AddressBar
+        loading={navState.loading}
         currentUrl={navState.currentUrl}
         canGoBack={navState.canGoBack}
         canGoForward={navState.canGoForward}
-        loading={navState.loading}
+        onPanelDragStart={onPanelDragStart}
+        onPanelDoubleClick={onPanelDoubleClick}
+        onWindowDragStart={onWindowDragStart}
+        onResize={beginResize}
+        onToggleMode={onToggleMode}
+        onClose={onClose}
+        onMinimize={onMinimize}
+        onMaximize={onMaximize}
         onNavigateTo={onNavigateTo}
         onBack={onBack}
         onForward={onForward}
         onReload={onReload}
       />
-
-      {!props.maximized && !props.closing && (
-        <>
-          <div onMouseDown={beginResize('n')}  style={rz('n')} />
-          <div onMouseDown={beginResize('s')}  style={rz('s')} />
-          <div onMouseDown={beginResize('w')}  style={rz('w')} />
-          <div onMouseDown={beginResize('e')}  style={rz('e')} />
-          <div onMouseDown={beginResize('nw')} style={rz('nw')} />
-          <div onMouseDown={beginResize('ne')} style={rz('ne')} />
-          <div onMouseDown={beginResize('sw')} style={rz('sw')} />
-          <div onMouseDown={beginResize('se')} style={rz('se')} />
-        </>
-      )}
     </ThemeProvider>
   );
-}
-
-const EDGE = 6;
-function rz(dir) {
-  const base = { position: 'fixed', pointerEvents: 'auto', zIndex: 2147483646 };
-  const cursors = {
-    n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
-    nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
-  };
-  const c = { cursor: cursors[dir] };
-  // Учитываем высоту титульника (36) + AddressBar (40, если открыт) в top-ручках.
-  // Пока фиксируем 36, потому что AddressBar влияет на верх — уточним позже.
-  const top = 36;
-  if (dir === 'n')  return { ...base, ...c, top: 0, left: 0, right: 0, height: EDGE };
-  if (dir === 's')  return { ...base, ...c, bottom: 0, left: 0, right: 0, height: EDGE };
-  if (dir === 'w')  return { ...base, ...c, top, bottom: 0, left: 0, width: EDGE };
-  if (dir === 'e')  return { ...base, ...c, top, bottom: 0, right: 0, width: EDGE };
-  if (dir === 'nw') return { ...base, ...c, top: 0, left: 0, width: EDGE, height: EDGE };
-  if (dir === 'ne') return { ...base, ...c, top: 0, right: 0, width: EDGE, height: EDGE };
-  if (dir === 'sw') return { ...base, ...c, bottom: 0, left: 0, width: EDGE, height: EDGE };
-  if (dir === 'se') return { ...base, ...c, bottom: 0, right: 0, width: EDGE, height: EDGE };
-  return base;
 }

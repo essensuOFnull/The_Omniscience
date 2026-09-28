@@ -1,5 +1,5 @@
 import { clampRect } from '../../clampRect';
-import { getDesktop, getWindow, updateDesktop, updateWindow } from '../helpers';
+import { getDesktop, getWindow, updateWindow } from '../helpers';
 
 export const setWindowRect = (state, payload, helpers) => {
   const { desktopId, windowId, cx, cy, width, height, snap } = payload;
@@ -22,7 +22,6 @@ export const setWindowRect = (state, payload, helpers) => {
       height: clamped.h,
     },
     ...(snap !== undefined ? { snapped: snapPayload } : {}),
-    animationVariant: 'setRect',
   }));
 
   return {

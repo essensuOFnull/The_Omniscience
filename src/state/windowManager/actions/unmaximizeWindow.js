@@ -1,4 +1,4 @@
-import { getDesktop, getWindow, updateDesktop, updateWindow } from '../helpers';
+import { getDesktop, getWindow, updateWindow } from '../helpers';
 
 export const unmaximizeWindow = (state, payload, helpers) => {
   const { desktopId, windowId } = payload;
@@ -6,6 +6,8 @@ export const unmaximizeWindow = (state, payload, helpers) => {
   if (!desktop) return state;
   const win = getWindow(desktop, windowId);
   if (!win || win.closing) return state;
+  if (!win.maximized) return state;                   // 👈 уже не максимизировано — выходим
+  if (!win.unmaximizeGhost) return state;             // 👈 нет слепка — нечего восстанавливать
 
   const { getNewZ } = helpers;
   const updatedDesktop = updateWindow(desktop, windowId, (w) => ({

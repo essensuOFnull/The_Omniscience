@@ -25,7 +25,9 @@ if (!injectAllStyles()) {
 }`;
 }
 
-const BASE_CSS = `html{ margin: 0; padding: 0; overflow: auto; height: 100%; }`;
+const BASE_CSS = `
+
+`;
 
 export default async function () {
   const tmpDir = path.join(global.paths.projectRoot, '.temp');

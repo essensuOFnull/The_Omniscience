@@ -1,5 +1,5 @@
 import { clampRect } from '../../clampRect';
-import { getDesktop, getWindow, updateDesktop, updateWindow, deleteWindowFromDesktop } from '../helpers';
+import { getDesktop } from '../helpers';
 
 export const createWindow = (state, payload, helpers) => {
   const { desktopId, appId, cx, cy, width, height, url, extra } = payload;
@@ -23,10 +23,11 @@ export const createWindow = (state, payload, helpers) => {
     appId,
     id: windowId,
     ghost: { centerX: clamped.cx, centerY: clamped.cy, width: clamped.w, height: clamped.h },
+    initialGhost: { centerX: clamped.cx, centerY: clamped.cy, width: clamped.w, height: clamped.h },
     minimized: false,
     maximized: false,
     closing: false,
-    url: url || (appId === 'browser' ? config.homepageUrl || 'about:blank' : null),
+    url: url || (appId === 'browser' ? config?.homepageUrl || 'about:blank' : null),
     preload: extra?.preload || null,
     z: getNewZ(),
     contentScale: 1,

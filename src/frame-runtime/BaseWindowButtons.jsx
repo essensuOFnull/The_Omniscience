@@ -5,9 +5,16 @@ import MinimizeIcon from '@mui/icons-material/Minimize';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import FilterNoneIcon from '@mui/icons-material/FilterNone';
 
-export default function BaseWindowButtons({ onMinimize, onMaximize, onClose, isMaximized }) {
+export default function BaseWindowButtons({ onMinimize, onMaximize, onClose, isMaximized, vertical }) {
   return (
-    <Box sx={{ display: 'flex', gap: 0.5, zIndex: 1 }}>
+    <Box sx={{
+      display: 'flex',
+      flexDirection: vertical ? 'column' : 'row',
+      gap: 0.5,
+      zIndex: 1,
+      flexShrink: 0,
+      padding: vertical ? '4px 0' : '0 4px',
+    }}>
       <IconButton size="small" onClick={onMinimize} sx={{ color: '#fff' }}>
         <MinimizeIcon fontSize="small" />
       </IconButton>

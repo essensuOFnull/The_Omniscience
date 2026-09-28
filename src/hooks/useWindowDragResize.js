@@ -18,32 +18,6 @@ function getSnapArea(cursorX, cursorY, viewportWidth, viewportHeight) {
   return null;
 }
 
-function getSnapGeometry(snap, viewport) {
-  const { width, height } = viewport;
-  const halfW = width / 2;
-  const halfH = height / 2;
-  switch (snap) {
-    case 'top':
-      return { centerX: width / 2, centerY: height / 4, width, height: halfH };
-    case 'bottom':
-      return { centerX: width / 2, centerY: halfH + height / 4, width, height: halfH };
-    case 'left':
-      return { centerX: width / 4, centerY: height / 2, width: halfW, height };
-    case 'right':
-      return { centerX: halfW + width / 4, centerY: height / 2, width: halfW, height };
-    case 'top-left':
-      return { centerX: width / 4, centerY: height / 4, width: halfW, height: halfH };
-    case 'top-right':
-      return { centerX: halfW + width / 4, centerY: height / 4, width: halfW, height: halfH };
-    case 'bottom-left':
-      return { centerX: width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
-    case 'bottom-right':
-      return { centerX: halfW + width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
-    default:
-      return null;
-  }
-}
-
 export default function useWindowDragResize(desktopId, windowId, win, state, actions, isFocused, contentRef) {
   // Защита от отсутствия viewport
   const viewport = state.viewport || {

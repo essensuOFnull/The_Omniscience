@@ -1,4 +1,4 @@
-import { getDesktop, getWindow, updateDesktop, updateWindow } from '../helpers';
+import { getDesktop, getWindow, updateWindow } from '../helpers';
 
 export const maximizeWindow = (state, payload, helpers) => {
   const { desktopId, windowId } = payload;
@@ -6,6 +6,7 @@ export const maximizeWindow = (state, payload, helpers) => {
   if (!desktop) return state;
   const win = getWindow(desktop, windowId);
   if (!win || win.closing) return state;
+  if (win.maximized) return state;                    // 👈 уже максимизировано — выходим
 
   const { getNewZ } = helpers;
   const vp = desktop.viewport || { centerX: 400, centerY: 300, width: 800, height: 600 };

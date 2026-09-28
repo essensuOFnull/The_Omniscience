@@ -1,4 +1,4 @@
-import { clampRect } from '../clampRect'; // путь к clampRect (скорее всего, рядом)
+import { clampRect } from '../clampRect';
 
 let idCounter = 0;
 let zCounter = 100;
@@ -8,7 +8,7 @@ export const resetCounters = () => {
   zCounter = 100;
 };
 
-export const getNewId = () => `win-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+export const getNewId = () => `win-${++idCounter}`;
 export const getNewZ = () => ++zCounter;
 
 // ---- Работа с десктопами ----
