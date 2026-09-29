@@ -10,14 +10,14 @@ export default function useContentView(windowId, win, app, config, contentRef, d
 
   useEffect(() => { isActiveRef.current = !!isActive; }, [isActive]);
 
+  // ---- Создание view ----
   useEffect(() => {
     if (!win || win.closing) return;
     if (viewCreated) return;
 
     const base = win.url || app?.url || app?.initialUrl || 'about:blank';
 
-    // Прокидываем windowId/desktopId в URL, но только для локальных URL —
-    // внешние сайты (браузерный режим) не должны получать левые query-параметры.
+    // Прокидываем windowId/desktopId в URL только для локальных страниц.
     let url = base;
     if (!/^https?:\/\//i.test(base)) {
       try {
@@ -31,20 +31,25 @@ export default function useContentView(windowId, win, app, config, contentRef, d
 
     const preload = app?.preloadPath || config?.windowPreload || null;
 
-    window.electron_desktop_API.createWindowContentView({
-      windowId, url, preload,
+    window.electron_desktop_API.createView({
+      id: windowId,
+      kind: 'window',
+      url,
+      preload,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
     });
     setViewCreated(true);
 
     return () => {
-      window.electron_desktop_API.destroyWindowContentView({ windowId });
+      window.electron_desktop_API.destroyView({ id: windowId });
     };
   }, [windowId, win?.closing, desktopId]);
 
+  // ---- Обновление bounds ----
   const sendUpdate = useCallback(() => {
     if (!viewCreated) return;
 
+    // Рабочий стол неактивен → за экран
     if (!isActiveRef.current) {
       const w = Math.max(1, Math.round(win?.ghost?.width || 1));
       const h = Math.max(1, Math.round(win?.ghost?.height || 1));
@@ -52,7 +57,11 @@ export default function useContentView(windowId, win, app, config, contentRef, d
       const prev = lastSentRef.current;
       if (prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return;
       lastSentRef.current = next;
-      window.electron_desktop_API.updateWindowContentView({ windowId, ...next });
+      window.electron_desktop_API.updateViewBounds({
+        id: windowId,
+        bounds: next,
+        moveChildren: true,
+      });
       return;
     }
 
@@ -62,11 +71,16 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     const width = Math.round(rect.width);
     const height = Math.round(rect.height);
 
+    // Схлопнуто / минимализировано → за экран
     if (width <= 1 || height <= 1) {
       const prev = lastSentRef.current;
       if (prev.x === OFFSCREEN.x && prev.y === OFFSCREEN.y) return;
       lastSentRef.current = { ...OFFSCREEN };
-      window.electron_desktop_API.updateWindowContentView({ windowId, ...OFFSCREEN });
+      window.electron_desktop_API.updateViewBounds({
+        id: windowId,
+        bounds: { ...OFFSCREEN },
+        moveChildren: true,
+      });
       return;
     }
 
@@ -77,11 +91,14 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     if (prev.x === x && prev.y === y && prev.width === width && prev.height === height) return;
     lastSentRef.current = { x, y, width, height };
 
-    window.electron_desktop_API.updateWindowContentView({
-      windowId, x, y, width, height,
+    window.electron_desktop_API.updateViewBounds({
+      id: windowId,
+      bounds: { x, y, width, height },
+      moveChildren: true,
     });
   }, [windowId, win, desktopOffset, contentRef, viewCreated]);
 
+  // ---- RAF-цикл ----
   useEffect(() => {
     if (!viewCreated) return;
     const loop = () => {
@@ -94,9 +111,10 @@ export default function useContentView(windowId, win, app, config, contentRef, d
     };
   }, [viewCreated, sendUpdate]);
 
+  // ---- Z-index ----
   useEffect(() => {
     if (!viewCreated) return;
-    window.electron_desktop_API.setWindowContentZIndex({ windowId, zIndex: win.z || 0 });
+    window.electron_desktop_API.setViewZ({ id: windowId, z: win.z || 0 });
   }, [viewCreated, windowId, win.z]);
 
   return { viewCreated, sendUpdate };

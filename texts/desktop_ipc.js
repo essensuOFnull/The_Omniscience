@@ -15,11 +15,6 @@
 		},
 		removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
 
-		createWindowContentView: (data) => ipcRenderer.send('create-window-content-view', data),
-		updateWindowContentView: (data) => ipcRenderer.send('update-window-content-view', data),
-		destroyWindowContentView: (data) => ipcRenderer.send('destroy-window-content-view', data),
-		setWindowContentZIndex: (data) => ipcRenderer.send('set-window-content-zindex', data),
-
 		getDesktopViewBounds: () => ipcRenderer.invoke('get-desktop-view-bounds'),
 
 		// Навигация
@@ -39,5 +34,10 @@
 		},
 		setWebViewBounds: (id, bounds) => ipcRenderer.send('set-webview-bounds', { id, bounds }),
 		onRequestWebViewBounds: (callback) => ipcRenderer.on('request-webview-bounds', (event, id) => callback(id)),
+		createView: (opts) => ipcRenderer.send('view:create', opts),
+		updateViewBounds: (opts) => ipcRenderer.send('view:update-bounds', opts),
+		destroyView: (opts) => ipcRenderer.send('view:destroy', opts),
+		setViewZ: (opts) => ipcRenderer.send('view:set-z', opts),
+		getViewBounds: (id) => ipcRenderer.invoke('view:get-bounds', { id }),
 	});
 })();

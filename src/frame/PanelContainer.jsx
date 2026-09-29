@@ -39,13 +39,32 @@ export default function PanelContainer({ windowId }) {
 
     // ---- Pointer lock: drag/resize window / panel move ----
     const modeRef = useRef(null);
+    const panelBoundsRef = useRef(null);
+
+    useEffect(() => {
+        if (!api) return;
+        // Узнаём свои bounds
+        api.invoke('view:get-bounds', { id: `panel:${windowId}` }).then((b) => {
+            if (b) panelBoundsRef.current = b;
+        });
+    }, [api, windowId]);
 
     useEffect(() => {
         const onMove = (e) => {
             if (!document.pointerLockElement || !modeRef.current) return;
             const m = modeRef.current;
+
             if (m === 'panelMove') {
-                api.send('move-panel-by', { windowId, dx: e.movementX, dy: e.movementY });
+                const cur = panelBoundsRef.current;
+                if (!cur) return;
+                const next = {
+                    x: cur.x + e.movementX,
+                    y: cur.y + e.movementY,
+                    width: cur.width,
+                    height: cur.height,
+                };
+                panelBoundsRef.current = next;
+                api.updateOwnBounds(next, false);
             } else if (m === 'windowDrag') {
                 api.send('frame:drag-delta', { windowId, dx: e.movementX, dy: e.movementY });
             } else if (m.resize) {
@@ -86,9 +105,12 @@ export default function PanelContainer({ windowId }) {
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
+        api.invoke('view:get-bounds', { id: `panel:${windowId}` }).then((b) => {
+            if (b) panelBoundsRef.current = b;
+        });
         modeRef.current = 'panelMove';
         lockPointer();
-    }, []);
+    }, [api, windowId]);
 
     const onPanelDoubleClick = useCallback((e) => {
         e.preventDefault();

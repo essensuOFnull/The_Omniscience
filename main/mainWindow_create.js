@@ -37,8 +37,6 @@ export default async function () {
         },
     });
 
-    global.$.ipc_panelView();
-
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
     // Функция для отправки актуальных размеров окна в рендерер при изменении размера

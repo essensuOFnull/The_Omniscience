@@ -9,5 +9,9 @@
       ipcRenderer.on(channel, wrapped);
       return () => ipcRenderer.removeListener(channel, wrapped);
     },
+
+    // Специальный метод: панель двигает ТОЛЬКО себя, id берётся из main
+    updateOwnBounds: (bounds, moveChildren) =>
+      ipcRenderer.send('view:update-own-bounds', { bounds, moveChildren }),
   });
 })();

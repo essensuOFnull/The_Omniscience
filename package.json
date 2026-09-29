@@ -1,6 +1,6 @@
 {
   "name": "The_Omniscience",
-  "version": "8.0.2",
+  "version": "8.1.0",
   "type": "module",
   "scripts": {
     "start": "npx electron --experimental-default-type=commonjs .",

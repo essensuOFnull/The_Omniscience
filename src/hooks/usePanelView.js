@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 
-const BASE_W = 200;
+const BASE_W = 180;
 const BASE_H = 100;
 const EDGE_INSET = 16;
 
 export default function usePanelView({ windowId, win, app, isFocused, pageTitle }) {
   const [created, setCreated] = useState(false);
   const createdRef = useRef(false);
+
+  const panelId = `panel:${windowId}`;
 
   const frameUrl = (() => {
     try {
@@ -17,7 +19,6 @@ export default function usePanelView({ windowId, win, app, isFocused, pageTitle 
     } catch { return null; }
   })();
 
-  // create / destroy
   useEffect(() => {
     if (!win || win.closing) return;
     if (createdRef.current) return;
@@ -27,8 +28,10 @@ export default function usePanelView({ windowId, win, app, isFocused, pageTitle 
     const x = Math.round(g.centerX + g.width / 2 - BASE_W - EDGE_INSET);
     const y = Math.round(g.centerY + g.height / 2 - BASE_H - EDGE_INSET);
 
-    window.electron_desktop_API.send('create-panel-view', {
-      windowId,
+    window.electron_desktop_API.createView({
+      id: panelId,
+      kind: 'panel',
+      parentId: windowId,
       url: frameUrl,
       bounds: { x, y, width: BASE_W, height: BASE_H },
     });
@@ -38,11 +41,11 @@ export default function usePanelView({ windowId, win, app, isFocused, pageTitle 
 
     return () => {
       createdRef.current = false;
-      window.electron_desktop_API.send('destroy-panel-view', { windowId });
+      window.electron_desktop_API.destroyView({ id: panelId });
     };
-  }, [windowId, win?.closing, frameUrl]);
+  }, [windowId, win?.closing, frameUrl, panelId]);
 
-  // push props
+  // Props push
   useEffect(() => {
     if (!created) return;
     window.electron_desktop_API.send('shell:send-to-panel', {
@@ -56,5 +59,5 @@ export default function usePanelView({ windowId, win, app, isFocused, pageTitle 
     });
   }, [created, windowId, pageTitle, app?.icon, app?.title, isFocused, win?.maximized]);
 
-  return { created };
+  return { created, panelId };
 }

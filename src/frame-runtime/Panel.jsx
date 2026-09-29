@@ -20,12 +20,12 @@ import WindowButtons from './WindowButtons';
 
 const CURSORS = {
   nw: 'nwse-resize',
-  n:  'ns-resize',
+  n: 'ns-resize',
   ne: 'nesw-resize',
-  w:  'ew-resize',
-  e:  'ew-resize',
+  w: 'ew-resize',
+  e: 'ew-resize',
   sw: 'nesw-resize',
-  s:  'ns-resize',
+  s: 'ns-resize',
   se: 'nwse-resize',
 };
 
@@ -66,7 +66,7 @@ export default function Panel({
   const gridStyle = {
     display: 'grid',
     gridTemplateColumns: mode === 'search'
-      ? `${cell}px ${cell}px 1fr ${cell}px`
+      ? `${cell}px ${cell}px ${cell}px 1fr`
       : `${cell}px ${cell}px ${cell * 1.3}px ${cell}px ${cell}px`,
     gridTemplateRows: `${cell}px ${cell * 1.15}px ${cell}px`,
     gap: `${gap}px`,
@@ -84,7 +84,6 @@ export default function Panel({
     pointerEvents: 'auto',
     zIndex: 2147483646,
     userSelect: 'none',
-    borderRadius: 8,
     background: 'rgba(28,0,28,0.88)',
     backdropFilter: 'blur(14px)',
     WebkitBackdropFilter: 'blur(14px)',
@@ -110,13 +109,13 @@ export default function Panel({
       >
         {icon
           ? <img
-              src={icon}
-              width={iconSize}
-              height={iconSize}
-              alt=""
-              draggable={false}
-              style={{ borderRadius: 2 }}
-            />
+            src={icon}
+            width={iconSize}
+            height={iconSize}
+            alt=""
+            draggable={false}
+            style={{ borderRadius: 2 }}
+          />
           : <DragIndicatorIcon style={{ fontSize: iconSize }} />}
       </Cell>
 
@@ -141,23 +140,32 @@ export default function Panel({
     <div style={gridStyle}>
       {renderAnchorLeft()}
 
+      {/* Столбец 4 — системные кнопки */}
+      <WindowButtons
+        iconSize={iconSize}
+        maximized={maximized}
+        onMaximize={onMaximize}
+        onMinimize={onMinimize}
+        onClose={onClose}
+        col={2}
+      />
       {/* Столбец 2 — resize NW / W / SW */}
-      <Cell row="1" col="2" cursor={CURSORS.nw} onMouseDown={onResize('nw')} title="Растянуть ↖">
+      <Cell row="1" col="3" cursor={CURSORS.nw} onMouseDown={onResize('nw')} title="Растянуть ↖">
         <NorthWestIcon style={{ fontSize: iconSize }} />
       </Cell>
-      <Cell row="2" col="2" cursor={CURSORS.w} onMouseDown={onResize('w')} title="Растянуть ←">
+      <Cell row="2" col="3" cursor={CURSORS.w} onMouseDown={onResize('w')} title="Растянуть ←">
         <WestIcon style={{ fontSize: iconSize }} />
       </Cell>
-      <Cell row="3" col="2" cursor={CURSORS.sw} onMouseDown={onResize('sw')} title="Растянуть ↙">
+      <Cell row="3" col="3" cursor={CURSORS.sw} onMouseDown={onResize('sw')} title="Растянуть ↙">
         <SouthWestIcon style={{ fontSize: iconSize }} />
       </Cell>
 
       {/* Столбец 3 — N / move / S */}
-      <Cell row="1" col="3" cursor={CURSORS.n} onMouseDown={onResize('n')} title="Растянуть ↑">
+      <Cell row="1" col="4" cursor={CURSORS.n} onMouseDown={onResize('n')} title="Растянуть ↑">
         <NorthIcon style={{ fontSize: iconSize }} />
       </Cell>
       <Cell
-        row="2" col="3"
+        row="2" col="4"
         cursor="move"
         onMouseDown={onWindowDragStart}
         title="Переместить окно"
@@ -165,30 +173,20 @@ export default function Panel({
       >
         <OpenWithIcon style={{ fontSize: Math.round(iconSize * 1.3) }} />
       </Cell>
-      <Cell row="3" col="3" cursor={CURSORS.s} onMouseDown={onResize('s')} title="Растянуть ↓">
+      <Cell row="3" col="4" cursor={CURSORS.s} onMouseDown={onResize('s')} title="Растянуть ↓">
         <SouthIcon style={{ fontSize: iconSize }} />
       </Cell>
 
       {/* Столбец 4 — NE / E / SE */}
-      <Cell row="1" col="4" cursor={CURSORS.ne} onMouseDown={onResize('ne')} title="Растянуть ↗">
+      <Cell row="1" col="5" cursor={CURSORS.ne} onMouseDown={onResize('ne')} title="Растянуть ↗">
         <NorthEastIcon style={{ fontSize: iconSize }} />
       </Cell>
-      <Cell row="2" col="4" cursor={CURSORS.e} onMouseDown={onResize('e')} title="Растянуть →">
+      <Cell row="2" col="5" cursor={CURSORS.e} onMouseDown={onResize('e')} title="Растянуть →">
         <EastIcon style={{ fontSize: iconSize }} />
       </Cell>
-      <Cell row="3" col="4" cursor={CURSORS.se} onMouseDown={onResize('se')} title="Растянуть ↘">
+      <Cell row="3" col="5" cursor={CURSORS.se} onMouseDown={onResize('se')} title="Растянуть ↘">
         <SouthEastIcon style={{ fontSize: iconSize }} />
       </Cell>
-
-      {/* Столбец 5 — системные кнопки */}
-      <WindowButtons
-        iconSize={iconSize}
-        maximized={maximized}
-        onMaximize={onMaximize}
-        onMinimize={onMinimize}
-        onClose={onClose}
-        col={5}
-      />
     </div>
   );
 
@@ -210,9 +208,17 @@ export default function Panel({
     <div style={gridStyle}>
       {renderAnchorLeft()}
 
+      <WindowButtons
+        iconSize={iconSize}
+        maximized={maximized}
+        onMaximize={onMaximize}
+        onMinimize={onMinimize}
+        onClose={onClose}
+        col={2}
+      />
       {/* Столбец 2 — навигация */}
       <Cell
-        row="1" col="2"
+        row="1" col="3"
         cursor={canGoBack ? 'pointer' : 'default'}
         onClick={canGoBack ? onBack : undefined}
         title="Назад"
@@ -221,7 +227,7 @@ export default function Panel({
         <ArrowBackIcon style={{ fontSize: iconSize }} />
       </Cell>
       <Cell
-        row="2" col="2"
+        row="2" col="3"
         cursor="pointer"
         onClick={onReload}
         title="Перезагрузить"
@@ -229,7 +235,7 @@ export default function Panel({
         <RefreshIcon style={{ fontSize: iconSize }} />
       </Cell>
       <Cell
-        row="3" col="2"
+        row="3" col="3"
         cursor={canGoForward ? 'pointer' : 'default'}
         onClick={canGoForward ? onForward : undefined}
         title="Вперёд"
@@ -240,7 +246,7 @@ export default function Panel({
 
       {/* Столбец 3 — заголовок (растягивается на всю ширину) */}
       <Cell
-        row="1" col="3"
+        row="1" col="4"
         cursor="default"
         title={title}
         style={{
@@ -264,7 +270,7 @@ export default function Panel({
 
       {/* Столбец 3 — адрес: textarea + уголок-ручка, тянущая панель */}
       <Cell
-        row="2" col="3"
+        row="2" col="4"
         cursor="text"
         style={{
           position: 'relative',
@@ -300,16 +306,6 @@ export default function Panel({
           }}
         />
       </Cell>
-
-      {/* Столбец 4 — системные кнопки */}
-      <WindowButtons
-        iconSize={iconSize}
-        maximized={maximized}
-        onMaximize={onMaximize}
-        onMinimize={onMinimize}
-        onClose={onClose}
-        col={4}
-      />
     </div>
   );
 
