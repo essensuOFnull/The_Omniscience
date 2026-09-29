@@ -54,11 +54,41 @@ export default function useScreenDrag(state, actions) {
       drag.accX += msg.dx;
       drag.accY += msg.dy;
 
+      const vp = stateRef.current?.desktops?.[drag.desktopId]?.viewport
+        || { width: window.innerWidth, height: window.innerHeight };
+
+      const newCX = drag.startCX + drag.accX;
+      const newCY = drag.startCY + drag.accY;
+
+      // Определяем, близко ли окно к краю viewport
+      const TH = 24;
+      const left = newCX - drag.width / 2;
+      const right = newCX + drag.width / 2;
+      const top = newCY - drag.height / 2;
+      const bottom = newCY + drag.height / 2;
+
+      let snap = null;
+      if (left <= TH) snap = 'left';
+      else if (right >= vp.width - TH) snap = 'right';
+      if (top <= TH) snap = snap ? `${snap}-top` : 'top';
+      else if (bottom >= vp.height - TH) snap = snap ? `${snap}-bottom` : 'bottom';
+
+      if (snap) {
+        const geo = getSnapGeometry(snap, vp);
+        if (geo) {
+          actionsRef.current.setWindowRect(
+            drag.desktopId, wid,
+            geo.centerX, geo.centerY, geo.width, geo.height,
+            snap
+          );
+          return;
+        }
+      }
+
+      // Обычный move — размер возвращаем к исходному
       actionsRef.current.setWindowRect(
         drag.desktopId, wid,
-        drag.startCX + drag.accX,
-        drag.startCY + drag.accY,
-        drag.width, drag.height,
+        newCX, newCY, drag.width, drag.height,
         null
       );
     };
@@ -139,14 +169,31 @@ export default function useScreenDrag(state, actions) {
     };
 
     const offs = [
-      api.on('shell:frame-drag-start',   onDragStart),
-      api.on('shell:frame-drag-delta',   onDragDelta),
-      api.on('shell:frame-drag-end',     onDragEnd),
+      api.on('shell:frame-drag-start', onDragStart),
+      api.on('shell:frame-drag-delta', onDragDelta),
+      api.on('shell:frame-drag-end', onDragEnd),
       api.on('shell:frame-resize-start', onResizeStart),
       api.on('shell:frame-resize-delta', onResizeDelta),
-      api.on('shell:frame-resize-end',   onResizeEnd),
+      api.on('shell:frame-resize-end', onResizeEnd),
     ];
 
     return () => offs.forEach((o) => typeof o === 'function' && o());
   }, []);
+}
+
+function getSnapGeometry(snap, vp) {
+  const { width, height } = vp;
+  const halfW = width / 2;
+  const halfH = height / 2;
+  switch (snap) {
+    case 'top': return { centerX: width / 2, centerY: height / 4, width, height: halfH };
+    case 'bottom': return { centerX: width / 2, centerY: halfH + height / 4, width, height: halfH };
+    case 'left': return { centerX: width / 4, centerY: height / 2, width: halfW, height };
+    case 'right': return { centerX: halfW + width / 4, centerY: height / 2, width: halfW, height };
+    case 'top-left': return { centerX: width / 4, centerY: height / 4, width: halfW, height: halfH };
+    case 'top-right': return { centerX: halfW + width / 4, centerY: height / 4, width: halfW, height: halfH };
+    case 'bottom-left': return { centerX: width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
+    case 'bottom-right': return { centerX: halfW + width / 4, centerY: halfH + height / 4, width: halfW, height: halfH };
+    default: return null;
+  }
 }
