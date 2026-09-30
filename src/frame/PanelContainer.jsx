@@ -165,6 +165,10 @@ export default function PanelContainer({ windowId }) {
     const gap = 1;
     const pad = 4;
 
+    const onOpenDevTools = useCallback(() => {
+        api.send('panel:event', { windowId, type: 'open-devtools', payload: {} });
+    }, [api, windowId]);
+
     return (
         <ThemeProvider theme={darkTheme}>
             <Panel
@@ -193,6 +197,7 @@ export default function PanelContainer({ windowId }) {
                 onBack={onBack}
                 onForward={onForward}
                 onReload={onReload}
+                onOpenDevTools={onOpenDevTools}
             />
         </ThemeProvider>
     );

@@ -23,8 +23,8 @@ export default async function () {
   global.$.userAgent_change();
 
   await global.$.texts_load();
-  await global.$.preloads_generate();
   await global.$.extensions_setup();
+  await global.$.preloads_generate();
   await global.$.adblock_init();
   await global.$.mainWindow_create();
 

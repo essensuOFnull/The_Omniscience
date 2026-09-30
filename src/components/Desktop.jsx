@@ -89,11 +89,49 @@ export default function Desktop({ rootBar }) {
 				if (w.closing) return;
 				if (w.maximized) actionsRef.current.unmaximizeWindow(dId, windowId);
 				else actionsRef.current.maximizeWindow(dId, windowId);
+			} else if (type === 'open-devtools') {
+				const devtoolsId = `devtools:${windowId}`;
+				const api = window.electron_desktop_API;
+
+				try {
+					// Проверяем, не открыт ли уже
+					api.getViewBounds(devtoolsId).then((existing) => {
+						if (existing) {
+							// Уже открыт — просто поднимаем наверх
+							api.setViewZ({ id: devtoolsId, z: 99999 });
+							return;
+						}
+
+						const devtoolsId = `devtools:${windowId}`;
+						const url = new URL('../devtools/index.html', window.location.href).href
+							+ `?windowId=${encodeURIComponent(windowId)}`
+							+ `&viewId=${encodeURIComponent(devtoolsId)}`;
+
+						const w = window.innerWidth || 1280;
+						const h = window.innerHeight || 720;
+
+						api.createView({
+							id: devtoolsId,
+							kind: 'devtools',
+							parentId: windowId,   // закроется вместе с окном
+							url,
+							bounds: {
+								x: Math.round(w * 0.1),
+								y: Math.round(h * 0.1),
+								width: Math.round(w * 0.8),
+								height: Math.round(h * 0.8),
+							},
+						});
+						api.setViewZ({ id: devtoolsId, z: 9999 });
+					});
+				} catch (err) {
+					console.error('[devtools] failed to open:', err);
+				}
 			}
 		});
 		return off;
 	}, []);
-	
+
 	useScreenDrag(state, actions);
 
 	useEffect(() => {

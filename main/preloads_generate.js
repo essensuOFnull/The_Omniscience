@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 async function createPreload(key, content, tmpDir) {
   const fileName = `${key}.cjs`;
   const filePath = path.join(tmpDir, fileName);
@@ -69,10 +72,12 @@ export default async function () {
     global._.desktop_ipc,
     global._.view_state_ipc,
     global._.panel_ipc,
+    global._.react_devtools_backend,   // 👈 новый чанк
+    global._.devtools_ipc,
   ].join('\n\n');
 
   const cleanInject = buildInjectStylesFunction(BASE_CSS);
-
+  
   const cleanPreload = [
     global._.imports,
     cleanInject,
@@ -80,6 +85,8 @@ export default async function () {
     global._.desktop_ipc,
     global._.view_state_ipc,
     global._.panel_ipc,
+    global._.react_devtools_backend,   // 👈 новый чанк
+    global._.devtools_ipc,
   ].join('\n\n');
 
   await Promise.all([

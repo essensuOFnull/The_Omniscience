@@ -365,4 +365,98 @@ export default function () {
     /* -------- Заглушка для совместимости -------- */
 
     ipcMain.handle('get-desktop-view-bounds', () => ({ x: 0, y: 0, width: 0, height: 0 }));
+
+    ipcMain.on('view:test-original-devtools', (_e, { id }) => {
+        const entry = global.views[id];
+        if (!entry?.view?.webContents) {
+            console.log('[test] no view for', id);
+            return;
+        }
+
+        const devtoolsId = `devtools-original:${id}`;
+        if (global.views[devtoolsId]) {
+            console.log('[test] already exists');
+            return;
+        }
+
+        const devtoolsView = new WebContentsView({
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+            },
+        });
+
+        global.mainWindow.contentView.addChildView(devtoolsView);
+        devtoolsView.setBounds({ x: 200, y: 200, width: 900, height: 600 });
+
+        global.views[devtoolsId] = {
+            view: devtoolsView,
+            kind: 'devtools-original',
+            parentId: id,
+            bounds: { x: 200, y: 200, width: 900, height: 600 },
+            zIndex: 99999,
+        };
+
+        // Закрыть существующие DevTools, если открыты
+        if (entry.view.webContents.isDevToolsOpened()) {
+            entry.view.webContents.closeDevTools();
+        }
+
+        // Привязать
+        entry.view.webContents.setDevToolsWebContents(devtoolsView.webContents);
+
+        // Открыть БЕЗ mode
+        entry.view.webContents.openDevTools();
+
+        console.log('[test] original devtools opened for', id);
+    });
+    ipcMain.on('view:move-by', (event, { dx, dy }) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const entry = global.views[id];
+        if (!entry) return;
+        updateBounds(id, {
+            x: entry.bounds.x + dx,
+            y: entry.bounds.y + dy,
+            width: entry.bounds.width,
+            height: entry.bounds.height,
+        });
+    });
+
+    ipcMain.on('view:resize-by', (event, { direction, dx, dy }) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const entry = global.views[id];
+        if (!entry) return;
+
+        const b = entry.bounds;
+        let x = b.x, y = b.y, w = b.width, h = b.height;
+
+        if (direction.includes('e')) w = Math.max(300, w + dx);
+        if (direction.includes('w')) {
+            const newW = Math.max(300, w - dx);
+            x = b.x + (b.width - newW);
+            w = newW;
+        }
+        if (direction.includes('s')) h = Math.max(200, h + dy);
+        if (direction.includes('n')) {
+            const newH = Math.max(200, h - dy);
+            y = b.y + (b.height - newH);
+            h = newH;
+        }
+
+        updateBounds(id, { x, y, width: w, height: h });
+    });
+
+    ipcMain.on('view:maximize', (event) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const cb = global.mainWindow.contentView.getBounds();
+        updateBounds(id, {
+            x: 0,
+            y: 0,
+            width: cb.width,
+            height: cb.height,
+        });
+    });
 }

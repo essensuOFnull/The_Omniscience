@@ -5,5 +5,6 @@ export default function () {
   global.$.ipc_getAppsList();
   global.$.ipc_getConfig();
   global.$.ipc_registerWebview();
+  global.$.ipc_reactDevToolsBridge();
   global.$.ipc_theme();
 }
