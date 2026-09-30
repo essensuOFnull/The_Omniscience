@@ -459,4 +459,25 @@ export default function () {
             height: cb.height,
         });
     });
+
+    ipcMain.on('devtools:attach', (event, { targetViewId }) => {
+        // event.sender.id — это DevTools view (пустой)
+        // targetViewId — окно, которое инспектируем
+        const targetEntry = global.views[targetViewId];
+        if (!targetEntry) {
+            console.log('[devtools:attach] target not found:', targetViewId);
+            return;
+        }
+
+        const devtoolsWC = event.sender;
+        const targetWC = targetEntry.view?.webContents;
+        if (!targetWC) return;
+
+        if (targetWC.isDevToolsOpened()) {
+            targetWC.closeDevTools();
+        }
+        targetWC.setDevToolsWebContents(devtoolsWC);
+        targetWC.openDevTools();
+        console.log('[devtools:attach] attached to', targetViewId);
+    });
 }

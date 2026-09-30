@@ -5,28 +5,52 @@ import useDesktopOffset from '../hooks/useDesktopOffset';
 import useWindowNavigation from '../hooks/useWindowNavigation';
 import useContentView from '../hooks/useContentView';
 import usePanelView from '../hooks/usePanelView';
+import useChromiumDevToolsView from '../hooks/useChromiumDevToolsView';
 
 export default function Window({ windowId, app, state, actions, config, animations, desktopId, active }) {
   const win = state?.windows?.[windowId];
-  if (!win) return null;
+  const isDevTools = win?.kind === 'devtools';
+  const hasWin = !!win;
 
-  const isFocused = state.focusedWindowId === windowId;
   const contentRef = useRef(null);
   const desktopOffset = useDesktopOffset();
+
+  // Обычный контент — только для не-DevTools окон
+  const contentResult = useContentView(
+    (hasWin && !isDevTools) ? windowId : null,
+    (hasWin && !isDevTools) ? win : null,
+    isDevTools ? null : app,
+    config, contentRef, desktopOffset, active, desktopId
+  );
+
+  // Chromium DevTools view — только для DevTools окон
+  const devtoolsResult = useChromiumDevToolsView(
+    (hasWin && isDevTools) ? windowId : null,
+    (hasWin && isDevTools) ? win : null,
+    contentRef, desktopOffset, active,
+    (hasWin && isDevTools) ? win.targetWindowId : null
+  );
 
   const {
     currentUrl, pageTitle, loading, canGoBack, canGoForward,
     setCurrentUrl, navigateTo, goBack, goForward, reload,
-  } = useWindowNavigation(windowId, win.url, app?.url);
+  } = useWindowNavigation(windowId, win?.url, app?.url);
 
-  const { viewCreated, sendUpdate } = useContentView(
-    windowId, win, app, config, contentRef, desktopOffset, active, desktopId
-  );
+  // Панель управления — только для не-DevTools окон
+  usePanelView({
+    windowId: hasWin ? windowId : null,
+    win: (hasWin && !isDevTools) ? win : null,
+    app,
+    isFocused: state?.focusedWindowId === windowId,
+    pageTitle,
+  });
 
-  // Панель как отдельный view
-  usePanelView({ windowId, win, app, isFocused, pageTitle });
+  // 👇 Только теперь безопасно возвращаться
+  if (!win) return null;
 
-  // Позиционирование окна
+  const isFocused = state.focusedWindowId === windowId;
+  const { viewCreated, sendUpdate } = isDevTools ? devtoolsResult : contentResult;
+
   const ghost = win.ghost;
   const initialGhost = win.initialGhost || ghost;
   const hiddenInOverview = state.isOverviewOpened;

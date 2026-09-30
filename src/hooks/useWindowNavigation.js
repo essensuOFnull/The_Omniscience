@@ -8,6 +8,7 @@ export default function useWindowNavigation(windowId, initialUrl, appUrl) {
   const [canGoForward, setCanGoForward] = useState(false);
 
   useEffect(() => {
+    if (!windowId) return;
     let unsubscribe;
     window.electron_desktop_API.getWindowNavState(windowId).then(state => {
       if (state) {
