@@ -366,50 +366,6 @@ export default function () {
 
     ipcMain.handle('get-desktop-view-bounds', () => ({ x: 0, y: 0, width: 0, height: 0 }));
 
-    ipcMain.on('view:test-original-devtools', (_e, { id }) => {
-        const entry = global.views[id];
-        if (!entry?.view?.webContents) {
-            console.log('[test] no view for', id);
-            return;
-        }
-
-        const devtoolsId = `devtools-original:${id}`;
-        if (global.views[devtoolsId]) {
-            console.log('[test] already exists');
-            return;
-        }
-
-        const devtoolsView = new WebContentsView({
-            webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true,
-            },
-        });
-
-        global.mainWindow.contentView.addChildView(devtoolsView);
-        devtoolsView.setBounds({ x: 200, y: 200, width: 900, height: 600 });
-
-        global.views[devtoolsId] = {
-            view: devtoolsView,
-            kind: 'devtools-original',
-            parentId: id,
-            bounds: { x: 200, y: 200, width: 900, height: 600 },
-            zIndex: 99999,
-        };
-
-        // Закрыть существующие DevTools, если открыты
-        if (entry.view.webContents.isDevToolsOpened()) {
-            entry.view.webContents.closeDevTools();
-        }
-
-        // Привязать
-        entry.view.webContents.setDevToolsWebContents(devtoolsView.webContents);
-
-        // Открыть БЕЗ mode
-        entry.view.webContents.openDevTools();
-
-        console.log('[test] original devtools opened for', id);
-    });
     ipcMain.on('view:move-by', (event, { dx, dy }) => {
         const id = findIdByWebContents(event.sender.id);
         if (!id) return;

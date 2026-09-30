@@ -1,6 +1,7 @@
 (function () {
     try {
         var params = new URLSearchParams(location.search);
+        if (params.get('noBackend') === '1') return;
         // DevTools-окно само себя не инспектирует
         if (params.get('omniDevTools') === '1') return;
 
