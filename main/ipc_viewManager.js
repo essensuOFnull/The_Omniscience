@@ -436,4 +436,9 @@ export default function () {
         targetWC.openDevTools();
         console.log('[devtools:attach] attached to', targetViewId);
     });
+    ipcMain.handle('view:get-main-size', () => {
+        if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
+        const b = global.mainWindow.contentView.getBounds();
+        return { width: b.width, height: b.height };
+    });
 }

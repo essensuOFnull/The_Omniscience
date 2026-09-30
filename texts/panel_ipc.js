@@ -13,5 +13,6 @@
     // Специальный метод: панель двигает ТОЛЬКО себя, id берётся из main
     updateOwnBounds: (bounds, moveChildren) =>
       ipcRenderer.send('view:update-own-bounds', { bounds, moveChildren }),
+    getMainSize: () => ipcRenderer.invoke('view:get-main-size'),
   });
 })();

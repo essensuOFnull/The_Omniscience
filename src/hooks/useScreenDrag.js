@@ -1,9 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { detectSnap, getSnapGeometry } from '../utils/snap.js';
-
-const MIN_W = 1;
-const MIN_H = 1;
+import { dragBy, resizeBy } from '../utils/pointerClamp.js';
 
 export default function useScreenDrag(state, actions) {
   const stateRef = useRef(state);
@@ -25,6 +23,11 @@ export default function useScreenDrag(state, actions) {
         if (win) return { desktopId, win };
       }
       return null;
+    };
+
+    const getViewport = (desktopId) => {
+      return stateRef.current?.desktops?.[desktopId]?.viewport
+        || { width: window.innerWidth, height: window.innerHeight };
     };
 
     // ---------- DRAG окна ----------
@@ -53,14 +56,9 @@ export default function useScreenDrag(state, actions) {
     const onDragDelta = (msg) => {
       const wid = msg?.windowId;
       if (!wid || !drag || drag.windowId !== wid) return;
-      drag.accX += msg.dx;
-      drag.accY += msg.dy;
 
-      const vp = stateRef.current?.desktops?.[drag.desktopId]?.viewport
-        || { width: window.innerWidth, height: window.innerHeight };
-
-      const newCX = drag.startCX + drag.accX;
-      const newCY = drag.startCY + drag.accY;
+      const vp = getViewport(drag.desktopId);
+      const { cx: newCX, cy: newCY } = dragBy(drag, msg.dx, msg.dy, vp);
 
       const snap = detectSnap(newCX, newCY, drag.width, drag.height, vp);
       if (snap) {
@@ -75,7 +73,6 @@ export default function useScreenDrag(state, actions) {
         }
       }
 
-      // Обычный move — размер возвращаем к исходному
       actionsRef.current.setWindowRect(
         drag.desktopId, wid,
         newCX, newCY, drag.width, drag.height,
@@ -114,42 +111,13 @@ export default function useScreenDrag(state, actions) {
     const onResizeDelta = (msg) => {
       const wid = msg?.windowId;
       if (!wid || !resize || resize.windowId !== wid) return;
-      resize.accX += msg.dx;
-      resize.accY += msg.dy;
 
-      const st = stateRef.current;
-      const vp = st?.desktops?.[resize.desktopId]?.viewport
-        || { width: window.innerWidth, height: window.innerHeight };
-
-      const dx = resize.accX;
-      const dy = resize.accY;
-      const direction = resize.direction;
-
-      const left = resize.startCX - resize.startW / 2;
-      const right = resize.startCX + resize.startW / 2;
-      const top = resize.startCY - resize.startH / 2;
-      const bottom = resize.startCY + resize.startH / 2;
-      let newW = resize.startW, newH = resize.startH;
-      let newCX = resize.startCX, newCY = resize.startCY;
-
-      if (direction.includes('e')) {
-        newW = Math.max(MIN_W, Math.min(resize.startW + dx, vp.width - left));
-        newCX = left + newW / 2;
-      } else if (direction.includes('w')) {
-        newW = Math.max(MIN_W, Math.min(resize.startW - dx, right));
-        newCX = right - newW / 2;
-      }
-      if (direction.includes('s')) {
-        newH = Math.max(MIN_H, Math.min(resize.startH + dy, vp.height - top));
-        newCY = top + newH / 2;
-      } else if (direction.includes('n')) {
-        newH = Math.max(MIN_H, Math.min(resize.startH - dy, bottom));
-        newCY = bottom - newH / 2;
-      }
+      const vp = getViewport(resize.desktopId);
+      const { cx, cy, w, h } = resizeBy(resize, msg.dx, msg.dy, vp);
 
       actionsRef.current.setWindowRect(
         resize.desktopId, wid,
-        newCX, newCY, newW, newH,
+        cx, cy, w, h,
         null
       );
     };
