@@ -81,7 +81,9 @@ export function createView(id, { kind, url, preload, bounds, parentId }) {
         },
     });
     view.setBackgroundColor('#00000000');
-    view.webContents.loadURL(url || 'about:blank');
+    if (url) {
+        view.webContents.loadURL(url);
+    }
 
     const b = bounds || { x: 0, y: 0, width: 100, height: 100 };
     view.setBounds(b);
@@ -319,7 +321,9 @@ export default function () {
 
     /* -------- Shell ↔ Panel -------- */
 
-    ipcMain.on('panel:event', (event, { windowId, type, payload }) => {
+    ipcMain.on('panel:event', (event, msg) => {
+        const { windowId, type, payload } = msg || {};
+        if (!windowId || !type) return;
         sendToShell('shell:panel-event', {
             fromId: event.sender.id, windowId, type, payload,
         });
@@ -416,25 +420,28 @@ export default function () {
         });
     });
 
-    ipcMain.on('devtools:attach', (event, { targetViewId }) => {
-        // event.sender.id — это DevTools view (пустой)
-        // targetViewId — окно, которое инспектируем
+    ipcMain.on('devtools:attach', (event, { devtoolsViewId, targetViewId }) => {
+        const devtoolsEntry = global.views[devtoolsViewId];
         const targetEntry = global.views[targetViewId];
-        if (!targetEntry) {
-            console.log('[devtools:attach] target not found:', targetViewId);
+
+        if (!devtoolsEntry || !targetEntry) {
+            console.log('[devtools:attach] missing:', { devtoolsViewId, targetViewId });
             return;
         }
 
-        const devtoolsWC = event.sender;
+        const devtoolsWC = devtoolsEntry.view?.webContents;
         const targetWC = targetEntry.view?.webContents;
-        if (!targetWC) return;
+        if (!devtoolsWC || !targetWC) return;
 
+        // Если DevTools уже открыты — сначала закрываем
         if (targetWC.isDevToolsOpened()) {
             targetWC.closeDevTools();
         }
+
         targetWC.setDevToolsWebContents(devtoolsWC);
         targetWC.openDevTools();
-        console.log('[devtools:attach] attached to', targetViewId);
+
+        console.log('[devtools:attach] ok:', devtoolsViewId, '→', targetViewId);
     });
     ipcMain.handle('view:get-main-size', () => {
         if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;

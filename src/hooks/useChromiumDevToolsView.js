@@ -18,14 +18,15 @@ export default function useChromiumDevToolsView(windowId, win, contentRef, deskt
     window.electron_desktop_API.createView({
       id: windowId,
       kind: 'window',
-      url: 'about:blank',
+      url: null,
       preload: null,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
     });
 
     // Сразу привязываем как DevTools для целевого окна
     window.electron_desktop_API.send('devtools:attach', {
-      targetViewId: targetWindowId,
+      devtoolsViewId: windowId,     // 👈 наш новый view
+      targetViewId: targetWindowId, // 👈 какое окно инспектируем
     });
 
     setViewCreated(true);
@@ -90,8 +91,8 @@ export default function useChromiumDevToolsView(windowId, win, contentRef, deskt
   }, [viewCreated, sendUpdate]);
 
   useEffect(() => {
-    if (!viewCreated||!win||!win.z) return;
-    window.electron_desktop_API.setViewZ({ id: windowId, z: win.z || 0 });
+    if (!viewCreated || !win) return;
+    window.electron_desktop_API.setViewZ({ id: windowId, z: win?.z || 0 });
   }, [viewCreated, windowId, win?.z]);
 
   return { viewCreated, sendUpdate };

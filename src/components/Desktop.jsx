@@ -27,6 +27,8 @@ const ACTION_ARG_NAMES = {
 	unmaximizeWindow: ['windowId'],
 	minimizeWindow: ['windowId', 'cx', 'cy'],
 	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height', 'snap'],
+	createDevToolsWindow: ['targetWindowId'],
+	togglePanel: ['windowId'],
 };
 
 export default function Desktop({ rootBar }) {
@@ -71,7 +73,8 @@ export default function Desktop({ rootBar }) {
 	useEffect(() => {
 		const api = window.electron_desktop_API;
 		if (!api) return;
-		const off = api.on('shell:panel-event', ({ windowId, type }) => {
+		const off = api.on('shell:panel-event', (msg) => {
+			const { windowId, type } = msg || {};
 			if (!windowId || !type) return;
 			let dId = null, w = null;
 			for (const [did, desktop] of Object.entries(stateRef.current.desktops || {})) {

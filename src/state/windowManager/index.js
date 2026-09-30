@@ -21,3 +21,4 @@ export { createDesktop } from './actions/createDesktop';
 export { switchDesktop } from './actions/switchDesktop';
 export { closeDesktop } from './actions/closeDesktop';
 export { createDevToolsWindow } from './actions/createDevToolsWindow';
+export { togglePanel } from './actions/togglePanel';

@@ -114,8 +114,8 @@ export default function useContentView(windowId, win, app, config, contentRef, d
   // ---- Z-index ----
   useEffect(() => {
     if (!viewCreated) return;
-    window.electron_desktop_API.setViewZ({ id: windowId, z: win.z || 0 });
-  }, [viewCreated, windowId, win.z]);
+    window.electron_desktop_API.setViewZ({ id: windowId, z: win?.z || 0 });
+  }, [viewCreated, windowId, win?.z]);
 
   return { viewCreated, sendUpdate };
 }
