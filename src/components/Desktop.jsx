@@ -8,6 +8,7 @@ import { windowManager, initialState } from '../state/windowManager';
 import useViewStateBridge from '../hooks/useViewStateBridge';
 import useThemeSync from '../hooks/useThemeSync';
 import useScreenDrag from '../hooks/useScreenDrag';
+import useGlobalPanel from '../hooks/useGlobalPanel';
 
 import VoidPoem from './VoidPoem';
 
@@ -28,12 +29,13 @@ const ACTION_ARG_NAMES = {
 	minimizeWindow: ['windowId', 'cx', 'cy'],
 	setWindowRect: ['windowId', 'cx', 'cy', 'width', 'height', 'snap'],
 	createDevToolsWindow: ['targetWindowId'],
-	togglePanel: ['windowId'],
 };
 
 export default function Desktop({ rootBar }) {
 	const [config, setConfig] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
 	const [apps, setApps] = useState([]);
+
+	const [panelVisible, setPanelVisible] = useState(true);
 
 	const reducer = useCallback((state, action) => {
 		const handler = windowManager[action.type];
@@ -100,6 +102,7 @@ export default function Desktop({ rootBar }) {
 	}, []);
 
 	useScreenDrag(state, actions);
+	useGlobalPanel();
 
 	useEffect(() => {
 		if (Object.keys(stateRef.current.desktops).length === 0) {
@@ -159,6 +162,53 @@ export default function Desktop({ rootBar }) {
 		window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => { });
 	}, []);
 
+	useEffect(() => {
+		const api = window.electron_desktop_API;
+		if (!api) return;
+
+		// 👇 Читаем фокус из АКТИВНОГО desktop, а не из корня state
+		const activeDesktopId = state.activeDesktopId;
+		const activeDesktop = activeDesktopId ? state.desktops?.[activeDesktopId] : null;
+		const activeId = activeDesktop?.focusedWindowId || null;
+
+		let activeWin = null;
+		let dId = null;
+		if (activeId && activeDesktop) {
+			if (activeDesktop.windows?.[activeId]) {
+				activeWin = activeDesktop.windows[activeId];
+				dId = activeDesktopId;
+			}
+		}
+
+		const hasActiveWindow = !!(activeWin && !activeWin.closing);
+		const activeApp = activeWin?.appId ? (apps || []).find((a) => a.id === activeWin.appId) : null;
+
+		api.send('shell:send-to-panel', {
+			data: {
+				windowId: hasActiveWindow ? activeId : null,
+				title: activeWin?.title || activeApp?.title || 'Окно',
+				icon: activeApp?.icon || null,
+				isFocused: hasActiveWindow,
+				maximized: !!activeWin?.maximized,
+				loading: false,
+				currentUrl: activeWin?.url || '',
+				canGoBack: false,
+				canGoForward: false,
+				hasActiveWindow,
+			},
+		});
+	}, [state.activeDesktopId, state.desktops, apps]);
+
+	useEffect(() => {
+		const api = window.electron_desktop_API;
+		if (!api) return;
+		if (panelVisible) {
+			api.send('view:show', { id: 'panel:global' });
+		} else {
+			api.send('view:hide', { id: 'panel:global' });
+		}
+	}, [panelVisible]);
+
 	return (
 		<Box
 			sx={{
@@ -182,6 +232,8 @@ export default function Desktop({ rootBar }) {
 					config={config}
 					apps={apps}
 					active={state.activeDesktopId === desktopId}
+					panelVisible={panelVisible}
+					onTogglePanel={() => setPanelVisible((v) => !v)}
 				/>
 			))}
 			{Object.keys(state.desktops).length === 0 && (

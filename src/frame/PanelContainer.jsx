@@ -12,55 +12,58 @@ const darkTheme = createTheme({
   },
 });
 
-export default function PanelContainer({ windowId }) {
+export default function PanelContainer() {
   const api = window.electron_panel_API;
 
   const [props, setProps] = useState({
-    title: document.title || 'Окно',
+    windowId: null,
+    title: '',
     icon: null,
     isFocused: false,
     maximized: false,
+    loading: false,
+    currentUrl: '',
+    canGoBack: false,
+    canGoForward: false,
+    hasActiveWindow: false,
   });
 
   const [mode, setMode] = useState('control');
-  const [navState, setNavState] = useState({
-    currentUrl: location.href,
-    canGoBack: false,
-    canGoForward: false,
-    loading: false,
-  });
-
   const modeRef = useRef(null);
-  const panelBoundsRef = useRef(null);   // { x, y, width, height } внутри main
-  const panelDragRef = useRef(null);     // аккумулятор для dragBy
-  const mainSizeRef = useRef(null);      // { width, height } главного окна
+  const panelBoundsRef = useRef(null);
+  const panelDragRef = useRef(null);
+  const mainSizeRef = useRef(null);
+  const propsRef = useRef(props);
+  propsRef.current = props;
 
-  // ---- Props от shell ----
+  // ---- Props от shell + ready-сигнал ----
   useEffect(() => {
     if (!api) return;
-    return api.on('panel:props', (data) => {
+    const off = api.on('panel:props', (data) => {
       setProps((p) => ({ ...p, ...(data || {}) }));
     });
+    // Сообщаем main, что мы готовы получить последнее состояние
+    api.send('panel:ready');
+    return off;
   }, [api]);
 
-  // ---- Начальные bounds панели и размеры главного окна ----
+  // ---- Начальные bounds + размер главного окна ----
   useEffect(() => {
     if (!api) return;
-
-    api.invoke('view:get-bounds', { id: `panel:${windowId}` }).then((b) => {
+    api.invoke('view:get-bounds', { id: 'panel:global' }).then((b) => {
       if (b) panelBoundsRef.current = b;
     });
-
     api.getMainSize().then((s) => {
       if (s) mainSizeRef.current = s;
     });
-  }, [api, windowId]);
+  }, [api]);
 
   // ---- Pointer lock ----
   useEffect(() => {
     const onMove = (e) => {
       if (!document.pointerLockElement || !modeRef.current) return;
       const m = modeRef.current;
+      const windowId = propsRef.current.windowId;
 
       if (m === 'panelMove') {
         const cur = panelBoundsRef.current;
@@ -68,30 +71,25 @@ export default function PanelContainer({ windowId }) {
         if (!cur || !mainSize) return;
 
         const vp = { width: mainSize.width, height: mainSize.height };
-
         if (!panelDragRef.current) {
           panelDragRef.current = {
             startCX: cur.x + cur.width / 2,
             startCY: cur.y + cur.height / 2,
-            width: cur.width,
-            height: cur.height,
-            accX: 0,
-            accY: 0,
+            width: cur.width, height: cur.height,
+            accX: 0, accY: 0,
           };
         }
-
         const { cx, cy } = dragBy(panelDragRef.current, e.movementX, e.movementY, vp);
         const next = {
           x: Math.round(cx - cur.width / 2),
           y: Math.round(cy - cur.height / 2),
-          width: cur.width,
-          height: cur.height,
+          width: cur.width, height: cur.height,
         };
         panelBoundsRef.current = next;
-        api.updateOwnBounds(next, false);
-      } else if (m === 'windowDrag') {
+        api.updateOwnBounds(next);
+      } else if (m === 'windowDrag' && windowId) {
         api.send('frame:drag-delta', { windowId, dx: e.movementX, dy: e.movementY });
-      } else if (m && m.resize) {
+      } else if (m && m.resize && windowId) {
         api.send('frame:resize-delta', {
           windowId, direction: m.resize,
           dx: e.movementX, dy: e.movementY,
@@ -105,75 +103,74 @@ export default function PanelContainer({ windowId }) {
       modeRef.current = null;
       panelDragRef.current = null;
       try { document.exitPointerLock?.(); } catch (_) {}
-      if (m === 'windowDrag') api.send('frame:drag-end', { windowId });
-      else if (m.resize) api.send('frame:resize-end', { windowId });
+      const windowId = propsRef.current.windowId;
+      if (windowId) {
+        if (m === 'windowDrag') api.send('frame:drag-end', { windowId });
+        else if (m.resize) api.send('frame:resize-end', { windowId });
+      }
     };
 
-    const onLockChange = () => { if (!document.pointerLockElement) finish(); };
-
+    const onLock = () => { if (!document.pointerLockElement) finish(); };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', finish);
-    document.addEventListener('pointerlockchange', onLockChange);
+    document.addEventListener('pointerlockchange', onLock);
     return () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', finish);
-      document.removeEventListener('pointerlockchange', onLockChange);
+      document.removeEventListener('pointerlockchange', onLock);
     };
-  }, [api, windowId]);
+  }, [api]);
 
-  const lockPointer = () => {
-    try {
-      const p = document.body.requestPointerLock();
-      if (p && p.catch) p.catch(() => {});
-    } catch (_) {}
-  };
+  const lock = () => { try { document.body.requestPointerLock(); } catch (_) {} };
 
   const onPanelDragStart = useCallback((e) => {
     if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-
+    e.preventDefault(); e.stopPropagation();
     panelDragRef.current = null;
-
-    // Свежие данные перед стартом
-    api.invoke('view:get-bounds', { id: `panel:${windowId}` }).then((b) => {
+    api.invoke('view:get-bounds', { id: 'panel:global' }).then((b) => {
       if (b) panelBoundsRef.current = b;
     });
-    api.getMainSize().then((s) => {
-      if (s) mainSizeRef.current = s;
-    });
-
+    api.getMainSize().then((s) => { if (s) mainSizeRef.current = s; });
     modeRef.current = 'panelMove';
-    lockPointer();
-  }, [api, windowId]);
+    lock();
+  }, [api]);
 
-  const onPanelDoubleClick = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // TODO: сброс в дефолтный угол (правый-нижний окна)
-  }, []);
+  const onPanelDoubleClick = useCallback(() => {
+    const mainSize = mainSizeRef.current;
+    const cur = panelBoundsRef.current;
+    if (!mainSize || !cur) return;
+    const next = {
+      x: Math.round((mainSize.width - cur.width) / 2),
+      y: Math.round((mainSize.height - cur.height) / 2),
+      width: cur.width, height: cur.height,
+    };
+    panelBoundsRef.current = next;
+    api.updateOwnBounds(next);
+  }, [api]);
 
   const onWindowDragStart = useCallback((e) => {
-    if (props.maximized || e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
+    const windowId = propsRef.current.windowId;
+    if (!windowId || propsRef.current.maximized || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
     modeRef.current = 'windowDrag';
-    lockPointer();
+    lock();
     api.send('frame:drag-start', { windowId });
-  }, [api, windowId, props.maximized]);
+  }, [api]);
 
   const beginResize = useCallback((dir) => (e) => {
-    if (props.maximized || e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
+    const windowId = propsRef.current.windowId;
+    if (!windowId || propsRef.current.maximized || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
     modeRef.current = { resize: dir };
-    lockPointer();
+    lock();
     api.send('frame:resize-start', { windowId, direction: dir });
-  }, [api, windowId, props.maximized]);
+  }, [api]);
 
   const send = useCallback((type, payload) => {
+    const windowId = propsRef.current.windowId;
+    if (!windowId) return;
     api.send('panel:event', { windowId, type, payload });
-  }, [api, windowId]);
+  }, [api]);
 
   const onClose = useCallback(() => send('close', {}), [send]);
   const onMinimize = useCallback(() => send('minimize', {}), [send]);
@@ -181,25 +178,30 @@ export default function PanelContainer({ windowId }) {
   const onToggleMode = useCallback(() => {
     setMode((m) => (m === 'control' ? 'search' : 'control'));
   }, []);
+  const onOpenDevTools = useCallback(() => send('open-devtools', {}), [send]);
 
-  const onNavigateTo = (url) => {
-    if (!url) return;
+  const onNavigateTo = useCallback((url) => {
+    const windowId = propsRef.current.windowId;
+    if (!url || !windowId) return;
     try {
       if (!/^[a-z]+:/i.test(url)) url = 'https://' + url;
       api.send('window-load-url', windowId, url);
     } catch (_) {}
-  };
-  const onBack = () => api.send('window-go-back', windowId);
-  const onForward = () => api.send('window-go-forward', windowId);
-  const onReload = () => api.send('window-reload', windowId);
+  }, [api]);
+  const onBack = useCallback(() => {
+    const windowId = propsRef.current.windowId;
+    if (windowId) api.send('window-go-back', windowId);
+  }, [api]);
+  const onForward = useCallback(() => {
+    const windowId = propsRef.current.windowId;
+    if (windowId) api.send('window-go-forward', windowId);
+  }, [api]);
+  const onReload = useCallback(() => {
+    const windowId = propsRef.current.windowId;
+    if (windowId) api.send('window-reload', windowId);
+  }, [api]);
 
-  const onOpenDevTools = useCallback(() => {
-    api.send('panel:event', { windowId, type: 'open-devtools', payload: {} });
-  }, [api, windowId]);
-
-  const cell = 28;
-  const gap = 1;
-  const pad = 4;
+  const cell = 28, gap = 1, pad = 4;
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -207,16 +209,16 @@ export default function PanelContainer({ windowId }) {
         x={0} y={0} width="100%" height="100%"
         cell={cell} gap={gap} pad={pad}
         mode={mode}
-        scale={1}
         title={props.title}
         icon={props.icon}
         isFocused={props.isFocused}
         maximized={props.maximized}
         closing={false}
-        loading={navState.loading}
-        currentUrl={navState.currentUrl}
-        canGoBack={navState.canGoBack}
-        canGoForward={navState.canGoForward}
+        loading={props.loading}
+        currentUrl={props.currentUrl}
+        canGoBack={props.canGoBack}
+        canGoForward={props.canGoForward}
+        hasActiveWindow={props.hasActiveWindow}
         onPanelDragStart={onPanelDragStart}
         onPanelDoubleClick={onPanelDoubleClick}
         onWindowDragStart={onWindowDragStart}

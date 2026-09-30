@@ -1,8 +1,11 @@
 import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
 
+// Кэш последнего состояния панели — для гонки при создании view
+let lastPanelProps = null;
+
 /* ------------------------------------------------------------------ */
-/* Утилиты                                                             */
+/* Preload resolver                                                    */
 /* ------------------------------------------------------------------ */
 
 function resolvePreload(requested) {
@@ -14,42 +17,15 @@ function resolvePreload(requested) {
     return requested;
 }
 
-function effectiveZ(entry) {
-    if (entry.kind === 'panel' && entry.parentId && global.views[entry.parentId]) {
-        return (global.views[entry.parentId].zIndex || 0) + 0.5;
-    }
-    return entry.zIndex || 0;
-}
-
-function clampPanelBounds(bounds) {
-    if (!global.mainWindow || global.mainWindow.isDestroyed()) return bounds;
-    const cb = global.mainWindow.contentView.getBounds();
-    const vpW = cb.width;
-    const vpH = cb.height;
-
-    let { x, y, width, height } = bounds;
-
-    if (width > vpW) { width = vpW; x = 0; }
-    else { if (x < 0) x = 0; if (x + width > vpW) x = vpW - width; }
-
-    if (height > vpH) { height = vpH; y = 0; }
-    else { if (y < 0) y = 0; if (y + height > vpH) y = vpH - height; }
-
-    return { x, y, width, height };
-}
+/* ------------------------------------------------------------------ */
+/* Z-order                                                             */
+/* ------------------------------------------------------------------ */
 
 function reorderAll() {
     if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
 
     const list = Object.entries(global.views);
-    list.sort((a, b) => {
-        const za = effectiveZ(a[1]);
-        const zb = effectiveZ(b[1]);
-        if (za !== zb) return za - zb;
-        if (a[1].kind === 'window' && b[1].kind === 'panel' && b[1].parentId === a[0]) return -1;
-        if (a[1].kind === 'panel' && b[1].kind === 'window' && a[1].parentId === b[0]) return 1;
-        return 0;
-    });
+    list.sort((a, b) => (a[1].zIndex || 0) - (b[1].zIndex || 0));
 
     for (const [, e] of list) {
         try { global.mainWindow.contentView.removeChildView(e.view); } catch (_) { }
@@ -64,7 +40,7 @@ function reorderAll() {
 /* Публичное API                                                       */
 /* ------------------------------------------------------------------ */
 
-export function createView(id, { kind, url, preload, bounds, parentId }) {
+export function createView(id, { kind, url, preload, bounds }) {
     if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
     if (global.views[id]) return global.views[id].view;
 
@@ -81,9 +57,7 @@ export function createView(id, { kind, url, preload, bounds, parentId }) {
         },
     });
     view.setBackgroundColor('#00000000');
-    if (url) {
-        view.webContents.loadURL(url);
-    }
+    if (url) view.webContents.loadURL(url);
 
     const b = bounds || { x: 0, y: 0, width: 100, height: 100 };
     view.setBounds(b);
@@ -93,17 +67,14 @@ export function createView(id, { kind, url, preload, bounds, parentId }) {
         bounds: { ...b },
         zIndex: 0,
         kind: kind || 'window',
-        parentId: parentId || null,
-        children: [],
         url: url || 'about:blank',
         requestedPreload: preload || null,
         scale: 1,
     };
-    global.views[id] = entry;
+    // Глобальная панель всегда поверх всего
+    if (id === 'panel:global') entry.zIndex = 999999;
 
-    if (parentId && global.views[parentId]) {
-        global.views[parentId].children.push(id);
-    }
+    global.views[id] = entry;
 
     // Навигационные события — только для окон
     if (kind === 'window') {
@@ -125,26 +96,24 @@ export function createView(id, { kind, url, preload, bounds, parentId }) {
         wc.on('did-start-loading', () => sendNav());
         wc.on('did-stop-loading', () => sendNav());
         wc.on('page-title-updated', () => sendNav());
-        wc.on('did-fail-load', (_e, ec, ed, uv, imf) => sendNav({ errorCode: ec, errorDescription: ed, validatedURL: uv, isMainFrame: imf }));
+        wc.on('did-fail-load', (_e, ec, ed, uv, imf) =>
+            sendNav({ errorCode: ec, errorDescription: ed, validatedURL: uv, isMainFrame: imf }));
     }
 
     reorderAll();
     return view;
 }
 
-export function updateBounds(id, bounds, { moveChildren = false } = {}) {
+export function updateBounds(id, bounds) {
     const entry = global.views[id];
     if (!entry) return;
 
-    const prev = entry.bounds;
     const next = {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),
         width: Math.round(bounds.width),
         height: Math.round(bounds.height),
     };
-    const dx = next.x - prev.x;
-    const dy = next.y - prev.y;
 
     entry.view.setBounds(next);
     entry.bounds = next;
@@ -153,42 +122,11 @@ export function updateBounds(id, bounds, { moveChildren = false } = {}) {
         entry.view.webContents.setZoomFactor(bounds.scale);
         entry.scale = bounds.scale;
     }
-
-    if (moveChildren && (dx !== 0 || dy !== 0)) {
-        for (const childId of entry.children) {
-            const child = global.views[childId];
-            if (!child) continue;
-
-            let nextChildBounds = {
-                x: child.bounds.x + dx,
-                y: child.bounds.y + dy,
-                width: child.bounds.width,
-                height: child.bounds.height,
-            };
-
-            // 👇 Панель не должна уезжать за пределы viewport mainWindow
-            if (child.kind === 'panel') {
-                nextChildBounds = clampPanelBounds(nextChildBounds);
-            }
-
-            updateBounds(childId, nextChildBounds, { moveChildren: true });
-        }
-    }
 }
 
 export function destroyView(id) {
     const entry = global.views[id];
     if (!entry) return;
-
-    for (const childId of [...entry.children]) {
-        destroyView(childId);
-    }
-
-    if (entry.parentId && global.views[entry.parentId]) {
-        const p = global.views[entry.parentId];
-        p.children = p.children.filter((x) => x !== id);
-    }
-
     try { global.mainWindow.contentView.removeChildView(entry.view); } catch (_) { }
     try { entry.view.webContents.destroy(); } catch (_) { }
     delete global.views[id];
@@ -217,7 +155,7 @@ export function recreateAllViews() {
     const snapshot = Object.entries(global.views).map(([id, e]) => ({
         id, kind: e.kind, url: e.url, bounds: e.bounds,
         requestedPreload: e.requestedPreload,
-        parentId: e.parentId, zIndex: e.zIndex, scale: e.scale,
+        zIndex: e.zIndex, scale: e.scale,
     }));
 
     if (snapshot.length === 0) return;
@@ -251,27 +189,21 @@ export default function () {
     global.views = {};
     if (global.themeEnabled === undefined) global.themeEnabled = true;
 
-    /* -------- Универсальные операции с view -------- */
+    /* -------- Универсальные операции -------- */
 
-    ipcMain.on('view:create', (_e, { id, kind, url, preload, bounds, parentId }) => {
-        createView(id, { kind, url, preload, bounds, parentId });
+    ipcMain.on('view:create', (_e, msg) => {
+        console.log('[DBG] view:create id =', msg?.id, 'kind =', msg?.kind);
+        createView(msg.id, msg);
     });
 
-    ipcMain.on('view:update-bounds', (_e, { id, bounds, moveChildren }) => {
-        updateBounds(id, bounds, { moveChildren });
+    ipcMain.on('view:update-bounds', (_e, { id, bounds }) => {
+        updateBounds(id, bounds);
     });
 
-    ipcMain.on('view:update-own-bounds', (event, { bounds, moveChildren }) => {
+    ipcMain.on('view:update-own-bounds', (event, { bounds }) => {
         const id = findIdByWebContents(event.sender.id);
         if (!id) return;
-        const entry = global.views[id];
-        if (!entry) return;
-
-        let b = bounds;
-        if (entry.kind === 'panel') {
-            b = clampPanelBounds(bounds);
-        }
-        updateBounds(id, b, { moveChildren });
+        updateBounds(id, bounds);
     });
 
     ipcMain.on('view:destroy', (_e, { id }) => {
@@ -283,6 +215,76 @@ export default function () {
     });
 
     ipcMain.handle('view:get-bounds', (_e, { id }) => getBounds(id));
+
+    ipcMain.handle('view:get-main-size', () => {
+        if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
+        const b = global.mainWindow.contentView.getBounds();
+        return { width: b.width, height: b.height };
+    });
+
+    ipcMain.on('view:hide', (_e, { id }) => {
+        const entry = global.views[id];
+        if (!entry) return;
+        entry._savedBounds = { ...entry.bounds };
+        entry.view.setBounds({
+            x: -10000, y: -10000,
+            width: entry.bounds.width,
+            height: entry.bounds.height,
+        });
+    });
+
+    ipcMain.on('view:show', (_e, { id }) => {
+        const entry = global.views[id];
+        if (!entry) return;
+        const b = entry._savedBounds || entry.bounds;
+        entry.view.setBounds(b);
+        entry.bounds = b;
+    });
+
+    ipcMain.on('view:move-by', (event, { dx, dy }) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const entry = global.views[id];
+        if (!entry) return;
+        updateBounds(id, {
+            x: entry.bounds.x + dx,
+            y: entry.bounds.y + dy,
+            width: entry.bounds.width,
+            height: entry.bounds.height,
+        });
+    });
+
+    ipcMain.on('view:resize-by', (event, { direction, dx, dy }) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const entry = global.views[id];
+        if (!entry) return;
+
+        const b = entry.bounds;
+        let x = b.x, y = b.y, w = b.width, h = b.height;
+
+        if (direction.includes('e')) w = Math.max(300, w + dx);
+        if (direction.includes('w')) {
+            const newW = Math.max(300, w - dx);
+            x = b.x + (b.width - newW);
+            w = newW;
+        }
+        if (direction.includes('s')) h = Math.max(200, h + dy);
+        if (direction.includes('n')) {
+            const newH = Math.max(200, h - dy);
+            y = b.y + (b.height - newH);
+            h = newH;
+        }
+
+        updateBounds(id, { x, y, width: w, height: h });
+    });
+
+    ipcMain.on('view:maximize', (event) => {
+        const id = findIdByWebContents(event.sender.id);
+        if (!id) return;
+        const cb = global.mainWindow.contentView.getBounds();
+        updateBounds(id, { x: 0, y: 0, width: cb.width, height: cb.height });
+    });
 
     /* -------- Навигация окна -------- */
 
@@ -329,15 +331,26 @@ export default function () {
         });
     });
 
-    ipcMain.on('shell:send-to-panel', (_e, { windowId, data }) => {
-        const pid = `panel:${windowId}`;
-        const entry = global.views[pid];
-        if (!entry) return;
+    ipcMain.on('shell:send-to-panel', (_e, msg) => {
+        const data = msg?.data;
+        console.log('[DBG] shell:send-to-panel, hasActiveWindow =', data?.hasActiveWindow, 'windowId =', data?.windowId);
+        lastPanelProps = data;
+        const entry = global.views['panel:global'];
+        if (!entry) { console.log('[DBG] panel view NOT FOUND'); return; }
         const wc = entry.view.webContents;
         if (wc && !wc.isDestroyed()) wc.send('panel:props', data);
     });
 
-    /* -------- Frame: drag/resize окна (инициируется из панели) -------- */
+    ipcMain.on('panel:ready', () => {
+        console.log('[DBG] panel:ready received. lastPanelProps =', lastPanelProps ? 'set' : 'null');
+        if (!lastPanelProps) return;
+        const entry = global.views['panel:global'];
+        if (!entry) return;
+        const wc = entry.view.webContents;
+        if (wc && !wc.isDestroyed()) wc.send('panel:props', lastPanelProps);
+    });
+
+    /* -------- Frame drag/resize (инициируется из панели) -------- */
 
     ipcMain.on('frame:drag-start', (_e, { windowId }) => {
         sendToShell('shell:frame-drag-start', { windowId });
@@ -359,6 +372,25 @@ export default function () {
         sendToShell('shell:frame-resize-end', { windowId });
     });
 
+    /* -------- DevTools -------- */
+
+    ipcMain.on('devtools:attach', (event, { devtoolsViewId, targetViewId }) => {
+        const devtoolsEntry = global.views[devtoolsViewId];
+        const targetEntry = global.views[targetViewId];
+        if (!devtoolsEntry || !targetEntry) {
+            console.log('[devtools:attach] missing:', { devtoolsViewId, targetViewId });
+            return;
+        }
+        const devtoolsWC = devtoolsEntry.view?.webContents;
+        const targetWC = targetEntry.view?.webContents;
+        if (!devtoolsWC || !targetWC) return;
+
+        if (targetWC.isDevToolsOpened()) targetWC.closeDevTools();
+        targetWC.setDevToolsWebContents(devtoolsWC);
+        targetWC.openDevTools({ mode: 'detach' });
+        console.log('[devtools:attach] ok:', devtoolsViewId, '→', targetViewId);
+    });
+
     /* -------- Тема -------- */
 
     ipcMain.on('theme:enabled-changed', (_e, enabled) => {
@@ -366,86 +398,7 @@ export default function () {
         recreateAllViews();
     });
 
-    /* -------- Заглушка для совместимости -------- */
+    /* -------- Заглушка -------- */
 
     ipcMain.handle('get-desktop-view-bounds', () => ({ x: 0, y: 0, width: 0, height: 0 }));
-
-    ipcMain.on('view:move-by', (event, { dx, dy }) => {
-        const id = findIdByWebContents(event.sender.id);
-        if (!id) return;
-        const entry = global.views[id];
-        if (!entry) return;
-        updateBounds(id, {
-            x: entry.bounds.x + dx,
-            y: entry.bounds.y + dy,
-            width: entry.bounds.width,
-            height: entry.bounds.height,
-        });
-    });
-
-    ipcMain.on('view:resize-by', (event, { direction, dx, dy }) => {
-        const id = findIdByWebContents(event.sender.id);
-        if (!id) return;
-        const entry = global.views[id];
-        if (!entry) return;
-
-        const b = entry.bounds;
-        let x = b.x, y = b.y, w = b.width, h = b.height;
-
-        if (direction.includes('e')) w = Math.max(300, w + dx);
-        if (direction.includes('w')) {
-            const newW = Math.max(300, w - dx);
-            x = b.x + (b.width - newW);
-            w = newW;
-        }
-        if (direction.includes('s')) h = Math.max(200, h + dy);
-        if (direction.includes('n')) {
-            const newH = Math.max(200, h - dy);
-            y = b.y + (b.height - newH);
-            h = newH;
-        }
-
-        updateBounds(id, { x, y, width: w, height: h });
-    });
-
-    ipcMain.on('view:maximize', (event) => {
-        const id = findIdByWebContents(event.sender.id);
-        if (!id) return;
-        const cb = global.mainWindow.contentView.getBounds();
-        updateBounds(id, {
-            x: 0,
-            y: 0,
-            width: cb.width,
-            height: cb.height,
-        });
-    });
-
-    ipcMain.on('devtools:attach', (event, { devtoolsViewId, targetViewId }) => {
-        const devtoolsEntry = global.views[devtoolsViewId];
-        const targetEntry = global.views[targetViewId];
-
-        if (!devtoolsEntry || !targetEntry) {
-            console.log('[devtools:attach] missing:', { devtoolsViewId, targetViewId });
-            return;
-        }
-
-        const devtoolsWC = devtoolsEntry.view?.webContents;
-        const targetWC = targetEntry.view?.webContents;
-        if (!devtoolsWC || !targetWC) return;
-
-        // Если DevTools уже открыты — сначала закрываем
-        if (targetWC.isDevToolsOpened()) {
-            targetWC.closeDevTools();
-        }
-
-        targetWC.setDevToolsWebContents(devtoolsWC);
-        targetWC.openDevTools();
-
-        console.log('[devtools:attach] ok:', devtoolsViewId, '→', targetViewId);
-    });
-    ipcMain.handle('view:get-main-size', () => {
-        if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
-        const b = global.mainWindow.contentView.getBounds();
-        return { width: b.width, height: b.height };
-    });
 }

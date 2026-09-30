@@ -1,6 +1,8 @@
 import React from 'react';
 import ControlGrid from './ControlGrid';
 import SearchGrid from './SearchGrid';
+import Cell from './Cell';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 
 const RING_KEYFRAMES = `
 @keyframes omni-ring-spin {
@@ -11,9 +13,10 @@ const RING_KEYFRAMES = `
 
 export default function Panel({
   x, y, width, height, cell, gap, pad,
-  mode, scale,
-  title, icon, isFocused, maximized, closing, loading,
+  mode,
+  title, icon, maximized, closing, loading,
   currentUrl, canGoBack, canGoForward,
+  hasActiveWindow,
   onPanelDragStart, onPanelDoubleClick,
   onWindowDragStart, onResize,
   onToggleMode, onClose, onMinimize, onMaximize,
@@ -36,10 +39,7 @@ export default function Panel({
 
   const panelStyle = {
     position: 'fixed',
-    left: x,
-    top: y,
-    width,
-    height,
+    left: x, top: y, width, height,
     pointerEvents: 'auto',
     zIndex: 2147483646,
     userSelect: 'none',
@@ -80,6 +80,38 @@ export default function Panel({
       />
     </div>
   );
+
+  // Нет активного окна → только ручка перемещения
+  if (hasActiveWindow === false) {
+    const soloGrid = {
+      display: 'grid',
+      gridTemplateColumns: `${cell}px`,
+      gridTemplateRows: `${cell}px`,
+      gap: `${gap}px`,
+      width: '100%',
+      height: '100%',
+      boxSizing: 'border-box',
+    };
+
+    return (
+      <>
+        <style>{RING_KEYFRAMES}</style>
+        <div style={panelStyle}>
+          <div style={soloGrid}>
+            <Cell
+              row="1" col="1"
+              cursor="grab"
+              onMouseDown={onPanelDragStart}
+              onDoubleClick={onPanelDoubleClick}
+              title="Перетащить панель"
+            >
+              <DragIndicatorIcon style={{ fontSize: iconSize }} />
+            </Cell>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

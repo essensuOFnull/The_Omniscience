@@ -7,13 +7,13 @@ import { useSetting } from '../settings/useSettings';
 import defaultAnimations from '../../themes/window_animations/default';
 import noneAnimations from '../../themes/window_animations/none';
 
-export default function DesktopWorkspace({ desktopId, state, actions, config, apps, active }) {
+export default function DesktopWorkspace({ desktopId, state, actions, config, apps, active, panelVisible, onTogglePanel }) {
   const viewportRef = useRef(null);
   const desktopState = state.desktops[desktopId];
   const { windows, isOverviewOpened } = desktopState || { windows: {}, isOverviewOpened: false };
 
   const animationsEnabled = useSetting('animationsEnabled');
-  const customAnimations  = useSetting('customAnimations');
+  const customAnimations = useSetting('customAnimations');
 
   const animations = useMemo(() => {
     if (!animationsEnabled) return noneAnimations;
@@ -50,7 +50,6 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
       <Box
         ref={viewportRef}
         sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}
-        onClick={(e) => { if (e.target === e.currentTarget) actions.focusWindow(desktopId, null); }}
       >
         <Overview state={{ ...desktopState, windows }} actions={actions}
           config={config} apps={apps} desktopId={desktopId} />
@@ -71,9 +70,16 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
           );
         })}
       </Box>
-      <Taskbar state={{ ...desktopState, windows }} actions={actions}
-        config={config} menuButtonClick={toggleOverview}
-        apps={apps} desktopId={desktopId} />
+      <Taskbar
+        state={{ ...desktopState, windows }}
+        actions={actions}
+        config={config}
+        menuButtonClick={toggleOverview}
+        apps={apps}
+        desktopId={desktopId}
+        panelVisible={panelVisible}
+        onTogglePanel={onTogglePanel}
+      />
     </Box>
   );
 }

@@ -4,7 +4,6 @@ import { Box } from '@mui/material';
 import useDesktopOffset from '../hooks/useDesktopOffset';
 import useWindowNavigation from '../hooks/useWindowNavigation';
 import useContentView from '../hooks/useContentView';
-import usePanelView from '../hooks/usePanelView';
 import useChromiumDevToolsView from '../hooks/useChromiumDevToolsView';
 
 export default function Window({ windowId, app, state, actions, config, animations, desktopId, active }) {
@@ -15,7 +14,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
   const contentRef = useRef(null);
   const desktopOffset = useDesktopOffset();
 
-  // Обычный контент — только для не-DevTools окон
   const contentResult = useContentView(
     (hasWin && !isDevTools) ? windowId : null,
     (hasWin && !isDevTools) ? win : null,
@@ -23,7 +21,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
     config, contentRef, desktopOffset, active, desktopId
   );
 
-  // Chromium DevTools view — только для DevTools окон
   const devtoolsResult = useChromiumDevToolsView(
     (hasWin && isDevTools) ? windowId : null,
     (hasWin && isDevTools) ? win : null,
@@ -36,16 +33,6 @@ export default function Window({ windowId, app, state, actions, config, animatio
     setCurrentUrl, navigateTo, goBack, goForward, reload,
   } = useWindowNavigation(windowId, win?.url, app?.url);
 
-  // Панель управления — только для не-DevTools окон
-  usePanelView({
-    windowId: hasWin ? windowId : null,
-    win: (hasWin && !isDevTools) ? win : null,
-    app,
-    isFocused: state?.focusedWindowId === windowId,
-    pageTitle,
-  });
-
-  // 👇 Только теперь безопасно возвращаться
   if (!win) return null;
 
   const isFocused = state.focusedWindowId === windowId;

@@ -50,7 +50,6 @@ export default function useScreenDrag(state, actions) {
         accX: 0,
         accY: 0,
       };
-      actionsRef.current.focusWindow(desktopId, wid);
     };
 
     const onDragDelta = (msg) => {
@@ -105,7 +104,6 @@ export default function useScreenDrag(state, actions) {
         accX: 0,
         accY: 0,
       };
-      actionsRef.current.focusWindow(desktopId, wid);
     };
 
     const onResizeDelta = (msg) => {
