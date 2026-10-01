@@ -26,23 +26,30 @@ install_packages() {
   case "$DISTRO" in
     ubuntu|debian|parrot|kali|linuxmint|pop)
       sudo apt update
-      sudo apt install -y kwin-x11 dbus-x11 x11-xserver-utils
+      sudo apt install -y kwin-x11 dbus-x11 x11-xserver-utils wmctrl xdotool
       ;;
     arch|manjaro|endeavouros|garuda)
-      sudo pacman -S --noconfirm kwin dbus xorg-xrandr
+      sudo pacman -S --noconfirm kwin dbus xorg-xrandr wmctrl xdotool
       ;;
     fedora|rhel|centos)
-      sudo dnf install -y kwin dbus-x11 xrandr
+      sudo dnf install -y kwin dbus-x11 xrandr wmctrl xdotool
       ;;
     opensuse*|sles)
-      sudo zypper install -y kwin dbus-1-x11 xrandr
+      sudo zypper install -y kwin dbus-1-x11 xrandr wmctrl xdotool
       ;;
     void)
-      sudo xbps-install -y kwin dbus xrandr
+      sudo xbps-install -y kwin dbus xrandr wmctrl xdotool
+      ;;
+    alpine)
+      sudo apk add kwin dbus xrandr wmctrl xdotool
+      ;;
+    gentoo)
+      sudo emerge kde-plasma/kwin sys-apps/dbus x11-apps/xrandr x11-misc/wmctrl x11-misc/xdotool
       ;;
     *)
       echo "❌ Неизвестный дистрибутив: $DISTRO"
-      echo "   Установите kwin, dbus и xrandr вручную, затем:"
+      echo "   Установите вручную: kwin, dbus, xrandr, wmctrl, xdotool"
+      echo "   Затем запустите:"
       echo "   ./install-omniscience-session.sh --skip-packages"
       return 1
       ;;
@@ -219,9 +226,15 @@ sudo chmod 644 /usr/share/xsessions/omniscience.desktop
 echo ""
 echo "✅ Готово!"
 echo ""
-echo "Что настроено:"
-echo "  • KWin с MaxFPS=0 (без ограничений)"
-echo "  • xrandr выставит максимальную частоту монитора ПЕРЕД KWin"
-echo "  • KWIN_X11_REFRESH_RATE задаётся динамически (не хардкод!)"
+echo "Что установлено и настроено:"
+echo "  • kwin-x11 — композитор (без Plasma)"
+echo "  • dbus — для работы kwin"
+echo "  • xrandr — автоопределение частоты монитора"
+echo "  • wmctrl — управление чужими X11-окнами"
+echo "  • xdotool — перемещение и ресайз чужих окон"
 echo ""
 echo "Выйди из сессии и выбери «Omniscience» на экране входа."
+echo ""
+echo "Если что-то не так:"
+echo "  • /tmp/omniscience-error.log"
+echo "  • ~/.config/kwinrc"

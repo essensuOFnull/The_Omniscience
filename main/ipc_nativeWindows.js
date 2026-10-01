@@ -14,6 +14,7 @@ const IGNORE_CLASS_PARTS = ['the_omniscience', 'electron', 'kwin', 'plasmashell'
 let pollTimer = null;
 let lastHash = '';
 let isBusy = false;
+let userInteracting = false;
 
 async function getNativeWindows() {
     try {
@@ -63,8 +64,8 @@ function hashWindows(windows) {
 }
 
 async function tick() {
-    if (isBusy) return;
     if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
+    if (userInteracting) return;
 
     const windows = await getNativeWindows();
     const hash = hashWindows(windows);
@@ -130,20 +131,47 @@ export default function () {
         }
     });
 
-    // Перемещение окна — передаём абсолютные координаты
     ipcMain.on('native-window:move', async (_e, { id, x, y }) => {
-        isBusy = true;
-        try { await execAsync(`xdotool windowmove ${id} ${Math.round(x)} ${Math.round(y)}`); }
-        catch (_) { }
-        isBusy = false;
+        userInteracting = true;
+        try {
+            const bounds = global.mainWindow.contentView.getBounds();
+            const TOPBAR_H = 72;
+            // Не даём уйти за границы экрана
+            const cx = Math.max(0, Math.min(bounds.width - 100, Math.round(x)));
+            const cy = Math.max(TOPBAR_H, Math.min(bounds.height - 50, Math.round(y)));
+            await execAsync(`xdotool windowmove ${id} ${cx} ${cy}`);
+        } catch (_) { }
     });
 
     ipcMain.on('native-window:resize', async (_e, { id, x, y, width, height }) => {
-        isBusy = true;
+        userInteracting = true;
         try {
-            await execAsync(`xdotool windowsize ${id} ${Math.round(width)} ${Math.round(height)}`);
-            await execAsync(`xdotool windowmove ${id} ${Math.round(x)} ${Math.round(y)}`);
+            // Одна команда вместо двух — меньше задержки
+            await execAsync(`xdotool windowsize ${id} ${Math.round(width)} ${Math.round(height)} windowmove ${id} ${Math.round(x)} ${Math.round(y)}`);
         } catch (_) { }
-        isBusy = false;
+    });
+
+    // Новый канал: сообщить, что пользователь отпустил мышь
+    ipcMain.on('native-window:release', () => {
+        userInteracting = false;
+    });
+
+    ipcMain.handle('native-window:get-bounds', async (_e, { id }) => {
+        try {
+            const { stdout } = await execAsync(`xdotool getwindowgeometry --shell ${id}`);
+            const lines = stdout.trim().split('\n');
+            const get = (key) => {
+                const l = lines.find((s) => s.startsWith(key + '='));
+                return l ? parseInt(l.split('=')[1], 10) : 0;
+            };
+            return {
+                x: get('X'),
+                y: get('Y'),
+                width: get('WIDTH'),
+                height: get('HEIGHT'),
+            };
+        } catch (err) {
+            return null;
+        }
     });
 }
