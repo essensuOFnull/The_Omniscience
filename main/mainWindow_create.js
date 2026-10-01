@@ -20,7 +20,7 @@ export default async function () {
         backgroundColor:'#000000ff',
         resizable:true,
         show: true,
-
+        type: 'desktop',
         // --- ИЗМЕНЕНИЯ ДЛЯ СОВРЕМЕННОЙ РАМКИ ВКЛАДОК ---
         frame: false,                     // Скрываем стандартную рамку ОС
         // ----------------------------------------------

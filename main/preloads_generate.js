@@ -71,7 +71,6 @@ export default async function () {
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
-    global._.panel_ipc,
     global._.react_devtools_backend,   // 👈 новый чанк
     global._.devtools_ipc,
   ].join('\n\n');
@@ -84,7 +83,6 @@ export default async function () {
     global._.mainWindow_ipc,
     global._.desktop_ipc,
     global._.view_state_ipc,
-    global._.panel_ipc,
     global._.react_devtools_backend,   // 👈 новый чанк
     global._.devtools_ipc,
   ].join('\n\n');

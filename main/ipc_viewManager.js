@@ -1,9 +1,6 @@
 import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
 
-// Кэш последнего состояния панели — для гонки при создании view
-let lastPanelProps = null;
-
 /* ------------------------------------------------------------------ */
 /* Preload resolver                                                    */
 /* ------------------------------------------------------------------ */
@@ -71,8 +68,6 @@ export function createView(id, { kind, url, preload, bounds }) {
         requestedPreload: preload || null,
         scale: 1,
     };
-    // Глобальная панель всегда поверх всего
-    if (id === 'panel:global') entry.zIndex = 999999;
 
     global.views[id] = entry;
 
@@ -319,35 +314,6 @@ export default function () {
             canGoForward: wc.navigationHistory.canGoForward?.() || false,
             loading: wc.isLoading?.() || false,
         };
-    });
-
-    /* -------- Shell ↔ Panel -------- */
-
-    ipcMain.on('panel:event', (event, msg) => {
-        const { windowId, type, payload } = msg || {};
-        if (!windowId || !type) return;
-        sendToShell('shell:panel-event', {
-            fromId: event.sender.id, windowId, type, payload,
-        });
-    });
-
-    ipcMain.on('shell:send-to-panel', (_e, msg) => {
-        const data = msg?.data;
-        console.log('[DBG] shell:send-to-panel, hasActiveWindow =', data?.hasActiveWindow, 'windowId =', data?.windowId);
-        lastPanelProps = data;
-        const entry = global.views['panel:global'];
-        if (!entry) { console.log('[DBG] panel view NOT FOUND'); return; }
-        const wc = entry.view.webContents;
-        if (wc && !wc.isDestroyed()) wc.send('panel:props', data);
-    });
-
-    ipcMain.on('panel:ready', () => {
-        console.log('[DBG] panel:ready received. lastPanelProps =', lastPanelProps ? 'set' : 'null');
-        if (!lastPanelProps) return;
-        const entry = global.views['panel:global'];
-        if (!entry) return;
-        const wc = entry.view.webContents;
-        if (wc && !wc.isDestroyed()) wc.send('panel:props', lastPanelProps);
     });
 
     /* -------- Frame drag/resize (инициируется из панели) -------- */

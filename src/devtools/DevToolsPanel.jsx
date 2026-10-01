@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import ControlGrid from '../frame-runtime/ControlGrid.jsx';
+import ControlGrid from '../components/ControlGrid';
 import { dragBy } from '../utils/pointerClamp.js';
 
 const PANEL_W = 184;   // 5 колонок по 28 + gap + padding

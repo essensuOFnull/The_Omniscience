@@ -12,7 +12,6 @@ export default async function () {
 
   const input = {
     main: rendererIndexHtml,
-    frame: path.join(rootDir, 'src', 'frame', 'index.html'),
   };
 
   if (fs.existsSync(componentappsDir)) {

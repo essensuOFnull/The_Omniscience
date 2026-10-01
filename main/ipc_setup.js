@@ -8,4 +8,5 @@ export default function () {
   global.$.ipc_registerWebview();
   global.$.ipc_reactDevToolsBridge();
   global.$.ipc_theme();
+  global.$.ipc_nativeWindows();
 }

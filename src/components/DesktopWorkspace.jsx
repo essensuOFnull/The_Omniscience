@@ -1,13 +1,22 @@
 import React, { useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Box } from '@mui/material';
-import Taskbar from './Taskbar';
 import Overview from './Overview';
 import Window from './Window';
 import { useSetting } from '../settings/useSettings';
 import defaultAnimations from '../../themes/window_animations/default';
 import noneAnimations from '../../themes/window_animations/none';
 
-export default function DesktopWorkspace({ desktopId, state, actions, config, apps, active, panelVisible, onTogglePanel }) {
+export default function DesktopWorkspace({
+  desktopId,
+  state,
+  actions,
+  config,
+  apps,
+  active,
+  nativeWindows,
+  activeNative,
+  onNativeClick,
+}) {
   const viewportRef = useRef(null);
   const desktopState = state.desktops[desktopId];
   const { windows, isOverviewOpened } = desktopState || { windows: {}, isOverviewOpened: false };
@@ -70,16 +79,6 @@ export default function DesktopWorkspace({ desktopId, state, actions, config, ap
           );
         })}
       </Box>
-      <Taskbar
-        state={{ ...desktopState, windows }}
-        actions={actions}
-        config={config}
-        menuButtonClick={toggleOverview}
-        apps={apps}
-        desktopId={desktopId}
-        panelVisible={panelVisible}
-        onTogglePanel={onTogglePanel}
-      />
     </Box>
   );
 }

@@ -3,18 +3,16 @@ import { Box } from '@mui/material';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import DesktopWorkspace from './DesktopWorkspace';
-import DesktopBar from './DesktopBar';
+import TopBar from './TopBar';
 import { windowManager, initialState } from '../state/windowManager';
 import useViewStateBridge from '../hooks/useViewStateBridge';
 import useThemeSync from '../hooks/useThemeSync';
 import useScreenDrag from '../hooks/useScreenDrag';
-import useGlobalPanel from '../hooks/useGlobalPanel';
+import useNativeWindows from '../hooks/useNativeWindows';
 
 import VoidPoem from './VoidPoem';
 
-const { getNewId, getNewZ } = windowManager;
-
-const TAB_BAR_HEIGHT = 35;
+const { getNewId } = windowManager;
 
 const ACTION_ARG_NAMES = {
 	setViewport: ['rect'],
@@ -32,20 +30,19 @@ const ACTION_ARG_NAMES = {
 };
 
 export default function Desktop({ rootBar }) {
-	const [config, setConfig] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
+	const [config] = useState({ taskbarHeight: 40, overviewColumns: 3, overviewGap: 16 });
 	const [apps, setApps] = useState([]);
-
-	const [panelVisible, setPanelVisible] = useState(true);
+	const [activeNative, setActiveNative] = useState(null);
+	const [mainWinMaximized, setMainWinMaximized] = useState(true);
 
 	const reducer = useCallback((state, action) => {
 		const handler = windowManager[action.type];
 		if (!handler) return state;
-		return handler(state, action.payload, { config, getNewId, getNewZ });
+		return handler(state, action.payload, { config, getNewId, getNewZ: windowManager.getNewZ });
 	}, [config]);
 
 	const [state, dispatch] = useReducer(reducer, undefined, initialState);
 
-	// 🔌 Мост shell ↔ views
 	useViewStateBridge(state, dispatch);
 	useThemeSync();
 
@@ -72,6 +69,9 @@ export default function Desktop({ rootBar }) {
 	const actionsRef = useRef(actions);
 	actionsRef.current = actions;
 
+	/* ------------------------------------------------------------------ */
+	/* Panel event (from floating panel — keep for now)                    */
+	/* ------------------------------------------------------------------ */
 	useEffect(() => {
 		const api = window.electron_desktop_API;
 		if (!api) return;
@@ -102,8 +102,12 @@ export default function Desktop({ rootBar }) {
 	}, []);
 
 	useScreenDrag(state, actions);
-	useGlobalPanel();
 
+	const nativeWindows = useNativeWindows();
+
+	/* ------------------------------------------------------------------ */
+	/* Init first desktop                                                  */
+	/* ------------------------------------------------------------------ */
 	useEffect(() => {
 		if (Object.keys(stateRef.current.desktops).length === 0) {
 			const desktopId = getNewId();
@@ -112,118 +116,241 @@ export default function Desktop({ rootBar }) {
 		}
 	}, [actions]);
 
+	/* ------------------------------------------------------------------ */
+	/* Apps list                                                           */
+	/* ------------------------------------------------------------------ */
 	useEffect(() => {
+		window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => { });
+	}, []);
+
+	/* ------------------------------------------------------------------ */
+	/* Main window maximize state                                          */
+	/* ------------------------------------------------------------------ */
+	useEffect(() => {
+		if (window.electron_mainWindow_API?.onWindowStateChange) {
+			const unsub = window.electron_mainWindow_API.onWindowStateChange((s) => {
+				setMainWinMaximized(!!s.maximized);
+			});
+			return unsub;
+		}
+	}, []);
+
+	/* ------------------------------------------------------------------ */
+	/* Sync activeNative with nativeWindows list                           */
+	/* ------------------------------------------------------------------ */
+	useEffect(() => {
+		if (!activeNative) return;
+		const found = nativeWindows.find((w) => w.id === activeNative.id);
+		if (!found) {
+			setActiveNative(null);
+			return;
+		}
+		if (
+			found.x !== activeNative.x ||
+			found.y !== activeNative.y ||
+			found.width !== activeNative.width ||
+			found.height !== activeNative.height ||
+			found.title !== activeNative.title
+		) {
+			setActiveNative({
+				id: found.id,
+				title: found.title,
+				x: found.x,
+				y: found.y,
+				width: found.width,
+				height: found.height,
+			});
+		}
+	}, [nativeWindows, activeNative]);
+
+	/* ------------------------------------------------------------------ */
+	/* Handlers                                                            */
+	/* ------------------------------------------------------------------ */
+	const handleNativeClick = useCallback((nw) => {
+		setActiveNative({
+			id: nw.id,
+			title: nw.title,
+			x: nw.x,
+			y: nw.y,
+			width: nw.width,
+			height: nw.height,
+		});
+		window.electron_desktop_API.send('native-window:focus', { id: nw.id });
+	}, []);
+
+	const handleFocusView = useCallback((win) => {
+		setActiveNative(null);
+		const dId = stateRef.current.activeDesktopId;
+		if (!dId) return;
+		if (win.minimized) actionsRef.current.unminimizeWindow(dId, win.id);
+		actionsRef.current.focusWindow(dId, win.id);
+	}, []);
+
+	const handleSwitchDesktop = useCallback((desktopId) => {
+		setActiveNative(null);
+		actionsRef.current.switchDesktop(desktopId);
+	}, []);
+
+	const handleToggleOverview = useCallback(() => {
+		const dId = stateRef.current.activeDesktopId;
+		if (!dId) return;
+		const desktop = stateRef.current.desktops[dId];
+		if (desktop?.isOverviewOpened) actionsRef.current.closeOverview(dId);
+		else actionsRef.current.openOverview(dId);
+	}, []);
+
+	/* ------------------------------------------------------------------ */
+	/* Render TopBar into rootBar                                          */
+	/* ------------------------------------------------------------------ */
+	useEffect(() => {
+		if (!rootBar) return;
+
 		const desktopsArray = Object.entries(state.desktops).map(([id, desktop], index) => ({
 			id,
 			index: index + 1,
 			desktop,
 		}));
 
-		if (rootBar) {
-			const barElement = (
-				<DesktopBar
-					desktops={desktopsArray}
-					activeDesktopId={state.activeDesktopId}
-					onCreateDesktop={() => {
-						const newId = getNewId();
-						actions.createDesktop(newId);
-						actions.switchDesktop(newId);
-					}}
-					onSwitchDesktop={(desktopId) => {
-						actions.switchDesktop(desktopId);
-					}}
-					onDeleteDesktop={(desktopId) => {
-						const nextId = desktopsArray.find(d => d.id !== desktopId)?.id;
-						if (state.activeDesktopId === desktopId && nextId) {
-							actions.switchDesktop(nextId);
-						}
-						actions.closeDesktop(desktopId);
-					}}
-				/>
-			);
-			rootBar.render(
-				<React.StrictMode>
-					<ThemeProvider theme={createTheme({
-						palette: {
-							mode: 'dark',
-							background: { default: '#1a001a', paper: '#2a002a' },
-							primary: { main: '#6f42c1' },
-						},
-					})}>
-						<CssBaseline />
-						{barElement}
-					</ThemeProvider>
-				</React.StrictMode>
-			);
+		const activeDesktop = state.activeDesktopId ? state.desktops[state.activeDesktopId] : null;
+		const focusedWindowId = activeDesktop?.focusedWindowId || null;
+		const windowsArrayForBar = Object.values(activeDesktop?.windows || {})
+			.filter((w) => w && typeof w === 'object');
+
+		// Active window info for the cross
+		let activeWindowInfo = null;
+		if (activeNative) {
+			activeWindowInfo = {
+				mode: 'native',
+				id: activeNative.id,
+				title: activeNative.title || 'Окно',
+				icon: null,
+				maximized: false,
+				nativeBounds: {
+					x: activeNative.x, y: activeNative.y,
+					width: activeNative.width, height: activeNative.height,
+				},
+			};
+		} else if (focusedWindowId) {
+			const win = activeDesktop?.windows?.[focusedWindowId];
+			if (win && !win.closing) {
+				const app = win.appId ? (apps || []).find((a) => a.id === win.appId) : null;
+				activeWindowInfo = {
+					mode: 'view',
+					id: focusedWindowId,
+					desktopId: state.activeDesktopId,   // 👈 добавить
+					title: win.title || app?.title || 'Окно',
+					icon: app?.icon || null,
+					maximized: !!win.maximized,
+				};
+			}
 		}
-	}, [state.desktops, state.activeDesktopId, actions, rootBar]);
 
-	useEffect(() => {
-		window.electron_desktop_API?.getAppsList?.().then(setApps).catch(() => { });
-	}, []);
+		const barElement = (
+			<TopBar
+				desktops={desktopsArray}
+				activeDesktopId={state.activeDesktopId}
+				onCreateDesktop={() => {
+					const newId = getNewId();
+					actions.createDesktop(newId);
+					actions.switchDesktop(newId);
+				}}
+				onSwitchDesktop={handleSwitchDesktop}
+				onDeleteDesktop={(desktopId) => {
+					const nextId = desktopsArray.find((d) => d.id !== desktopId)?.id;
+					if (state.activeDesktopId === desktopId && nextId) {
+						actions.switchDesktop(nextId);
+					}
+					actions.closeDesktop(desktopId);
+				}}
+				windows={windowsArrayForBar}
+				focusedWindowId={focusedWindowId}
+				apps={apps}
+				onFocusView={handleFocusView}
+				nativeWindows={nativeWindows}
+				activeNative={activeNative}
+				onNativeClick={handleNativeClick}
+				menuButtonClick={handleToggleOverview}
+				mainWinMaximized={mainWinMaximized}
+				onMainWinMinimize={() => window.electron_mainWindow_API?.window_minimize?.()}
+				onMainWinMaximize={() => window.electron_mainWindow_API?.window_maximize?.()}
+				onMainWinClose={() => window.electron_mainWindow_API?.window_close?.()}
+				activeWindow={activeWindowInfo}
+				actions={actions}
+				onOpenDevTools={(which) => {
+					if (!activeWindowInfo || activeWindowInfo.mode !== 'view') return;
+					const dId = state.activeDesktopId;
+					if (which === 'devtools') {
+						actions.createDevToolsWindow(dId, activeWindowInfo.id);
+					}
+				}}
+			/>
+		);
 
+		rootBar.render(
+			<React.StrictMode>
+				<ThemeProvider theme={createTheme({
+					palette: {
+						mode: 'dark',
+						background: { default: '#1a001a', paper: '#2a002a' },
+						primary: { main: '#6f42c1' },
+					},
+				})}>
+					<CssBaseline />
+					{barElement}
+				</ThemeProvider>
+			</React.StrictMode>
+		);
+	}, [
+		rootBar,
+		state.desktops,
+		state.activeDesktopId,
+		apps,
+		nativeWindows,
+		activeNative,
+		mainWinMaximized,
+		actions,
+		handleSwitchDesktop,
+		handleFocusView,
+		handleNativeClick,
+		handleToggleOverview,
+	]);
+
+	/* ------------------------------------------------------------------ */
+	/* Send props to floating panel (keep for now)                         */
+	/* ------------------------------------------------------------------ */
 	useEffect(() => {
 		const api = window.electron_desktop_API;
 		if (!api) return;
 
-		// 👇 Читаем фокус из АКТИВНОГО desktop, а не из корня state
 		const activeDesktopId = state.activeDesktopId;
 		const activeDesktop = activeDesktopId ? state.desktops?.[activeDesktopId] : null;
 		const activeId = activeDesktop?.focusedWindowId || null;
 
 		let activeWin = null;
-		let dId = null;
-		if (activeId && activeDesktop) {
-			if (activeDesktop.windows?.[activeId]) {
-				activeWin = activeDesktop.windows[activeId];
-				dId = activeDesktopId;
-			}
+		if (activeId && activeDesktop && activeDesktop.windows?.[activeId]) {
+			activeWin = activeDesktop.windows[activeId];
 		}
 
 		const hasActiveWindow = !!(activeWin && !activeWin.closing);
 		const activeApp = activeWin?.appId ? (apps || []).find((a) => a.id === activeWin.appId) : null;
 
-		api.send('shell:send-to-panel', {
-			data: {
-				windowId: hasActiveWindow ? activeId : null,
-				title: activeWin?.title || activeApp?.title || 'Окно',
-				icon: activeApp?.icon || null,
-				isFocused: hasActiveWindow,
-				maximized: !!activeWin?.maximized,
-				loading: false,
-				currentUrl: activeWin?.url || '',
-				canGoBack: false,
-				canGoForward: false,
-				hasActiveWindow,
-			},
-		});
-	}, [state.activeDesktopId, state.desktops, apps]);
+	}, [state.activeDesktopId, state.desktops, apps, activeNative]);
 
-	useEffect(() => {
-		const api = window.electron_desktop_API;
-		if (!api) return;
-		if (panelVisible) {
-			api.send('view:show', { id: 'panel:global' });
-		} else {
-			api.send('view:hide', { id: 'panel:global' });
-		}
-	}, [panelVisible]);
-
+	/* ------------------------------------------------------------------ */
+	/* Render                                                              */
+	/* ------------------------------------------------------------------ */
 	return (
 		<Box
 			sx={{
-				position: 'fixed',
-				top: TAB_BAR_HEIGHT,
-				left: 0,
-				right: 0,
-				bottom: 0,
+				position: 'absolute',
+				inset: 0,
 				display: 'flex',
 				flexDirection: 'column',
 				bgcolor: 'transparent',
 				overflow: 'hidden',
 			}}
 		>
-			{Object.keys(state.desktops).length > 0 && Object.keys(state.desktops).map(desktopId => (
+			{Object.keys(state.desktops).length > 0 && Object.keys(state.desktops).map((desktopId) => (
 				<DesktopWorkspace
 					key={desktopId}
 					desktopId={desktopId}
@@ -232,8 +359,9 @@ export default function Desktop({ rootBar }) {
 					config={config}
 					apps={apps}
 					active={state.activeDesktopId === desktopId}
-					panelVisible={panelVisible}
-					onTogglePanel={() => setPanelVisible((v) => !v)}
+					nativeWindows={nativeWindows}
+					activeNative={activeNative}
+					onNativeClick={handleNativeClick}
 				/>
 			))}
 			{Object.keys(state.desktops).length === 0 && (
