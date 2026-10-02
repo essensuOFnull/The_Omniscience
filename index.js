@@ -21,7 +21,6 @@ registerArkhScheme();
   global.$.config_load();
 
   await global.$.vite_build();
-  await global.$.build_devtools();
 
   global.$.app_on_close();
   global.$.app_on_beforeQuit();

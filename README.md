@@ -80,7 +80,7 @@ Omniscience **не работает на Windows и macOS**. Это осозна
 
 ```bash
 cd /путь/к/проекту
-npm install --legacy-peer-deps
+npm install
 npm start
 ```
 
