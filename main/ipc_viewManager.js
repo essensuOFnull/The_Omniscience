@@ -82,6 +82,32 @@ export function createView(id, { kind, url, preload, bounds }) {
             sendNav({ errorCode: ec, errorDescription: ed, validatedURL: uv, isMainFrame: imf }));
     }
 
+    // Перехват window.open() и target="_blank".
+    // Вместо нативного окна Electron — отправляем запрос в shell,
+    // и shell создаёт новое окно Omniscience.
+    try {
+        view.webContents.setWindowOpenHandler(({ url, frameName, features, disposition, referrer, postBody }) => {
+            if (!global.mainWindow || global.mainWindow.isDestroyed()) {
+                return { action: 'deny' };
+            }
+
+            global.mainWindow.webContents.send('shell:open-window-request', {
+                sourceWindowId: id,
+                url,
+                disposition,      // 'foreground-tab' | 'background-tab' | 'new-window' | 'save-to-disk' | 'other'
+                frameName,        // для window.open('url', 'name')
+                features,         // window features string
+                referrer,
+                hasPostBody: !!postBody,
+            });
+
+            // Запрещаем Electron создавать своё окно.
+            return { action: 'deny' };
+        });
+    } catch (err) {
+        console.error('[viewManager] setWindowOpenHandler failed:', err);
+    }
+
     reorderAll();
     return view;
 }

@@ -101,6 +101,57 @@ export default function Desktop({ rootBar }) {
 		return off;
 	}, []);
 
+	useEffect(() => {
+		const api = window.electron_desktop_API;
+		if (!api) return;
+
+		const off = api.on('shell:open-window-request', (msg) => {
+			if (!msg) return;
+			const { sourceWindowId, url, disposition } = msg;
+
+			// Найти desktop, в котором лежит sourceWindowId
+			let dId = stateRef.current.activeDesktopId;
+			let sourceWin = null;
+
+			for (const [did, desktop] of Object.entries(stateRef.current.desktops || {})) {
+				if (desktop.windows?.[sourceWindowId]) {
+					dId = did;
+					sourceWin = desktop.windows[sourceWindowId];
+					break;
+				}
+			}
+
+			if (!dId || !url) return;
+
+			// Позиция: центр исходного окна
+			const cx = sourceWin?.ghost?.centerX ?? undefined;
+			const cy = sourceWin?.ghost?.centerY ?? undefined;
+
+			const width = 900;
+			const height = 600;
+
+			// background-tab (средняя кнопка / Ctrl+Click) — открываем в фоне
+			// foreground-tab / new-window — открываем и фокусируем
+			const shouldFocus = disposition !== 'background-tab';
+
+			actionsRef.current.createWindow(dId, {
+				appId: 'browser',
+				url,
+				cx,
+				cy,
+				width,
+				height,
+				extra: {
+					// Передаём флаг — в createWindow он попадёт в state.windows[newId]
+					// и потом можно использовать, если захотим открывать без фокуса.
+					openInBackground: !shouldFocus,
+				},
+			});
+		});
+
+		return off;
+	}, []);
+
 	useScreenDrag(state, actions);
 
 	const nativeWindows = useNativeWindows();
