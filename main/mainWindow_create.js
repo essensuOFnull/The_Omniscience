@@ -15,6 +15,7 @@ export default async function () {
     await global.$.texts_load();
     await global.$.preloads_generate();
 
+    const isSession = process.env.OMNISCIENCE_SESSION === '1';
     /* создаем само окно */
     global.mainWindow = new BrowserWindow({
         x: 0,
@@ -25,7 +26,10 @@ export default async function () {
         backgroundColor: '#000000ff',
         resizable: true,
         show: true,
-        type: 'desktop',
+        // type: 'desktop' — только для сессии из LightDM.
+        // Когда Omniscience запущен как программа внутри другого DE —
+        // окно должно быть обычным по задумке.
+        ...(isSession ? { type: 'desktop' } : {}),
         // --- ИЗМЕНЕНИЯ ДЛЯ СОВРЕМЕННОЙ РАМКИ ВКЛАДОК ---
         frame: false,                     // Скрываем стандартную рамку ОС
         // ----------------------------------------------

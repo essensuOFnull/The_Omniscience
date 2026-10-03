@@ -1,9 +1,9 @@
 {
   "name": "The_Omniscience",
-  "version": "10.1.1",
+  "version": "10.1.2",
   "type": "module",
   "scripts": {
-    "start": "npx electron --experimental-default-type=commonjs .",
+    "start": "OMNISCIENCE_SESSION= npx electron .",
     "postinstall": "sh install-deps.sh&&npx electron-rebuild --use-tmp-dir"
   },
   "dependencies": {
