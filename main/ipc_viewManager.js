@@ -2,19 +2,6 @@ import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
 
 /* ------------------------------------------------------------------ */
-/* Preload resolver                                                    */
-/* ------------------------------------------------------------------ */
-
-function resolvePreload(requested) {
-    const themeEnabled = global.themeEnabled !== false;
-    const themed = global.paths.reactPreload;
-    const clean = global.paths.reactPreloadNoTheme;
-    if (!requested) return themeEnabled ? themed : clean;
-    if (requested === themed || requested === clean) return themeEnabled ? themed : clean;
-    return requested;
-}
-
-/* ------------------------------------------------------------------ */
 /* Z-order                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -43,7 +30,7 @@ export function createView(id, { kind, url, preload, bounds }) {
 
     const view = new WebContentsView({
         webPreferences: {
-            preload: resolvePreload(preload),
+            preload: preload,
             nodeIntegration: false,
             contextIsolation: true,
             transparent: true,

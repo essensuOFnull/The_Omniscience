@@ -25,7 +25,7 @@ export default async function () {
   await global.$.texts_load();
   await global.$.extensions_setup();
   await global.$.preloads_generate();
-  await global.$.adblock_init();
+  //await global.$.adblock_init();
   await global.$.mainWindow_create();
 
   global.$.webContents_on_created();

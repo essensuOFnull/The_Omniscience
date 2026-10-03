@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Tabs, Tab, Box } from '@mui/material';
 import TabsTab from './TabsTab';
-import ThemeTab from './ThemeTab';
 import BackgroundTab from './BackgroundTab';
 import AnimationTab from './AnimationTab';
 
@@ -19,14 +18,12 @@ export default function App() {
         sx={{ mb: 2 }}
       >
         <Tab label="🧩 Вкладки" />
-        <Tab label="🎨 Тема" />
         <Tab label="🖼️ Фон" />
         <Tab label="✨ Анимации" />
       </Tabs>
       {tab === 0 && <TabsTab />}
-      {tab === 1 && <ThemeTab />}
-      {tab === 2 && <BackgroundTab />}
-      {tab === 3 && <AnimationTab />}
+      {tab === 1 && <BackgroundTab />}
+      {tab === 2 && <AnimationTab />}
     </Box>
   );
 }

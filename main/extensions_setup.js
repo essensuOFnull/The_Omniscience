@@ -44,21 +44,20 @@ export default async function () {
 		});
 		console.log('[Extensions] CSP disabled for all sites in session');
 
-		// 1. Preload chrome-extensions
+		// 1. Регистрируем НАШ общий preload как session-preload для всех frame.
+		//    В нём уже вклеены chrome.* API из electron-chrome-extensions.
 		try {
-			const extPreloadUrl = import.meta.resolve('electron-chrome-extensions/preload');
-			const extPreloadPath = fileURLToPath(extPreloadUrl);
 			await defaultSession.registerPreloadScript({
-				id: 'chrome-extensions-preload',
+				id: 'omniscience-common-preload',
 				type: 'frame',
-				filePath: extPreloadPath,
+				filePath: global.paths.reactPreload,
 			});
-			console.log('[Extensions] Chrome extensions preload registered');
+			console.log('[Extensions] Common preload registered for session');
 		} catch (err) {
-			console.error('[Extensions] Failed to register chrome-extensions preload:', err.message);
+			console.error('[Extensions] Failed to register common preload:', err.message);
 			return;
 		}
-		
+
 		// 3. Резолвер сессии
 		setSessionPartitionResolver(() => defaultSession);
 

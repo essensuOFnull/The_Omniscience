@@ -6,6 +6,11 @@ export default async function () {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
 
+    app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+    app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+    app.commandLine.appendSwitch('disable-renderer-backgrounding');
+    app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
     /* генерируем preload'ы */
     await global.$.texts_load();
     await global.$.preloads_generate();
@@ -16,9 +21,9 @@ export default async function () {
         y: 0,
         width,
         height,
-        transparent:true,
-        backgroundColor:'#000000ff',
-        resizable:true,
+        transparent: true,
+        backgroundColor: '#000000ff',
+        resizable: true,
         show: true,
         type: 'desktop',
         // --- ИЗМЕНЕНИЯ ДЛЯ СОВРЕМЕННОЙ РАМКИ ВКЛАДОК ---
@@ -30,14 +35,11 @@ export default async function () {
             enableRemoteModule: false,
             nodeIntegration: false,
             contextIsolation: true,
-            preload: global.paths.reactPreload,
             autoplayPolicy: "no-user-gesture-required",
             webSecurity: true,
             webviewTag: true,
         },
     });
-
-    app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
     // Функция для отправки актуальных размеров окна в рендерер при изменении размера
     const sendWindowBounds = () => {
