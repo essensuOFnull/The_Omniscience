@@ -9,4 +9,5 @@ export default function () {
   global.$.ipc_reactDevToolsBridge();
   global.$.ipc_theme();
   global.$.ipc_nativeWindows();
+  global.$.ipc_files();
 }

@@ -49,13 +49,14 @@ export default function Overview({ state, actions, config, apps, desktopId }) {
       initial={false}
       animate={{
         opacity: isOverviewOpened ? 1 : 0,
-        scale: isOverviewOpened ? 1 : 0.95,
+        top:isOverviewOpened ? 0 : '-100vh',
+        bottom:isOverviewOpened ? 0 : '100vh',
       }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
       style={{
         position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: config?.overviewZIndex || 1000,
+        top:isOverviewOpened ? 0 : '-100vh', left: 0, right: 0, bottom:isOverviewOpened ? 0 : '100vh',
+        zIndex: isOverviewOpened ?(config?.overviewZIndex || 1000):-1,
         backgroundColor: 'rgba(0,0,0,0.75)',
         backdropFilter: 'blur(12px)',
         pointerEvents: isOverviewOpened ? 'auto' : 'none',

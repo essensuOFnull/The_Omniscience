@@ -3,6 +3,7 @@ import { Tabs, Tab, Box } from '@mui/material';
 import TabsTab from './TabsTab';
 import BackgroundTab from './BackgroundTab';
 import AnimationTab from './AnimationTab';
+import DesktopTab from './DesktopTab';
 
 export default function App() {
   const [tab, setTab] = useState(0);
@@ -18,12 +19,14 @@ export default function App() {
         sx={{ mb: 2 }}
       >
         <Tab label="🧩 Вкладки" />
-        <Tab label="🖼️ Фон" />
         <Tab label="✨ Анимации" />
+        <Tab label="🖼️ Фон" />
+        <Tab label="🖥️ Рабочий стол" />
       </Tabs>
       {tab === 0 && <TabsTab />}
-      {tab === 1 && <BackgroundTab />}
-      {tab === 2 && <AnimationTab />}
+      {tab === 1 && <AnimationTab />}
+      {tab === 2 && <BackgroundTab />}
+      {tab === 3 && <DesktopTab />}
     </Box>
   );
 }

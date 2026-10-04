@@ -5,6 +5,7 @@ import Window from './Window';
 import { useSetting } from '../settings/useSettings';
 import defaultAnimations from '../../themes/window_animations/default';
 import noneAnimations from '../../themes/window_animations/none';
+import DesktopFiles from './FileView/DesktopFiles';
 
 export default function DesktopWorkspace({
   desktopId,
@@ -60,6 +61,7 @@ export default function DesktopWorkspace({
         ref={viewportRef}
         sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}
       >
+        <DesktopFiles />
         <Overview state={{ ...desktopState, windows }} actions={actions}
           config={config} apps={apps} desktopId={desktopId} />
         {Object.entries(windows || {}).map(([id, win]) => {

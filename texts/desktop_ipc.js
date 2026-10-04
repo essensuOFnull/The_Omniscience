@@ -40,5 +40,21 @@
 		setViewZ: (opts) => ipcRenderer.send('view:set-z', opts),
 		getViewBounds: (id) => ipcRenderer.invoke('view:get-bounds', { id }),
 		getProjectRoot: () => ipcRenderer.invoke('get-project-root'),
+		// FileView
+		getUserDirs: () => ipcRenderer.invoke('fs:get-user-dirs'),
+		readDir: (path) => ipcRenderer.invoke('fs:read-dir', { path }),
+		getFileInfo: (path) => ipcRenderer.invoke('fs:get-info', { path }),
+		getFileIcon: (path) => ipcRenderer.invoke('fs:get-icon', { path }),
+		openPath: (path) => ipcRenderer.invoke('fs:open', { path }),
+		revealPath: (path) => ipcRenderer.invoke('fs:reveal', { path }),
+		trashPath: (path) => ipcRenderer.invoke('fs:trash', { path }),
+		deletePath: (path) => ipcRenderer.invoke('fs:delete', { path }),
+		renamePath: (path, newName) => ipcRenderer.invoke('fs:rename', { path, newName }),
+
+		getAppsForFile: (path) => ipcRenderer.invoke('fs:get-apps-for-file', { path }),
+		openWith: (path, desktopId) => ipcRenderer.invoke('fs:open-with', { path, desktopId }),
+
+		watchStart: (path) => ipcRenderer.send('fs:watch-start', { path }),
+		watchStop: (path) => ipcRenderer.send('fs:watch-stop', { path }),
 	});
 })();

@@ -25,6 +25,10 @@ const defaultSettings = {
     { id: 'settings', visible: true, locked: true },
     { id: 'web-search', visible: true },
   ],
+  desktopFiles: {
+    enabled: true,
+    path: null, // null → автоматически ~/Desktop из XDG
+  },
 };
 
 function loadSettings() {
