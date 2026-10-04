@@ -51,7 +51,6 @@ function CrossCell({ children, cursor, onClick, onMouseDown, title, disabled, co
           borderRadius: 3,
           color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
           transition: 'background 0.1s',
-          WebkitAppRegion: 'no-drag',
           userSelect: 'none',
           gridColumn: col,
           gridRow: row,
@@ -113,18 +112,9 @@ export default function TopBar({
         alignItems: 'stretch',
         zIndex: 1200,
         overflow: 'hidden',
+        WebkitAppRegion: 'drag',
       }}
     >
-      {/* Слой перетаскивания главного окна */}
-      <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          WebkitAppRegion: 'drag',
-          zIndex: 0,
-        }}
-      />
-
       {/* ЛЕВО: крестовина */}
       <Box
         sx={{
@@ -138,7 +128,6 @@ export default function TopBar({
           alignItems: 'center',
           justifyContent: 'center',
           borderRight: '1px solid rgba(255,255,255,0.08)',
-          WebkitAppRegion: 'no-drag',
           flexShrink: 0,
         }}
       >
@@ -185,7 +174,6 @@ export default function TopBar({
               overflowX: 'auto',
               overflowY: 'hidden',
               minWidth: 0,
-              WebkitAppRegion: 'no-drag',
               ...HIDDEN_SCROLLBAR,
             }}
           >
@@ -210,6 +198,7 @@ export default function TopBar({
                     padding: '0 8px',
                     whiteSpace: 'nowrap',
                     '&:hover': { bgcolor: isActive ? '#50005099' : 'rgba(255,255,255,0.1)' },
+                    WebkitAppRegion: 'no-drag',
                   }}
                 >
                   🖥️ {d.index}
@@ -219,7 +208,7 @@ export default function TopBar({
             <IconButton
               size="small"
               onClick={onCreateDesktop}
-              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0 }}
+              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0,WebkitAppRegion: 'no-drag', }}
               title="Добавить рабочий стол"
             >
               <AddIcon style={{ fontSize: 14 }} />
@@ -227,16 +216,16 @@ export default function TopBar({
           </Box>
 
           {/* Системные кнопки главного окна DE — фиксированы справа */}
-          <Box sx={{ display: 'flex', gap: 0.5, WebkitAppRegion: 'no-drag', flexShrink: 0 }}>
-            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22 }}>
+          <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
               {mainWinMaximized
                 ? <FilterNoneIcon style={{ fontSize: 14 }} />
                 : <CropSquareIcon style={{ fontSize: 14 }} />}
             </IconButton>
-            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22 }}>
+            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
               <MinimizeIcon style={{ fontSize: 14 }} />
             </IconButton>
-            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22 }}>
+            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
               <CloseIcon style={{ fontSize: 14 }} />
             </IconButton>
           </Box>
@@ -253,7 +242,6 @@ export default function TopBar({
             minHeight: 0,
             minWidth: 0,
             overflow: 'hidden',
-            WebkitAppRegion: 'no-drag',
           }}
         >
           {/* Меню — фиксировано слева */}
@@ -271,6 +259,7 @@ export default function TopBar({
               height: 26,
               minWidth: 0,
               px: 1,
+              WebkitAppRegion: 'no-drag',
             }}
           >
             Меню
@@ -314,6 +303,7 @@ export default function TopBar({
                       px: 1,
                       bgcolor: isActive ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.05)',
                       '&:hover': { border: '1px solid #a855f7' },
+                      WebkitAppRegion: 'no-drag',
                     }}
                   >
                     {title}
@@ -344,6 +334,7 @@ export default function TopBar({
                       textOverflow: 'ellipsis',
                       bgcolor: isActive ? 'rgba(255,200,100,0.3)' : 'rgba(255,255,255,0.05)',
                       '&:hover': { border: '1px solid #a855f7' },
+                      WebkitAppRegion: 'no-drag',
                     }}
                   >
                     🖥️ {nw.title || nw.wmClass || 'Окно'}

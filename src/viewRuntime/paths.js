@@ -82,3 +82,16 @@ export function resolveForDisplay(path, projectRoot) {
 	}
 	return toFileUrl(path);
 }
+
+export function fetchProjectRoot() {
+  if (_cachedRoot !== null) return Promise.resolve(_cachedRoot);
+  if (!_pendingRoot) {
+    // В componentapps доступен electron_view_API,
+    // в shell — electron_desktop_API. Работает и там, и там.
+    const api = window.electron_view_API || window.electron_desktop_API;
+    _pendingRoot = (api?.getProjectRoot?.() || Promise.resolve(''))
+      .then((r) => { _cachedRoot = r || ''; return _cachedRoot; })
+      .catch(() => { _cachedRoot = ''; return ''; });
+  }
+  return _pendingRoot;
+}

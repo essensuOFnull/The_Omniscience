@@ -17,18 +17,18 @@ export default function BaseWindowButtons({
   isMaximized,
 }) {
   return (
-    <Box sx={{ display: 'flex', gap: 0.5, zIndex: 1, WebkitAppRegion: 'no-drag' }}>
-      <IconButton size="small" onClick={onMinimize} sx={{ color: '#fff' }}>
+    <Box sx={{ display: 'flex', gap: 0.5, zIndex: 1 }}>
+      <IconButton size="small" onClick={onMinimize} sx={{ color: '#fff',WebkitAppRegion: 'no-drag', }}>
         <MinimizeIcon fontSize="small" />
       </IconButton>
-      <IconButton size="small" onClick={onMaximize} sx={{ color: '#fff' }}>
+      <IconButton size="small" onClick={onMaximize} sx={{ color: '#fff',WebkitAppRegion: 'no-drag', }}>
         {isMaximized ? (
           <FilterNoneIcon fontSize="small" />
         ) : (
           <CropSquareIcon fontSize="small" />
         )}
       </IconButton>
-      <IconButton size="small" onClick={onClose} sx={{ color: '#fff' }}>
+      <IconButton size="small" onClick={onClose} sx={{ color: '#fff',WebkitAppRegion: 'no-drag', }}>
         <CloseIcon fontSize="small" />
       </IconButton>
     </Box>

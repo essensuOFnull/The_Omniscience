@@ -37,32 +37,30 @@ const HOVER = 'rgba(168,85,247,0.25)';
 function Cell({ children, cursor, onClick, onMouseDown, title, disabled, col, row }) {
     const [hover, setHover] = useState(false);
     return (
-        <Tooltip title={title || ''} enterDelay={400}>
-            <div
-                onMouseDown={disabled ? undefined : onMouseDown}
-                onClick={disabled ? undefined : onClick}
-                onMouseEnter={() => setHover(true)}
-                onMouseLeave={() => setHover(false)}
-                style={{
-                    width: CELL,
-                    height: CELL,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: hover && !disabled ? HOVER : EMPTY,
-                    cursor: disabled ? 'default' : (cursor || 'pointer'),
-                    borderRadius: 3,
-                    color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
-                    transition: 'background 0.1s',
-                    WebkitAppRegion: 'no-drag',
-                    userSelect: 'none',
-                    gridColumn: col,
-                    gridRow: row,
-                }}
-            >
-                {children}
-            </div>
-        </Tooltip>
+        <div
+            onMouseDown={disabled ? undefined : onMouseDown}
+            onClick={disabled ? undefined : onClick}
+            onMouseEnter={() => setHover(true)}
+            onMouseLeave={() => setHover(false)}
+            style={{
+                width: CELL,
+                height: CELL,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: hover && !disabled ? HOVER : EMPTY,
+                cursor: disabled ? 'default' : (cursor || 'pointer'),
+                borderRadius: 3,
+                color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
+                transition: 'background 0.1s',
+                WebkitAppRegion: 'no-drag',
+                userSelect: 'none',
+                gridColumn: col,
+                gridRow: row,
+            }}
+        >
+            {children}
+        </div>
     );
 }
 

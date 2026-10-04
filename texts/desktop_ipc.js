@@ -39,5 +39,6 @@
 		destroyView: (opts) => ipcRenderer.send('view:destroy', opts),
 		setViewZ: (opts) => ipcRenderer.send('view:set-z', opts),
 		getViewBounds: (id) => ipcRenderer.invoke('view:get-bounds', { id }),
+		getProjectRoot: () => ipcRenderer.invoke('get-project-root'),
 	});
 })();
