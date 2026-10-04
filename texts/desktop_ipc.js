@@ -40,7 +40,7 @@
 		setViewZ: (opts) => ipcRenderer.send('view:set-z', opts),
 		getViewBounds: (id) => ipcRenderer.invoke('view:get-bounds', { id }),
 		getProjectRoot: () => ipcRenderer.invoke('get-project-root'),
-		// FileView
+		// Файловая система (FileView)
 		getUserDirs: () => ipcRenderer.invoke('fs:get-user-dirs'),
 		readDir: (path) => ipcRenderer.invoke('fs:read-dir', { path }),
 		getFileInfo: (path) => ipcRenderer.invoke('fs:get-info', { path }),
@@ -56,5 +56,11 @@
 
 		watchStart: (path) => ipcRenderer.send('fs:watch-start', { path }),
 		watchStop: (path) => ipcRenderer.send('fs:watch-stop', { path }),
+
+		getTemplates: () => ipcRenderer.invoke('fs:get-templates'),
+		createFolder: (dir, name) => ipcRenderer.invoke('fs:create-folder', { dir, name }),
+		createFile: (dir, name) => ipcRenderer.invoke('fs:create-file', { dir, name }),
+		createFromTemplate: (dir, templatePath, name) =>
+			ipcRenderer.invoke('fs:create-from-template', { dir, templatePath, name }),
 	});
 })();

@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, Typography, IconButton, Breadcrumbs, Link } from '@mui/material';
+import { Box, IconButton, Breadcrumbs, Link } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import AddIcon from '@mui/icons-material/Add';
 import FileView from './FileView';
 import FileContextMenu from './FileContextMenu';
+import CreateMenu from './CreateMenu';
 import useDirectory from './useDirectory';
 import { useSetting } from '../../settings/useSettings';
-
-/* ------------------------------------------------------------------ */
-/* Хлебные крошки — строго от корня ФС                                 */
-/* ------------------------------------------------------------------ */
 
 function buildCrumbs(fullPath) {
   if (!fullPath) return [];
@@ -26,7 +24,6 @@ function buildCrumbs(fullPath) {
     return crumbs;
   }
 
-  // Unix
   const crumbs = [{ name: '/', path: '/' }];
   const parts = fullPath.replace(/\/+$/, '').split('/').filter(Boolean);
   let acc = '';
@@ -44,10 +41,6 @@ function isRoot(p) {
   return false;
 }
 
-/* ------------------------------------------------------------------ */
-/* Внешний враппер: следит за настройками                              */
-/* ------------------------------------------------------------------ */
-
 export default function DesktopFiles() {
   const enabled = useSetting('desktopFiles.enabled');
   const configuredPath = useSetting('desktopFiles.path');
@@ -55,42 +48,31 @@ export default function DesktopFiles() {
   const [basePath, setBasePath] = useState(null);
 
   useEffect(() => {
-    if (!enabled) {
-      setBasePath(null);
-      return;
-    }
-    if (configuredPath) {
-      setBasePath(configuredPath);
-      return;
-    }
+    if (!enabled) { setBasePath(null); return; }
+    if (configuredPath) { setBasePath(configuredPath); return; }
     const api = window.electron_desktop_API;
-    api.getUserDirs().then((dirs) => {
-      setBasePath(dirs?.desktop || null);
-    }).catch(() => setBasePath(null));
+    api.getUserDirs().then((dirs) => setBasePath(dirs?.desktop || null))
+      .catch(() => setBasePath(null));
   }, [enabled, configuredPath]);
 
   if (!enabled || !basePath) return null;
 
-  // key={basePath} гарантирует сброс внутреннего состояния при смене базы
   return <DesktopFilesInner key={basePath} basePath={basePath} />;
 }
 
-/* ------------------------------------------------------------------ */
-/* Внутренний компонент                                                 */
-/* ------------------------------------------------------------------ */
-
 function DesktopFilesInner({ basePath }) {
   const [currentPath, setCurrentPath] = useState(basePath);
-  const [menu, setMenu] = useState({ open: false, x: 0, y: 0, file: null });
+  const [fileMenu, setFileMenu] = useState({ open: false, x: 0, y: 0, file: null });
+  const [createMenu, setCreateMenu] = useState({ open: false, x: 0, y: 0 });
 
   const { reload } = useDirectory(currentPath);
 
   const handleContextMenu = useCallback((file, e) => {
-    setMenu({ open: true, x: e.clientX, y: e.clientY, file });
+    setFileMenu({ open: true, x: e.clientX, y: e.clientY, file });
   }, []);
 
-  const handleCloseMenu = useCallback(() => {
-    setMenu((m) => ({ ...m, open: false }));
+  const handleCloseFileMenu = useCallback(() => {
+    setFileMenu((m) => ({ ...m, open: false }));
   }, []);
 
   const handleOpenFolder = useCallback((folderPath) => {
@@ -103,12 +85,21 @@ function DesktopFilesInner({ basePath }) {
     setCurrentPath(parent || '/');
   }, [currentPath]);
 
+  const handleOpenCreateMenu = useCallback((e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setCreateMenu({ open: true, x: r.left, y: r.bottom + 4 });
+  }, []);
+
+  const handleCloseCreateMenu = useCallback(() => {
+    setCreateMenu((m) => ({ ...m, open: false }));
+  }, []);
+
   const crumbs = buildCrumbs(currentPath);
   const canGoBack = !isRoot(currentPath);
 
   return (
     <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
-      {/* Панель навигации — ВСЕГДА видима */}
+      {/* Панель навигации */}
       <Box
         sx={{
           pointerEvents: 'auto',
@@ -132,6 +123,15 @@ function DesktopFilesInner({ basePath }) {
           sx={{ color: canGoBack ? '#fff' : 'rgba(255,255,255,0.3)' }}
         >
           <ArrowBackIcon fontSize="small" />
+        </IconButton>
+
+        <IconButton
+          size="small"
+          onClick={handleOpenCreateMenu}
+          sx={{ color: '#fff' }}
+          title="Создать файл или папку"
+        >
+          <AddIcon fontSize="small" />
         </IconButton>
 
         <Breadcrumbs
@@ -179,12 +179,21 @@ function DesktopFilesInner({ basePath }) {
         />
       </Box>
 
+      {/* Контекстное меню файла (DOM) */}
       <FileContextMenu
-        open={menu.open}
-        anchorPosition={{ x: menu.x, y: menu.y }}
-        file={menu.file}
-        onClose={handleCloseMenu}
+        open={fileMenu.open}
+        anchorPosition={{ x: fileMenu.x, y: fileMenu.y }}
+        file={fileMenu.file}
+        onClose={handleCloseFileMenu}
         onReload={reload}
+      />
+
+      {/* Меню создания (DOM) */}
+      <CreateMenu
+        open={createMenu.open}
+        anchorPosition={{ x: createMenu.x, y: createMenu.y }}
+        dir={currentPath}
+        onClose={handleCloseCreateMenu}
       />
     </Box>
   );

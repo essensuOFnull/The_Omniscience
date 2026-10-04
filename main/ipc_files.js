@@ -325,7 +325,7 @@ async function openWith(filePath, desktopId) {
 /* Создание файлов и папок                                              */
 /* ------------------------------------------------------------------ */
 
-export async function getTemplates() {
+async function getTemplates() {
     const dirs = await getUserDirs();
     const templatesDir = dirs.templates;
     try {
@@ -401,4 +401,6 @@ export default function () {
     ipcMain.handle('fs:get-templates', () => getTemplates());
     ipcMain.handle('fs:create-folder', (_e, { dir, name }) => createFolder(dir, name));
     ipcMain.handle('fs:create-file', (_e, { dir, name }) => createFile(dir, name));
+    ipcMain.handle('fs:create-from-template', (_e, { dir, templatePath, name }) =>
+        createFromTemplate(dir, templatePath, name));
 }
