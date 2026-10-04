@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { app, Menu, clipboard, shell, dialog, BrowserWindow } = electronPkg;
+const { app, Menu, clipboard, shell, dialog, BrowserWindow,webContents } = electronPkg;
 import path from 'path';
 
 /* ------------------------------------------------------------------ */
@@ -236,7 +236,6 @@ export function attachToWebContents(wc) {
 }
 
 export default function () {
-  const { webContents } = require('electron');
   for (const wc of webContents.getAllWebContents()) {
     attachToWebContents(wc);
   }
