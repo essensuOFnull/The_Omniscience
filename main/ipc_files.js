@@ -1,11 +1,12 @@
 import electronPkg from 'electron';
 const { ipcMain, app } = electronPkg;
-import { readdir, stat, rename as fsRename, unlink, readFile, rm } from 'fs/promises';
+import { readdir, stat, rename as fsRename, unlink, readFile, rm, mkdir, writeFile, copyFile } from 'fs/promises';
+import { constants as fsConstants } from 'fs';
+import { watch } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import os from 'os';
-import { watch } from 'fs';
 
 // dirPath → { watcher, refCount }
 const watchers = new Map();
@@ -64,6 +65,7 @@ async function getUserDirs() {
         pictures: path.join(home, 'Pictures'),
         music: path.join(home, 'Music'),
         videos: path.join(home, 'Videos'),
+        templates: path.join(home, 'Templates'),
         home,
     };
 
@@ -319,6 +321,60 @@ async function openWith(filePath, desktopId) {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Создание файлов и папок                                              */
+/* ------------------------------------------------------------------ */
+
+export async function getTemplates() {
+    const dirs = await getUserDirs();
+    const templatesDir = dirs.templates;
+    try {
+        const entries = await readdir(templatesDir, { withFileTypes: true });
+        const templates = [];
+        for (const entry of entries) {
+            if (entry.isFile() || entry.isSymbolicLink()) {
+                templates.push({
+                    id: path.join(templatesDir, entry.name),
+                    name: entry.name,
+                });
+            }
+        }
+        return { success: true, templates, dir: templatesDir };
+    } catch (err) {
+        return { success: false, error: err.message, templates: [], dir: templatesDir };
+    }
+}
+
+export async function createFolder(dir, name) {
+    try {
+        const fullPath = path.join(dir, name);
+        await mkdir(fullPath, { recursive: false });
+        return { success: true, path: fullPath };
+    } catch (err) {
+        return { success: false, error: err.code || err.message };
+    }
+}
+
+export async function createFile(dir, name) {
+    try {
+        const fullPath = path.join(dir, name);
+        await writeFile(fullPath, '', { flag: 'wx' }); // wx — падает, если существует
+        return { success: true, path: fullPath };
+    } catch (err) {
+        return { success: false, error: err.code || err.message };
+    }
+}
+
+export async function createFromTemplate(dir, templatePath, name) {
+    try {
+        const destPath = path.join(dir, name);
+        await copyFile(templatePath, destPath, fsConstants.COPYFILE_EXCL);
+        return { success: true, path: destPath };
+    } catch (err) {
+        return { success: false, error: err.code || err.message };
+    }
+}
+
 export default function () {
     ipcMain.handle('fs:get-user-dirs', () => getUserDirs());
     ipcMain.handle('fs:read-dir', (_e, { path: p }) => readDir(p));
@@ -341,4 +397,8 @@ export default function () {
     ipcMain.on('fs:watch-stop', (_e, { path: p }) => {
         if (p) stopWatch(p);
     });
+
+    ipcMain.handle('fs:get-templates', () => getTemplates());
+    ipcMain.handle('fs:create-folder', (_e, { dir, name }) => createFolder(dir, name));
+    ipcMain.handle('fs:create-file', (_e, { dir, name }) => createFile(dir, name));
 }

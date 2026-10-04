@@ -1,5 +1,6 @@
 import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
+import { attachToWebContents } from './ipc_browserContextMenu.js';
 
 /* ------------------------------------------------------------------ */
 /* Z-order                                                             */
@@ -104,6 +105,7 @@ export function createView(id, { kind, url, preload, bounds }) {
             // Запрещаем Electron создавать своё окно.
             return { action: 'deny' };
         });
+        attachToWebContents(view.webContents);
     } catch (err) {
         console.error('[viewManager] setWindowOpenHandler failed:', err);
     }

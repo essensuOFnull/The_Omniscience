@@ -1,5 +1,6 @@
 import electronPkg from 'electron';
 const { BrowserWindow, screen, app } = electronPkg;
+import { attachToWebContents } from './ipc_browserContextMenu.js';
 
 export default async function () {
     /* получаем размеры экрана */
@@ -45,6 +46,8 @@ export default async function () {
         },
     });
 
+    attachToWebContents(global.mainWindow.webContents);
+    
     // Функция для отправки актуальных размеров окна в рендерер при изменении размера
     const sendWindowBounds = () => {
         if (!global.mainWindow || global.mainWindow.isDestroyed()) return;

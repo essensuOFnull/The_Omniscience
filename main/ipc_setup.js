@@ -10,4 +10,5 @@ export default function () {
   global.$.ipc_theme();
   global.$.ipc_nativeWindows();
   global.$.ipc_files();
+  global.$.ipc_browserContextMenu();
 }
