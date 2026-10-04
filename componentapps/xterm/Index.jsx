@@ -4,89 +4,83 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 
 const TerminalComponent = () => {
-	const containerRef = useRef(null);
-	const terminalRef = useRef(null);
-	const fitAddonRef = useRef(null);
+  const containerRef = useRef(null);
 
-	useEffect(() => {
-		const term = new Terminal({
-			cursorBlink: true,
-			theme: {
-				background: '#000000',
-				foreground: '#ffffff',
-			},
-		});
+  useEffect(() => {
+    const term = new Terminal({
+      cursorBlink: true,
+      theme: {
+        background: '#000000',
+        foreground: '#ffffff',
+      },
+    });
 
-		const fitAddon = new FitAddon();
-		term.loadAddon(fitAddon);
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
 
-		term.open(containerRef.current);
-		fitAddon.fit();
+    term.open(containerRef.current);
+    fitAddon.fit();
 
-		terminalRef.current = term;
-		fitAddonRef.current = fitAddon;
+    const api = window.electron_componentapp_xterm_API;
 
-		const api = window.electron_componentapp_xterm_API;
+    if (!api) {
+      console.warn('electron_componentapp_xterm_API не найден');
+      term.writeln('Добро пожаловать в терминал!');
+      term.writeln('(Для полноценной работы настройте preload)');
+      return () => term.dispose();
+    }
 
-		if (api) {
-			api.on('terminal-data', (data) => {
-				term.write(data);
-			});
+    // Слушаем данные от pty. offData — функция снятия подписки.
+    const offData = api.on('terminal-data', (data) => {
+      term.write(data);
+    });
 
-			term.onData((data) => {
-				api.send('terminal-input', data);
-			});
+    // Отправляем ввод в pty.
+    const dataDisposable = term.onData((data) => {
+      api.send('terminal-input', data);
+    });
 
-			// Отправляем начальные размеры
-			api.send('terminal-resize', { cols: term.cols, rows: term.rows });
+    // Сообщаем стартовые размеры и запускаем shell.
+    api.send('terminal-resize', { cols: term.cols, rows: term.rows });
+    api.send('terminal-start');
 
-			// Запускаем shell
-			api.send('terminal-start');
-		} else {
-			console.warn('electron_componentapp_xterm_API не найден');
-			term.writeln('Добро пожаловать в терминал!');
-			term.writeln('(Для полноценной работы настройте preload)');
-		}
+    // Подгонка размеров при изменении окна.
+    const handleResize = () => {
+      fitAddon.fit();
+      api.send('terminal-resize', { cols: term.cols, rows: term.rows });
+    };
+    window.addEventListener('resize', handleResize);
 
-		const handleResize = () => {
-			if (fitAddonRef.current && terminalRef.current) {
-				fitAddonRef.current.fit();
-				const t = terminalRef.current;
-				if (api) {
-					api.send('terminal-resize', { cols: t.cols, rows: t.rows });
-				}
-			}
-		};
+    return () => {
+      window.removeEventListener('resize', handleResize);
 
-		window.addEventListener('resize', handleResize);
+      // Явно просим main убить pty. Основная уборка — на стороне main
+      // через 'destroyed', но этот вызов помогает в 100% случаев.
+      try { api.send('terminal-exit'); } catch (_) {}
 
-		return () => {
-			window.removeEventListener('resize', handleResize);
-			if (terminalRef.current) {
-				terminalRef.current.dispose();
-			}
-			// Можно также отправить сигнал завершения, если нужно убить pty
-			// if (api) api.send('terminal-exit');
-		};
-	}, []);
+      // Снимаем слушатель, чтобы не накапливались при ре-монтировании.
+      offData?.();
 
-	return (
-		<div
-			ref={containerRef}
-			style={{
-				position: 'absolute',
-				top: 0,
-				left: 0,
-				width: '100vw',
-				height: '100vh',
-				overflow: 'hidden',
-				backgroundColor: '#1e1e1e',
-			}}
-		/>
-	);
+      // Отписываемся от ввода.
+      dataDisposable?.dispose();
+
+      term.dispose();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        backgroundColor: '#1e1e1e',
+      }}
+    />
+  );
 };
 
-// Монтируем в #root
 import ReactDOM from 'react-dom/client';
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<TerminalComponent />);
