@@ -41,7 +41,7 @@ install_packages() {
         curl git
       ;;
     arch|manjaro|endeavouros|garuda)
-      sudo pacman -S --needed --noconfirm \
+      sudo pacman -S --needed \
         kwin-x11 dbus xorg-xrandr wmctrl xdotool \
         xorg-setxkbmap xorg-xprop xorg-xdpyinfo \
         kglobalacceld kded kactivitymanagerd \
