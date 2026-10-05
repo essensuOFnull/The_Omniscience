@@ -8,6 +8,7 @@ import CropSquareIcon from '@mui/icons-material/CropSquare';
 import FilterNoneIcon from '@mui/icons-material/FilterNone';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CloseIcon from '@mui/icons-material/Close';
+import SearchIcon from '@mui/icons-material/Search';
 
 import ControlGrid from './ControlGrid';
 
@@ -208,7 +209,7 @@ export default function TopBar({
             <IconButton
               size="small"
               onClick={onCreateDesktop}
-              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0,WebkitAppRegion: 'no-drag', }}
+              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0, WebkitAppRegion: 'no-drag', }}
               title="Добавить рабочий стол"
             >
               <AddIcon style={{ fontSize: 14 }} />
@@ -217,15 +218,27 @@ export default function TopBar({
 
           {/* Системные кнопки главного окна DE — фиксированы справа */}
           <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
+            <IconButton
+              size="small"
+              onClick={onRequestSearch}
+              sx={{
+                color: '#fff',
+                width: 22,
+                height: 22,
+                WebkitAppRegion: 'no-drag',
+              }}
+            >
+              <SearchIcon style={{ fontSize: 14 }} />
+            </IconButton>
+            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
               {mainWinMaximized
                 ? <FilterNoneIcon style={{ fontSize: 14 }} />
                 : <CropSquareIcon style={{ fontSize: 14 }} />}
             </IconButton>
-            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
+            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
               <MinimizeIcon style={{ fontSize: 14 }} />
             </IconButton>
-            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22,WebkitAppRegion: 'no-drag', }}>
+            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
               <CloseIcon style={{ fontSize: 14 }} />
             </IconButton>
           </Box>

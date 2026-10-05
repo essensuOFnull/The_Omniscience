@@ -1,6 +1,6 @@
 import electronPkg from 'electron';
 const { ipcMain } = electronPkg;
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -173,5 +173,37 @@ export default function () {
         } catch (err) {
             return null;
         }
+    });
+
+    /* -------- Запуск KRunner -------- */
+    let krunnerBusy = false;
+
+    ipcMain.handle('shell:run-krunner', async () => {
+    if (krunnerBusy) return { ok: true }; // защита от двойного клика
+    krunnerBusy = true;
+    try {
+        // 1) Если krunner уже запущен — просто просим показать окно через DBus.
+        //    Это самый надёжный способ, без спавна второго процесса.
+        try {
+        await execAsync('qdbus org.kde.krunner /App display');
+        return { ok: true, via: 'dbus' };
+        } catch (_) {
+        // qdbus может не быть (или krunner не запущен) — падаем на spawn
+        }
+
+        // 2) Иначе — стартуем krunner как detached-процесс.
+        const child = spawn('krunner', [], {
+        detached: true,
+        stdio: 'ignore',
+        });
+        child.unref();
+        return { ok: true, via: 'spawn' };
+    } catch (err) {
+        console.error('[shell:run-krunner]', err.message);
+        return { ok: false, error: err.message };
+    } finally {
+        // отпускаем через небольшую задержку, чтобы двойной клик не создал второй процесс
+        setTimeout(() => { krunnerBusy = false; }, 300);
+    }
     });
 }

@@ -334,6 +334,7 @@ export default function Desktop({ rootBar }) {
 						actions.createDevToolsWindow(dId, activeWindowInfo.id);
 					}
 				}}
+				onRequestSearch={() => window.electron_desktop_API.openKRunner()}
 			/>
 		);
 

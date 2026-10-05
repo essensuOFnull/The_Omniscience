@@ -62,5 +62,6 @@
 		createFile: (dir, name) => ipcRenderer.invoke('fs:create-file', { dir, name }),
 		createFromTemplate: (dir, templatePath, name) =>
 			ipcRenderer.invoke('fs:create-from-template', { dir, templatePath, name }),
+		openKRunner: () => ipcRenderer.invoke('shell:run-krunner'),
 	});
 })();

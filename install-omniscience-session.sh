@@ -1,5 +1,8 @@
 #!/bin/bash
 # install-omniscience-session.sh
+# Только конфигурация и регистрация сессии.
+# Все системные пакеты ставит scripts/install-deps.sh.
+
 set -e
 
 OMNI_ROOT="${1:-$PWD}"
@@ -20,132 +23,6 @@ else
   exit 1
 fi
 echo "🐧 Дистрибутив: $DISTRO"
-
-install_packages() {
-  case "$DISTRO" in
-    ubuntu|debian|parrot|kali|linuxmint|pop)
-      sudo apt update && sudo apt install -y \
-        kwin-x11 dbus-x11 x11-xserver-utils wmctrl xdotool \
-        x11-xkb-utils x11-utils xdpyinfo \
-        kglobalacceld kded5 kactivitymanagerd \
-        polkit-kde-agent-1 \
-        kscreen powerdevil kde-config-gtk-style \
-        kio kio-extras \
-        plasma-pa plasma-nm \
-        plasma-workspace \
-        bluedevil qpwgraph \
-        systemsettings \
-        pipewire pipewire-pulse pipewire-jack pipewire-alsa wireplumber \
-        libspa-0.2-bluetooth \
-        easyeffects lsp-plugins-lv2 lsp-plugins-vst \
-        curl git
-      ;;
-    arch|manjaro|endeavouros|garuda)
-      sudo pacman -S --needed \
-        kwin-x11 dbus xorg-xrandr wmctrl xdotool \
-        xorg-setxkbmap xorg-xprop xorg-xdpyinfo \
-        kglobalacceld kded kactivitymanagerd \
-        polkit-kde-agent \
-        kscreen powerdevil kde-gtk-config \
-        kio kio-extras \
-        plasma-pa plasma-nm \
-        plasma-workspace \
-        bluedevil qpwgraph \
-        systemsettings \
-        pipewire pipewire-pulse pipewire-jack pipewire-alsa wireplumber \
-        easyeffects lsp-plugins calf \
-        curl git
-      ;;
-    fedora|rhel|centos)
-      sudo dnf install -y \
-        kwin-x11 dbus-x11 xrandr wmctrl xdotool \
-        xkbcomp xkeyboard-config xprop xdpyinfo \
-        kglobalacceld kf6-kded kactivitymanagerd \
-        polkit-kde \
-        kscreen powerdevil kde-gtk-config \
-        kf6-kio kf6-kio-extras \
-        plasma-pa plasma-nm \
-        plasma-workspace \
-        bluedevil qpwgraph \
-        systemsettings \
-        pipewire pipewire-pulseaudio pipewire-jack-audio-connection-kit pipewire-alsa \
-        wireplumber easyeffects lsp-plugins \
-        curl git
-      ;;
-    opensuse*|sles)
-      sudo zypper install -y \
-        kwin6-x11 dbus-1-x11 xrandr wmctrl xdotool \
-        xkeyboard-config xprop xdpyinfo \
-        kglobalacceld6 kded6 kactivitymanagerd6 \
-        polkit-kde-agent-1 \
-        kscreen6 powerdevil6 kde-gtk-config6 \
-        kio6 kio-extras6 \
-        plasma6-pa plasma6-nm \
-        plasma6-workspace \
-        bluedevil6 qpwgraph \
-        systemsettings6 \
-        pipewire pipewire-pulseaudio pipewire-jack pipewire-alsa \
-        wireplumber easyeffects lsp-plugins \
-        curl git
-      ;;
-    void)
-      sudo xbps-install -y \
-        kwin dbus xrandr wmctrl xdotool \
-        setxkbmap xprop xdpyinfo \
-        kglobalacceld kded kactivitymanagerd \
-        polkit-kde-agent \
-        kscreen powerdevil kde-gtk-config \
-        kio kio-extras \
-        plasma-pa plasma-nm \
-        plasma-workspace \
-        bluedevil qpwgraph \
-        systemsettings \
-        pipewire pipewire-pulse libjack-pipewire wireplumber \
-        easyeffects lsp-plugins \
-        curl git
-      ;;
-    alpine)
-      sudo apk add \
-        kwin dbus xrandr wmctrl xdotool \
-        xkeyboard-config xprop xdpyinfo \
-        kglobalacceld kded kactivitymanagerd \
-        polkit-kde-agent \
-        kscreen powerdevil kde-gtk-config \
-        kio kio-extras \
-        plasma-pa plasma-nm \
-        plasma-workspace \
-        bluedevil qpwgraph \
-        systemsettings \
-        pipewire pipewire-pulse pipewire-jack wireplumber \
-        easyeffects lsp-plugins \
-        curl git
-      ;;
-    gentoo)
-      sudo emerge \
-        kde-plasma/kwin-x11 sys-apps/dbus x11-apps/xrandr \
-        x11-misc/wmctrl x11-misc/xdotool \
-        x11-misc/setxkbmap x11-apps/xprop x11-apps/xdpyinfo \
-        kde-plasma/kglobalacceld kde-frameworks/kded kde-plasma/kactivitymanagerd \
-        kde-plasma/polkit-kde-agent \
-        kde-plasma/kscreen kde-plasma/powerdevil kde-misc/kde-gtk-config \
-        kde-frameworks/kio kde-apps/kio-extras \
-        kde-plasma/plasma-pa kde-plasma/plasma-nm \
-        kde-plasma/plasma-workspace \
-        kde-plasma/bluedevil media-sound/qpwgraph \
-        kde-plasma/systemsettings \
-        media-video/pipewire media-sound/wireplumber \
-        media-sound/easyeffects media-plugins/lsp-plugins \
-        net-misc/curl dev-vcs/git
-      ;;
-    *)
-      echo "❌ Неизвестный дистрибутив: $DISTRO"
-      exit 1
-      ;;
-  esac
-}
-
-echo "📥 Устанавливаю пакеты..."
-install_packages
 
 # --- Конфиги KWin ---
 echo "📝 Создаю конфиги..."
