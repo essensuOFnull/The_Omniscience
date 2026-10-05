@@ -26,74 +26,98 @@ install_packages() {
     ubuntu|debian|parrot|kali|linuxmint|pop)
       sudo apt update && sudo apt install -y \
         kwin-x11 dbus-x11 x11-xserver-utils wmctrl xdotool \
-        x11-xkb-utils x11-utils xdpyinfo x11-xserver-utils \
-        kglobalacceld \
-        network-manager network-manager-applet \
-        xsettingsd systemsettings \
+        x11-xkb-utils x11-utils xdpyinfo \
+        kglobalacceld kded5 kactivitymanagerd \
+        polkit-kde-agent-1 \
+        kscreen powerdevil kde-config-gtk-style \
+        kio kio-extras \
+        plasma-pa plasma-nm \
+        plasma-workspace \
+        bluedevil qpwgraph \
+        systemsettings \
         pipewire pipewire-pulse pipewire-jack pipewire-alsa wireplumber \
         libspa-0.2-bluetooth \
         easyeffects lsp-plugins-lv2 lsp-plugins-vst \
-        bluedevil plasma-pa qpwgraph \
         curl git
       ;;
     arch|manjaro|endeavouros|garuda)
-      sudo pacman -S --needed \
+      sudo pacman -S --needed --noconfirm \
         kwin-x11 dbus xorg-xrandr wmctrl xdotool \
         xorg-setxkbmap xorg-xprop xorg-xdpyinfo \
-        kglobalacceld \
-        networkmanager network-manager-applet \
-        xsettingsd systemsettings \
+        kglobalacceld kded kactivitymanagerd \
+        polkit-kde-agent \
+        kscreen powerdevil kde-gtk-config \
+        kio kio-extras \
+        plasma-pa plasma-nm \
+        plasma-workspace \
+        bluedevil qpwgraph \
+        systemsettings \
         pipewire pipewire-pulse pipewire-jack pipewire-alsa wireplumber \
         easyeffects lsp-plugins calf \
-        bluedevil plasma-pa qpwgraph \
         curl git
       ;;
     fedora|rhel|centos)
       sudo dnf install -y \
-        kwin dbus-x11 xrandr wmctrl xdotool \
+        kwin-x11 dbus-x11 xrandr wmctrl xdotool \
         xkbcomp xkeyboard-config xprop xdpyinfo \
-        kglobalacceld \
-        NetworkManager network-manager-applet \
-        xsettingsd systemsettings \
+        kglobalacceld kf6-kded kactivitymanagerd \
+        polkit-kde \
+        kscreen powerdevil kde-gtk-config \
+        kf6-kio kf6-kio-extras \
+        plasma-pa plasma-nm \
+        plasma-workspace \
+        bluedevil qpwgraph \
+        systemsettings \
         pipewire pipewire-pulseaudio pipewire-jack-audio-connection-kit pipewire-alsa \
         wireplumber easyeffects lsp-plugins \
-        bluedevil plasma-pa qpwgraph \
         curl git
       ;;
     opensuse*|sles)
       sudo zypper install -y \
         kwin6-x11 dbus-1-x11 xrandr wmctrl xdotool \
         xkeyboard-config xprop xdpyinfo \
-        kglobalacceld6 \
-        NetworkManager NetworkManager-applet \
-        xsettingsd systemsettings6 \
+        kglobalacceld6 kded6 kactivitymanagerd6 \
+        polkit-kde-agent-1 \
+        kscreen6 powerdevil6 kde-gtk-config6 \
+        kio6 kio-extras6 \
+        plasma6-pa plasma6-nm \
+        plasma6-workspace \
+        bluedevil6 qpwgraph \
+        systemsettings6 \
         pipewire pipewire-pulseaudio pipewire-jack pipewire-alsa \
         wireplumber easyeffects lsp-plugins \
-        bluedevil6 plasma6-pa qpwgraph \
         curl git
       ;;
     void)
       sudo xbps-install -y \
-        kwin-x11 dbus xrandr wmctrl xdotool \
+        kwin dbus xrandr wmctrl xdotool \
         setxkbmap xprop xdpyinfo \
-        kglobalacceld \
-        NetworkManager network-manager-applet \
-        xsettingsd systemsettings \
+        kglobalacceld kded kactivitymanagerd \
+        polkit-kde-agent \
+        kscreen powerdevil kde-gtk-config \
+        kio kio-extras \
+        plasma-pa plasma-nm \
+        plasma-workspace \
+        bluedevil qpwgraph \
+        systemsettings \
         pipewire pipewire-pulse libjack-pipewire wireplumber \
         easyeffects lsp-plugins \
-        bluedevil plasma-pa qpwgraph \
         curl git
       ;;
     alpine)
       sudo apk add \
         kwin dbus xrandr wmctrl xdotool \
         xkeyboard-config xprop xdpyinfo \
-        kglobalacceld \
-        networkmanager network-manager-applet \
-        xsettingsd systemsettings \
+        kglobalacceld kded kactivitymanagerd \
+        polkit-kde-agent \
+        kscreen powerdevil kde-gtk-config \
+        kio kio-extras \
+        plasma-pa plasma-nm \
+        plasma-workspace \
+        bluedevil qpwgraph \
+        systemsettings \
         pipewire pipewire-pulse pipewire-jack wireplumber \
         easyeffects lsp-plugins \
-        bluedevil plasma-pa qpwgraph \
         curl git
       ;;
     gentoo)
@@ -101,12 +125,16 @@ install_packages() {
         kde-plasma/kwin-x11 sys-apps/dbus x11-apps/xrandr \
         x11-misc/wmctrl x11-misc/xdotool \
         x11-misc/setxkbmap x11-apps/xprop x11-apps/xdpyinfo \
-        kde-plasma/kglobalacceld \
-        net-misc/networkmanager gnome-extra/nm-applet \
-        x11-misc/xsettingsd kde-plasma/systemsettings \
+        kde-plasma/kglobalacceld kde-frameworks/kded kde-plasma/kactivitymanagerd \
+        kde-plasma/polkit-kde-agent \
+        kde-plasma/kscreen kde-plasma/powerdevil kde-misc/kde-gtk-config \
+        kde-frameworks/kio kde-apps/kio-extras \
+        kde-plasma/plasma-pa kde-plasma/plasma-nm \
+        kde-plasma/plasma-workspace \
+        kde-plasma/bluedevil media-sound/qpwgraph \
+        kde-plasma/systemsettings \
         media-video/pipewire media-sound/wireplumber \
         media-sound/easyeffects media-plugins/lsp-plugins \
-        kde-plasma/bluedevil kde-plasma/plasma-pa media-sound/qpwgraph \
         net-misc/curl dev-vcs/git
       ;;
     *)
@@ -119,7 +147,7 @@ install_packages() {
 echo "📥 Устанавливаю пакеты..."
 install_packages
 
-# --- Конфиги ---
+# --- Конфиги KWin ---
 echo "📝 Создаю конфиги..."
 sudo mkdir -p /etc/omniscience
 
@@ -173,10 +201,62 @@ fsplevel=0
 fsplevelrule=2
 EOF
 
-sudo tee /etc/omniscience/keyboard.conf > /dev/null << 'EOF'
-LAYOUTS="us,ru"
-OPTIONS="grp:alt_shift_toggle,grp_led:scroll"
+# --- Раскладка через KDE (kxkbrc) ---
+echo "📝 Настраиваю раскладку через kxkbrc..."
+mkdir -p "$HOME/.config"
+cat > "$HOME/.config/kxkbrc" << 'EOF'
+[Layout]
+DisplayNames=
+LayoutList=us,ru
+Model=pc105
+Options=grp:alt_shift_toggle,grp_led:scroll
+Use=true
+VariantList=,
 EOF
+
+# --- KScreen: максимальное разрешение и частота ---
+echo "📝 Настраиваю KScreen на максимальные параметры..."
+PRIMARY_OUT=$(xrandr --query 2>/dev/null | grep ' connected primary' | awk '{print $1}')
+[ -z "$PRIMARY_OUT" ] && PRIMARY_OUT=$(xrandr --query 2>/dev/null | grep ' connected' | head -1 | awk '{print $1}')
+
+if [ -n "$PRIMARY_OUT" ]; then
+  MODE_LINE=$(xrandr --query | awk -v out="$PRIMARY_OUT" '
+    $0 ~ "^"out" connected" { found=1; next }
+    found && /^[[:space:]]*[0-9]/ { print; exit }
+  ')
+  if [ -n "$MODE_LINE" ]; then
+    RES=$(echo "$MODE_LINE" | awk '{print $1}')
+    MAX_RATE=$(echo "$MODE_LINE" | grep -oE '[0-9]+\.[0-9]+' | sort -rn | head -1)
+    MAX_RATE_INT=${MAX_RATE%.*}
+    RES_W=$(echo "$RES" | cut -d'x' -f1)
+    RES_H=$(echo "$RES" | cut -d'x' -f2)
+
+    mkdir -p "$HOME/.local/share/kscreen"
+    cat > "$HOME/.local/share/kscreen/$(hostname).json" << EOF
+{
+    "outputs": {
+        "$PRIMARY_OUT": {
+            "id": "$PRIMARY_OUT",
+            "enabled": true,
+            "mode": {
+                "size": { "width": $RES_W, "height": $RES_H },
+                "refresh": $((MAX_RATE_INT * 1000))
+            },
+            "position": { "x": 0, "y": 0 },
+            "primary": true,
+            "scale": 1.0,
+            "rotation": "none"
+        }
+    }
+}
+EOF
+    echo "✅ KScreen настроен: $PRIMARY_OUT → ${RES}@${MAX_RATE}Hz"
+  else
+    echo "⚠️  Не удалось определить режим для $PRIMARY_OUT"
+  fi
+else
+  echo "⚠️  Не найден подключённый выход — KScreen будет использовать дефолты"
+fi
 
 echo "$OMNI_ROOT" | sudo tee /etc/omniscience/project-root > /dev/null
 
@@ -190,25 +270,38 @@ context.properties = {
 }
 EOF
 
-# --- EasyEffects как user-сервис (единственный systemd-юнит) ---
-echo "📝 Устанавливаю EasyEffects user-сервис..."
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/easyeffects.service" << 'EOF'
-[Unit]
-Description=EasyEffects Service
-After=pipewire.service
-Wants=pipewire.service
+# --- Автозагрузка KDE (~/.config/autostart) ---
+# Обе программы кладём в ~/.config/autostart — их видит и редактирует
+# systemsettings → Автозагрузка и завершение работы.
+# Запускает их наш сессионный скрипт (см. launch_autostart в omniscience-session.sh),
+# потому что без ksmserver стандартный KDE-автозапуск сам не сработает.
+echo "📝 Настраиваю автозагрузку (KDE autostart)..."
+mkdir -p "$HOME/.config/autostart"
 
-[Service]
-Type=dbus
-BusName=com.github.wwmm.easyeffects
-ExecStart=/usr/bin/easyeffects --service-mode
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
+cat > "$HOME/.config/autostart/easyeffects.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=EasyEffects
+Comment=Аудиоэффекты PipeWire
+Exec=easyeffects --service-mode
+Icon=easyeffects
+Terminal=false
+X-KDE-autostart-after=pipewire
 EOF
-systemctl --user daemon-reload 2>/dev/null || true
+
+cat > "$HOME/.config/autostart/systemsettings.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=System Settings
+Comment=Настройки системы KDE
+Exec=systemsettings
+Icon=preferences-system
+Terminal=false
+X-KDE-autostart-after=kded
+EOF
+
+chmod 644 "$HOME/.config/autostart/easyeffects.desktop" \
+           "$HOME/.config/autostart/systemsettings.desktop"
 
 # --- Пресеты EasyEffects ---
 echo "📥 Устанавливаю пресеты EasyEffects..."
@@ -244,5 +337,5 @@ sudo chmod 644 /usr/share/xsessions/omniscience.desktop
 echo ""
 echo "✅ Готово! Сессия зарегистрирована."
 echo ""
-echo "📋 Если сессия падает — лог здесь: /tmp/omniscience-session.log"
-echo "   Смотри так: cat /tmp/omniscience-session.log"
+echo "📋 Лог сессии: /tmp/omniscience-session.log"
+echo "   Смотреть:  cat /tmp/omniscience-session.log"
