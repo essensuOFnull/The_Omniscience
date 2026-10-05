@@ -1,136 +1,75 @@
 #!/bin/bash
+# scripts/install-shortcuts.sh
+# Устанавливает общепринятые сочетания клавиш через sxhkd.
 
-# ============================================================
-# Omniscience — регистрация общепринятых сочетаний клавиш
-# через штатный KGlobalAccel (KDE)
-# ============================================================
+set -e
 
-set -u
-
-# --- Определяем инструмент (KDE 5 или 6) ---
-if command -v kwriteconfig6 > /dev/null 2>&1; then
-  KW="kwriteconfig6"
-  KQUIT="kquitapp6"
-  KSTART="kstart"
-elif command -v kwriteconfig5 > /dev/null 2>&1; then
-  KW="kwriteconfig5"
-  KQUIT="kquitapp5"
-  KSTART="kstart5"
-else
-  echo "[shortcuts] ❌ не найден kwriteconfig5/6. KDE установлен?"
-  exit 1
+if ! command -v sxhkd > /dev/null 2>&1; then
+  echo "📥 Устанавливаю sxhkd..."
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    case "$ID" in
+      ubuntu|debian|parrot|kali|linuxmint|pop) sudo apt install -y sxhkd ;;
+      arch|manjaro|endeavouros|garuda) sudo pacman -S --noconfirm sxhkd ;;
+      fedora|rhel|centos) sudo dnf install -y sxhkd ;;
+      opensuse*|sles) sudo zypper install -y sxhkd ;;
+      void) sudo xbps-install -y sxhkd ;;
+      alpine) sudo apk add sxhkd ;;
+      gentoo) sudo emerge x11-misc/sxhkd ;;
+      *) echo "⚠️  Установите sxhkd вручную"; exit 0 ;;
+    esac
+  fi
 fi
 
-echo "[shortcuts] использую $KW"
+# Проверяем, что есть папка для скриншотов
+mkdir -p "$HOME/Pictures/Screenshots"
 
-# --- Папки ---
-APPS_DIR="$HOME/.local/share/applications"
-mkdir -p "$APPS_DIR"
+CONFIG_DIR="$HOME/.config/sxhkd"
+mkdir -p "$CONFIG_DIR"
 
-# --- Определяем доступные приложения ---
-# Если чего-то нет — используем fallback.
-pick() {
-  for cmd in "$@"; do
-    if command -v "$cmd" > /dev/null 2>&1; then
-      echo "$cmd"
-      return 0
-    fi
-  done
-  echo "$1"
-}
+cat > "$CONFIG_DIR/sxhkdrc" << 'EOF'
+# ============================================================
+# Omniscience — горячие клавиши
+# ============================================================
 
-TERMINAL=$(pick xterm xfce4-terminal konsole gnome-terminal)
-FILEMAN=$(pick dolphin thunar nautilus pcmanfm nemo)
-BROWSER=$(pick firefox google-chrome chromium brave-browser)
+# Терминал
+super + Return
+    xterm
 
-echo "[shortcuts] терминал: $TERMINAL"
-echo "[shortcuts] файлы:    $FILEMAN"
-echo "[shortcuts] браузер:  $BROWSER"
+# Файловый менеджер (Chonky как приложение)
+super + e
+    chonky
 
-# --- 1. Создаём .desktop файлы для приложений ---
-mk_desktop() {
-  local id="$1"
-  local name="$2"
-  local exec_cmd="$3"
-  local icon="$4"
-  cat > "$APPS_DIR/$id.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=$name
-Exec=$exec_cmd
-Icon=$icon
-NoDisplay=true
-X-KDE-GlobalAccel-CommandShortcut=true
+# Показать рабочий стол
+super + d
+    sh -c 'xprop -root _NET_SHOWING_DESKTOP | grep -q "= 1" && wmctrl -k off || wmctrl -k on'
+
+# --- Скриншоты (Spectacle) ---
+# Весь экран
+Print
+    spectacle -f -b -n -o ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png
+
+# Область
+shift + Print
+    spectacle -r -b -n -o ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png
+
+# Активное окно
+super + Print
+    spectacle -a -b -n -o ~/Pictures/Screenshots/$(date +%Y-%m-%d_%H-%M-%S).png
+
+# --- Управление громкостью ---
+XF86AudioRaiseVolume
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+
+
+XF86AudioLowerVolume
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+
+XF86AudioMute
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+
+# --- Переключение раскладки (если setxkbmap не справляется) ---
+alt + shift
+    sh -c 'current=$(xkb-switch -p 2>/dev/null || echo "us"); if [ "$current" = "us" ]; then xkb-switch -s ru; else xkb-switch -s us; fi'
 EOF
-  echo "[shortcuts] .desktop: $id.desktop"
-}
 
-mk_desktop "omni-terminal" "Omniscience Terminal" "$TERMINAL" "utilities-terminal"
-mk_desktop "omni-filemanager" "Omniscience Files"    "$FILEMAN"  "system-file-manager"
-mk_desktop "omni-browser"     "Omniscience Browser"  "$BROWSER"  "web-browser"
-
-# --- 2. Настраиваем сочетания ---
-set_shortcut() {
-  local group="$1"
-  local key="$2"
-  local value="$3"
-  $KW --file kglobalshortcutsrc \
-      --group "services" \
-      --group "$group" \
-      --key "$key" \
-      "$value" 2>/dev/null || true
-  echo "[shortcuts] $group.$key = $value"
-}
-
-# Терминал: Meta+Enter
-set_shortcut "omni-terminal.desktop" "_launch" "Meta+Return,none,Omniscience Terminal"
-
-# Файловый менеджер: Meta+E
-set_shortcut "omni-filemanager.desktop" "_launch" "Meta+E,none,Omniscience Files"
-
-# Браузер: Meta+B
-set_shortcut "omni-browser.desktop" "_launch" "Meta+B,none,Omniscience Browser"
-
-# --- 3. Системные сочетания KWin ---
-# Показать рабочий стол: Meta+D
-$KW --file kglobalshortcutsrc \
-    --group "kwin" \
-    --key "ShowDesktop" \
-    "Meta+D,none,Show Desktop" 2>/dev/null || true
-
-# Закрыть окно: Alt+F4 (на случай, если сбилось)
-$KW --file kglobalshortcutsrc \
-    --group "kwin" \
-    --key "Window Close" \
-    "Alt+F4,none,Close Window" 2>/dev/null || true
-
-# --- 4. Meta как модификатор (открывает KRunner / меню) ---
-$KW --file kwinrc \
-    --group "ModifierOnlyShortcuts" \
-    --key "Meta" \
-    "org.kde.krunner,/App,,toggleDisplay" 2>/dev/null || true
-echo "[shortcuts] Meta -> KRunner"
-
-# --- 5. Перезагружаем конфигурацию ---
-echo "[shortcuts] перезагружаю kglobalaccel..."
-if command -v qdbus > /dev/null 2>&1; then
-  qdbus org.kde.kglobalaccel /kglobalaccel \
-        org.kde.KGlobalAccel.reloadConfiguration 2>/dev/null || true
-  qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
-fi
-
-# Fallback: перезапуск демона
-$KQUIT kglobalaccel > /dev/null 2>&1 || true
-sleep 1
-nohup /usr/lib/kglobalacceld > /dev/null 2>&1 &
-disown 2>/dev/null || true
-
-echo ""
-echo "✅ Сочетания установлены:"
-echo "   Meta+Enter  → терминал ($TERMINAL)"
-echo "   Meta+E      → файлы ($FILEMAN)"
-echo "   Meta+B      → браузер ($BROWSER)"
-echo "   Meta+D      → показать рабочий стол"
-echo "   Alt+F4      → закрыть окно"
-echo "   Meta        → KRunner"
-echo ""
+echo "✅ Горячие клавиши установлены в $CONFIG_DIR/sxhkdrc"
