@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { Box, Button, IconButton, Tooltip } from '@mui/material';
+import { Box, Button, IconButton} from '@mui/material';
+import Tooltip, { tooltipClasses } from '@mui/material/Tooltip';
+import { styled } from '@mui/material/styles';
 
 // Иконки
 import MenuIcon from '@mui/icons-material/Menu';
@@ -12,14 +14,19 @@ import SearchIcon from '@mui/icons-material/Search';
 
 import ControlGrid from './ControlGrid';
 
+const NoMaxWidthTooltip = styled(({ className, ...props }) => (
+  <Tooltip describeChild {...props} classes={{ popper: className }} />
+))({
+  [`& .${tooltipClasses.tooltip}`]: {
+    maxWidth: 'none',
+  },
+});
+
 const CELL = 20;
 const GAP = 1;
 const CROSS_W = CELL * 5 + GAP * 4;
 const CROSS_H = CELL * 3 + GAP * 2;
 const TOPBAR_H = 72;
-
-const EMPTY = 'rgba(255,255,255,0.03)';
-const HOVER = 'rgba(168,85,247,0.25)';
 
 // Общий стиль для скрытия скроллбара, но сохранения скролла
 const HIDDEN_SCROLLBAR = {
@@ -27,41 +34,6 @@ const HIDDEN_SCROLLBAR = {
   '&::-webkit-scrollbar-thumb': { background: 'transparent' },
   '&::-webkit-scrollbar-track': { background: 'transparent' },
 };
-
-/* ------------------------------------------------------------------ */
-/* Ячейка крестовины                                                   */
-/* ------------------------------------------------------------------ */
-
-function CrossCell({ children, cursor, onClick, onMouseDown, title, disabled, col, row }) {
-  const [hover, setHover] = React.useState(false);
-  return (
-    <Tooltip title={title || ''} enterDelay={400}>
-      <div
-        onMouseDown={disabled ? undefined : onMouseDown}
-        onClick={disabled ? undefined : onClick}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        style={{
-          width: CELL,
-          height: CELL,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: hover && !disabled ? HOVER : EMPTY,
-          cursor: disabled ? 'default' : (cursor || 'pointer'),
-          borderRadius: 3,
-          color: disabled ? 'rgba(255,255,255,0.25)' : '#fff',
-          transition: 'background 0.1s',
-          userSelect: 'none',
-          gridColumn: col,
-          gridRow: row,
-        }}
-      >
-        {children}
-      </div>
-    </Tooltip>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Хелпер: горизонтальный скролл колесом мыши                          */
@@ -299,35 +271,60 @@ export default function TopBar({
                 const isActive = win.id === focusedWindowId;
                 const title = win.title || app?.title || (win.kind === 'devtools' ? 'Консоль' : 'Окно');
                 return (
-                  <Button
+                  <NoMaxWidthTooltip
                     key={win.id}
-                    size="small"
-                    variant="contained"
-                    onClick={() => onFocusView(win)}
-                    sx={{
-                      border: isActive ? '1px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                      color: '#fff',
-                      textTransform: 'none',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      height: 24,
-                      minWidth: 0,
-                      fontSize: 11,
-                      px: 1,
-                      bgcolor: isActive ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.05)',
-                      '&:hover': { border: '1px solid #a855f7' },
-                      WebkitAppRegion: 'no-drag',
+                    describeChild
+                    title={title}
+                    placement="top"
+                    slotProps={{
+                      popper: {
+                        modifiers: [
+                          { name: 'flip', enabled: false },
+                        ],
+                      },
                     }}
                   >
-                    {title}
-                  </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => onFocusView(win)}
+                      sx={{
+                        border: isActive ? '1px solid #fff' : '1px solid rgba(255,255,255,0.15)',
+                        color: '#fff',
+                        textTransform: 'none',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        height: 24,
+                        minWidth: 0,
+                        fontSize: 11,
+                        px: 1,
+                        bgcolor: isActive ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.05)',
+                        '&:hover': { border: '1px solid #a855f7' },
+                        WebkitAppRegion: 'no-drag',
+                      }}
+                    >
+                      {title}
+                    </Button>
+                  </NoMaxWidthTooltip>
                 );
               })}
 
             {nativeWindows.map((nw) => {
               const isActive = activeNative?.id === nw.id;
               return (
-                <Tooltip key={nw.id} title={`${nw.wmClass} — ${nw.title}`}>
+                <NoMaxWidthTooltip
+                  key={nw.id}
+                  describeChild
+                  title={`${nw.wmClass} — ${nw.title}`}
+                  placement="top"
+                  slotProps={{
+                    popper: {
+                      modifiers: [
+                        { name: 'flip', enabled: false },
+                      ],
+                    },
+                  }}
+                >
                   <Button
                     size="small"
                     variant="contained"
@@ -352,7 +349,7 @@ export default function TopBar({
                   >
                     🖥️ {nw.title || nw.wmClass || 'Окно'}
                   </Button>
-                </Tooltip>
+                </NoMaxWidthTooltip>
               );
             })}
           </Box>
