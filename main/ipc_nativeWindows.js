@@ -179,31 +179,44 @@ export default function () {
     let krunnerBusy = false;
 
     ipcMain.handle('shell:run-krunner', async () => {
-    if (krunnerBusy) return { ok: true }; // защита от двойного клика
-    krunnerBusy = true;
-    try {
-        // 1) Если krunner уже запущен — просто просим показать окно через DBus.
-        //    Это самый надёжный способ, без спавна второго процесса.
+        if (krunnerBusy) return { ok: true }; // защита от двойного клика
+        krunnerBusy = true;
         try {
-        await execAsync('qdbus org.kde.krunner /App display');
-        return { ok: true, via: 'dbus' };
-        } catch (_) {
-        // qdbus может не быть (или krunner не запущен) — падаем на spawn
-        }
+            // 1) Если krunner уже запущен — просто просим показать окно через DBus.
+            //    Это самый надёжный способ, без спавна второго процесса.
+            try {
+                await execAsync('qdbus org.kde.krunner /App display');
+                return { ok: true, via: 'dbus' };
+            } catch (_) {
+                // qdbus может не быть (или krunner не запущен) — падаем на spawn
+            }
 
-        // 2) Иначе — стартуем krunner как detached-процесс.
-        const child = spawn('krunner', [], {
-        detached: true,
-        stdio: 'ignore',
-        });
-        child.unref();
-        return { ok: true, via: 'spawn' };
-    } catch (err) {
-        console.error('[shell:run-krunner]', err.message);
-        return { ok: false, error: err.message };
-    } finally {
-        // отпускаем через небольшую задержку, чтобы двойной клик не создал второй процесс
-        setTimeout(() => { krunnerBusy = false; }, 300);
-    }
+            // 2) Иначе — стартуем krunner как detached-процесс.
+            const child = spawn('krunner', [], {
+                detached: true,
+                stdio: 'ignore',
+            });
+            child.unref();
+            return { ok: true, via: 'spawn' };
+        } catch (err) {
+            console.error('[shell:run-krunner]', err.message);
+            return { ok: false, error: err.message };
+        } finally {
+            // отпускаем через небольшую задержку, чтобы двойной клик не создал второй процесс
+            setTimeout(() => { krunnerBusy = false; }, 300);
+        }
+    });
+    ipcMain.handle('shell:systemsettings', async () => {
+        try {
+            const child = spawn('systemsettings', [], {
+                detached: true,
+                stdio: 'ignore',
+            });
+            child.unref();
+            return { ok: true, via: 'spawn' };
+        } catch (err) {
+            console.error('[shell:systemsettings]', err.message);
+            return { ok: false, error: err.message };
+        }
     });
 }

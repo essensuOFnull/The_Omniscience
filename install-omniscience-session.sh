@@ -166,19 +166,7 @@ Terminal=false
 X-KDE-autostart-after=pipewire
 EOF
 
-cat > "$HOME/.config/autostart/systemsettings.desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=System Settings
-Comment=Настройки системы KDE
-Exec=systemsettings
-Icon=preferences-system
-Terminal=false
-X-KDE-autostart-after=kded
-EOF
-
-chmod 644 "$HOME/.config/autostart/easyeffects.desktop" \
-           "$HOME/.config/autostart/systemsettings.desktop"
+chmod 644 "$HOME/.config/autostart/easyeffects.desktop"
 
 # --- Пресеты EasyEffects ---
 echo "📥 Устанавливаю пресеты EasyEffects..."

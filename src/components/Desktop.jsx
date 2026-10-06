@@ -335,6 +335,7 @@ export default function Desktop({ rootBar }) {
 					}
 				}}
 				onRequestSearch={() => window.electron_desktop_API.openKRunner()}
+				onRequestSettings={() => window.electron_desktop_API.openSystemSettings()}
 			/>
 		);
 

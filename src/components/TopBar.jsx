@@ -11,6 +11,7 @@ import FilterNoneIcon from '@mui/icons-material/FilterNone';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 import ControlGrid from './ControlGrid';
 
@@ -71,6 +72,7 @@ export default function TopBar({
   actions,
   onOpenDevTools,
   onRequestSearch,
+  onRequestSettings
 }) {
   return (
     <Box
@@ -190,6 +192,18 @@ export default function TopBar({
 
           {/* Системные кнопки главного окна DE — фиксированы справа */}
           <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+            <IconButton
+              size="small"
+              onClick={onRequestSettings}
+              sx={{
+                color: '#fff',
+                width: 22,
+                height: 22,
+                WebkitAppRegion: 'no-drag',
+              }}
+            >
+              <SettingsIcon style={{ fontSize: 14 }} />
+            </IconButton>
             <IconButton
               size="small"
               onClick={onRequestSearch}
