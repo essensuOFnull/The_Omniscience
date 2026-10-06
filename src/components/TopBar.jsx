@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Box, Button, IconButton} from '@mui/material';
+import React from 'react';
+import { Box, Button, IconButton } from '@mui/material';
 import Tooltip, { tooltipClasses } from '@mui/material/Tooltip';
 import { styled } from '@mui/material/styles';
 
@@ -12,8 +12,15 @@ import MinimizeIcon from '@mui/icons-material/Minimize';
 import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
 import SettingsIcon from '@mui/icons-material/Settings';
+import TerminalIcon from '@mui/icons-material/Terminal';
+import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
+import ExtensionIcon from '@mui/icons-material/Extension';
 
 import ControlGrid from './ControlGrid';
+
+/* ------------------------------------------------------------------ */
+/* Тултип без ограничения ширины                                       */
+/* ------------------------------------------------------------------ */
 
 const NoMaxWidthTooltip = styled(({ className, ...props }) => (
   <Tooltip describeChild {...props} classes={{ popper: className }} />
@@ -23,18 +30,25 @@ const NoMaxWidthTooltip = styled(({ className, ...props }) => (
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* Константы                                                           */
+/* ------------------------------------------------------------------ */
+
 const CELL = 20;
 const GAP = 1;
 const CROSS_W = CELL * 5 + GAP * 4;
 const CROSS_H = CELL * 3 + GAP * 2;
 const TOPBAR_H = 72;
 
-// Общий стиль для скрытия скроллбара, но сохранения скролла
 const HIDDEN_SCROLLBAR = {
   '&::-webkit-scrollbar': { height: 0, width: 0 },
   '&::-webkit-scrollbar-thumb': { background: 'transparent' },
   '&::-webkit-scrollbar-track': { background: 'transparent' },
 };
+
+const BORDER_ACTIVE = '2px solid #a855f7';
+const BORDER_NORMAL = '1px solid #ffffff';
+const BORDER_MINIMIZED = '1px dashed rgba(255,255,255,0.55)';
 
 /* ------------------------------------------------------------------ */
 /* Хелпер: горизонтальный скролл колесом мыши                          */
@@ -45,6 +59,118 @@ const handleWheelScroll = (e) => {
     e.currentTarget.scrollLeft += e.deltaY;
   }
 };
+
+/* ------------------------------------------------------------------ */
+/* Иконка нативного окна              */
+/* ------------------------------------------------------------------ */
+
+function resolveNativeIcon(nw, apps) {
+  // main теперь присылает готовую data-URI иконку в nw.icon
+  if (nw?.icon) return nw.icon;
+
+  // fallback — если main не нашёл иконку в системных темах
+  if (!nw?.wmClass) return null;
+  const parts = String(nw.wmClass).toLowerCase().split('.').filter(Boolean);
+  for (const part of parts) {
+    const app = apps.find((a) => String(a.id).toLowerCase() === part);
+    if (app?.icon) return app.icon;
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* WindowTab — единый вид карточки окна                                */
+/* ------------------------------------------------------------------ */
+
+function WindowTab({ icon, fallbackIcon, title, tooltipTitle, isActive, isMinimized, onClick }) {
+  const border = isActive
+    ? BORDER_ACTIVE
+    : isMinimized
+      ? BORDER_MINIMIZED
+      : BORDER_NORMAL;
+
+  const iconNode = icon
+    ? <img
+      src={icon}
+      width="16"
+      height="16"
+      alt=""
+      style={{ display: 'block', objectFit: 'contain' }}
+      draggable={false}
+    />
+    : fallbackIcon;
+
+  return (
+    <NoMaxWidthTooltip
+      describeChild
+      title={tooltipTitle || title}
+      placement="top"
+      slotProps={{ popper: { modifiers: [{ name: 'flip', enabled: false }] } }}
+    >
+      <Button
+        size="small"
+        variant="contained"
+        onClick={onClick}
+        sx={{
+          border,
+          color: isActive ? '#fff' : '#ddd',
+          textTransform: 'none',
+          flexShrink: 0,
+          height: 24,
+          minWidth: 0,
+          maxWidth: 200,
+          fontSize: 11,
+          padding: '0 8px',
+          bgcolor: isActive ? 'rgba(168,85,247,0.35)' : 'rgba(255,255,255,0.05)',
+          '&:hover': {
+            bgcolor: isActive ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.1)',
+          },
+          WebkitAppRegion: 'no-drag',
+          justifyContent: 'flex-start',
+          textAlign: 'left',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            minWidth: 0,
+            width: '100%',
+          }}
+        >
+          <Box
+            component="span"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              width: 16,
+              height: 16,
+              color: '#ccc',
+            }}
+          >
+            {iconNode}
+          </Box>
+          <Box
+            component="span"
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              textAlign: 'left',
+            }}
+          >
+            {title}
+          </Box>
+        </Box>
+      </Button>
+    </NoMaxWidthTooltip>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* TopBar                                                              */
@@ -72,8 +198,11 @@ export default function TopBar({
   actions,
   onOpenDevTools,
   onRequestSearch,
-  onRequestSettings
+  onRequestSettings,
 }) {
+  const webWindows = Object.values(windows || {}).filter((w) => w && typeof w === 'object');
+  const nativelyFiltered = (nativeWindows || []).filter(Boolean);
+
   return (
     <Box
       sx={{
@@ -183,48 +312,38 @@ export default function TopBar({
             <IconButton
               size="small"
               onClick={onCreateDesktop}
-              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0, WebkitAppRegion: 'no-drag', }}
+              sx={{ color: '#ccc', width: 22, height: 22, flexShrink: 0, WebkitAppRegion: 'no-drag' }}
               title="Добавить рабочий стол"
             >
               <AddIcon style={{ fontSize: 14 }} />
             </IconButton>
           </Box>
 
-          {/* Системные кнопки главного окна DE — фиксированы справа */}
+          {/* Системные кнопки главного окна DE */}
           <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
             <IconButton
               size="small"
               onClick={onRequestSettings}
-              sx={{
-                color: '#fff',
-                width: 22,
-                height: 22,
-                WebkitAppRegion: 'no-drag',
-              }}
+              sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag' }}
             >
               <SettingsIcon style={{ fontSize: 14 }} />
             </IconButton>
             <IconButton
               size="small"
               onClick={onRequestSearch}
-              sx={{
-                color: '#fff',
-                width: 22,
-                height: 22,
-                WebkitAppRegion: 'no-drag',
-              }}
+              sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag' }}
             >
               <SearchIcon style={{ fontSize: 14 }} />
             </IconButton>
-            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
+            <IconButton size="small" onClick={onMainWinMaximize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag' }}>
               {mainWinMaximized
                 ? <FilterNoneIcon style={{ fontSize: 14 }} />
                 : <CropSquareIcon style={{ fontSize: 14 }} />}
             </IconButton>
-            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
+            <IconButton size="small" onClick={onMainWinMinimize} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag' }}>
               <MinimizeIcon style={{ fontSize: 14 }} />
             </IconButton>
-            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag', }}>
+            <IconButton size="small" onClick={onMainWinClose} sx={{ color: '#fff', width: 22, height: 22, WebkitAppRegion: 'no-drag' }}>
               <CloseIcon style={{ fontSize: 14 }} />
             </IconButton>
           </Box>
@@ -278,92 +397,63 @@ export default function TopBar({
               ...HIDDEN_SCROLLBAR,
             }}
           >
-            {Object.values(windows || {})
-              .filter((w) => w && typeof w === 'object')
-              .map((win) => {
-                const app = apps.find((a) => a.id === win.appId);
-                const isActive = win.id === focusedWindowId;
-                const title = win.title || app?.title || (win.kind === 'devtools' ? 'Консоль' : 'Окно');
-                return (
-                  <NoMaxWidthTooltip
-                    key={win.id}
-                    describeChild
-                    title={title}
-                    placement="top"
-                    slotProps={{
-                      popper: {
-                        modifiers: [
-                          { name: 'flip', enabled: false },
-                        ],
-                      },
-                    }}
-                  >
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={() => onFocusView(win)}
-                      sx={{
-                        border: isActive ? '1px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                        color: '#fff',
-                        textTransform: 'none',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                        height: 24,
-                        minWidth: 0,
-                        fontSize: 11,
-                        px: 1,
-                        bgcolor: isActive ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.05)',
-                        '&:hover': { border: '1px solid #a855f7' },
-                        WebkitAppRegion: 'no-drag',
-                      }}
-                    >
-                      {title}
-                    </Button>
-                  </NoMaxWidthTooltip>
-                );
-              })}
+            {/* Веб-окна Omniscience */}
+            {webWindows.map((win) => {
+              const app = win.appId ? apps.find((a) => a.id === win.appId) : null;
+              const isDevTools = win.kind === 'devtools';
+              const isActive = win.id === focusedWindowId;
 
-            {nativeWindows.map((nw) => {
-              const isActive = activeNative?.id === nw.id;
+              const title = win.title || app?.title || (isDevTools ? 'Консоль' : 'Окно');
+              const icon = app?.icon || null;
+              const fallbackIcon = isDevTools
+                ? <TerminalIcon style={{ fontSize: 16 }} />
+                : <ExtensionIcon style={{ fontSize: 16 }} />;
+
               return (
-                <NoMaxWidthTooltip
+                <WindowTab
+                  key={win.id}
+                  icon={icon}
+                  fallbackIcon={fallbackIcon}
+                  title={title}
+                  tooltipTitle={title}
+                  isActive={isActive}
+                  isMinimized={!!win.minimized}
+                  onClick={() => onFocusView(win)}
+                />
+              );
+            })}
+
+            {/* Вертикальный разделитель */}
+            {webWindows.length > 0 && nativelyFiltered.length > 0 && (
+              <Box
+                sx={{
+                  width: '2px',
+                  alignSelf: 'stretch',
+                  bgcolor: 'rgba(255,255,255,0.35)',
+                  flexShrink: 0,
+                  my: 0.5,
+                  borderRadius: '1px',
+                }}
+              />
+            )}
+
+            {/* Нативные окна Linux */}
+            {nativelyFiltered.map((nw) => {
+              const isActive = activeNative?.id === nw.id;
+              const icon = resolveNativeIcon(nw, apps);
+              const title = nw.title || nw.wmClass || 'Окно';
+
+              return (
+                <WindowTab
                   key={nw.id}
-                  describeChild
-                  title={`${nw.wmClass} — ${nw.title}`}
-                  placement="top"
-                  slotProps={{
-                    popper: {
-                      modifiers: [
-                        { name: 'flip', enabled: false },
-                      ],
-                    },
-                  }}
-                >
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={() => onNativeClick(nw)}
-                    sx={{
-                      border: isActive ? '1px solid #fff' : '1px dashed rgba(255,255,255,0.2)',
-                      color: '#ddd',
-                      textTransform: 'none',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      height: 24,
-                      minWidth: 0,
-                      fontSize: 11,
-                      px: 1,
-                      maxWidth: 180,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      bgcolor: isActive ? 'rgba(255,200,100,0.3)' : 'rgba(255,255,255,0.05)',
-                      '&:hover': { border: '1px solid #a855f7' },
-                      WebkitAppRegion: 'no-drag',
-                    }}
-                  >
-                    🖥️ {nw.title || nw.wmClass || 'Окно'}
-                  </Button>
-                </NoMaxWidthTooltip>
+                  icon={icon}
+                  fallbackIcon={<DesktopWindowsIcon style={{ fontSize: 16 }} />}
+                  title={title}
+                  tooltipTitle={`${nw.wmClass || ''}${nw.title ? ' — ' + nw.title : ''}`}
+                  isActive={isActive && !nw.isMinimized}
+                  isMinimized={!!nw.isMinimized}
+                  onClick={() => onNativeClick(nw)}
+                />
               );
             })}
           </Box>

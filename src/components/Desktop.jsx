@@ -196,12 +196,19 @@ export default function Desktop({ rootBar }) {
 			setActiveNative(null);
 			return;
 		}
+		// Свёрнутое окно теряет активность
+		if (found.isMinimized) {
+			setActiveNative(null);
+			return;
+		}
 		if (
 			found.x !== activeNative.x ||
 			found.y !== activeNative.y ||
 			found.width !== activeNative.width ||
 			found.height !== activeNative.height ||
-			found.title !== activeNative.title
+			found.title !== activeNative.title ||
+			found.isMaximized !== activeNative.isMaximized ||
+			found.icon !== activeNative.icon
 		) {
 			setActiveNative({
 				id: found.id,
@@ -210,6 +217,9 @@ export default function Desktop({ rootBar }) {
 				y: found.y,
 				width: found.width,
 				height: found.height,
+				isMaximized: !!found.isMaximized,
+				isMinimized: !!found.isMinimized,
+				icon: found.icon || null,
 			});
 		}
 	}, [nativeWindows, activeNative]);
@@ -218,6 +228,12 @@ export default function Desktop({ rootBar }) {
 	/* Handlers                                                            */
 	/* ------------------------------------------------------------------ */
 	const handleNativeClick = useCallback((nw) => {
+		// Сбрасываем фокус у всех view-окон активного десктопа
+		const dId = stateRef.current.activeDesktopId;
+		if (dId) {
+			actionsRef.current.focusWindow(dId, null);
+		}
+
 		setActiveNative({
 			id: nw.id,
 			title: nw.title,
@@ -225,6 +241,9 @@ export default function Desktop({ rootBar }) {
 			y: nw.y,
 			width: nw.width,
 			height: nw.height,
+			isMaximized: !!nw.isMaximized,
+			isMinimized: !!nw.isMinimized,
+			icon: nw.icon || null,
 		});
 		window.electron_desktop_API.send('native-window:focus', { id: nw.id });
 	}, []);
@@ -274,8 +293,8 @@ export default function Desktop({ rootBar }) {
 				mode: 'native',
 				id: activeNative.id,
 				title: activeNative.title || 'Окно',
-				icon: null,
-				maximized: false,
+				icon: activeNative.icon || null,
+				maximized: !!activeNative.isMaximized,
 				nativeBounds: {
 					x: activeNative.x, y: activeNative.y,
 					width: activeNative.width, height: activeNative.height,
