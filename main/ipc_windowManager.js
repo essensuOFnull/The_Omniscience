@@ -111,10 +111,13 @@ export function listWindows() {
 function attachWindowEvents(id, win) {
     const emit = (type, extra = {}) => {
         send('shell:window-event', { id, type, ...extra });
-        global.topbarBroadcast?.();   // ← добавили
+        global.topbarBroadcast?.();   // ← добавили, чтобы TopBar обновлялся
     };
 
-    win.on('focus', () => emit('focus'));
+    win.on('focus', () => {
+        global.__focusedWindowId = id;   // ← ключевое
+        emit('focus');
+    });
     win.on('blur', () => emit('blur'));
     win.on('minimize', () => emit('minimize'));
     win.on('restore', () => emit('restore'));
@@ -245,8 +248,6 @@ export function createWindowByRequest({
         meta: { appId, icon, title, url: finalUrl, preload, xid: null },
     });
 
-    global.topbarBroadcast?.();
-    
     attachWindowEvents(id, win);
 
     send('shell:window-event', {
@@ -258,6 +259,8 @@ export function createWindowByRequest({
         icon,
         bounds: win.getBounds(),
     });
+
+    global.topbarBroadcast?.();
 
     return win;
 }

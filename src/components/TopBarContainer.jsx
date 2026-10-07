@@ -5,7 +5,6 @@ import Overview from './Overview';
 
 export default function TopBarContainer() {
   const [state, setState] = useState({
-    quickLaunch: [],
     windows: [],
     apps: [],
     overviewTabs: [],
