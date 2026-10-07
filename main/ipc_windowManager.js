@@ -93,6 +93,17 @@ export function getWindowById(id) {
     return windows.get(id)?.win || null;
 }
 
+export function getXidForWindow(id) {
+    const entry = windows.get(id);
+    if (!entry) return null;
+    if (entry.meta.xid) return entry.meta.xid;
+    try {
+        const xid = getXid(entry.win);
+        entry.meta.xid = xid;
+        return xid;
+    } catch (_) { return null; }
+}
+
 export function listWindows() {
     return Array.from(windows.entries()).map(([id, entry]) => ({
         id,

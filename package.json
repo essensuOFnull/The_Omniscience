@@ -1,6 +1,6 @@
 {
   "name": "The_Omniscience",
-  "version": "10.6.1",
+  "version": "11.0.0",
   "type": "module",
   "scripts": {
     "start": "OMNISCIENCE_SESSION= npx electron .",

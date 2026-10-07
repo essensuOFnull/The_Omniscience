@@ -3,7 +3,7 @@ const { ipcMain } = electronPkg;
 import { exec } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(exec);
-import { getWindowById } from './ipc_windowManager.js';
+import { getWindowById, getXidForWindow } from './ipc_windowManager.js';
 
 let activeDrag = null;
 let pointerDeviceId = null;
@@ -121,15 +121,22 @@ function computeAnchor(bounds, mode, direction) {
 /* Фокус                                             */
 /* ──────────────────────────────────────────────── */
 
-async function focusTarget(id, our) {
-    try {
-        if (our && !our.isDestroyed()) {
+// Убираем await — focus не должен блокировать старт drag
+function focusTarget(id, our) {
+    if (our && !our.isDestroyed()) {
+        try {
             if (our.isMinimized()) our.restore();
+            our.show();
             our.focus();
-        } else {
-            await execAsync(`wmctrl -i -a ${id}`);
-        }
-    } catch (_) {}
+            our.moveTop();
+        } catch (_) {}
+        const xid = getXidForWindow(id);
+        if (xid) execAsync(`xdotool windowactivate --sync ${xid}`).catch(() => {});
+    } else {
+        execAsync(`xdotool windowactivate --sync ${id}`).catch(async () => {
+            try { await execAsync(`wmctrl -i -a ${id}`); } catch (_) {}
+        });
+    }
 }
 
 /* ──────────────────────────────────────────────── */
@@ -189,7 +196,7 @@ async function startDrag({ id, mode, direction }) {
 
     // 1. Активируем окно, чтобы фокус был на нём сразу
     const our = getWindowById(id);
-    await focusTarget(id, our);
+    focusTarget(id, our);
 
     // 2. Получаем стартовые bounds
     let startBounds;

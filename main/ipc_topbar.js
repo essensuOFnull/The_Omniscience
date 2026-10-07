@@ -1,10 +1,36 @@
 import electronPkg from 'electron';
 const { ipcMain } = electronPkg;
-import { listWindows, destroyWindowById, getWindowById } from './ipc_windowManager.js';
+import { listWindows, destroyWindowById, getWindowById, getXidForWindow } from './ipc_windowManager.js';
 import { spawn } from 'child_process';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 const execAsync = promisify(exec);
+
+// Общая функция активации — работает и для наших, и для нативных
+function activateWindow(id) {
+    const our = getWindowById(id);
+    if (our && !our.isDestroyed()) {
+        // 1. Electron-путь (быстро, но не всегда срабатывает)
+        try {
+            if (our.isMinimized()) our.restore();
+            our.show();
+            our.focus();
+            our.moveTop();
+        } catch (_) { }
+
+        // 2. X11-путь (fire-and-forget, работает всегда)
+        const xid = getXidForWindow(id);
+        if (xid) {
+            execAsync(`xdotool windowactivate --sync ${xid}`).catch(() => { });
+        }
+        return;
+    }
+
+    // Нативное X11-окно
+    execAsync(`xdotool windowactivate --sync ${id}`).catch(async () => {
+        try { await execAsync(`wmctrl -i -a ${id}`); } catch (_) { }
+    });
+}
 
 let focusedWindowId = null;
 let cachedApps = [];
@@ -83,11 +109,8 @@ export default function () {
     });
 
     ipcMain.on('topbar:focus-window', (_e, { id }) => {
-        const win = getWindowById(id);
-        if (!win) return;
-        if (win.isMinimized()) win.restore();
-        win.focus();
-        focusedWindowId = id;
+        activateWindow(id);
+        global.__focusedWindowId = id;
         broadcastTopbarState();
     });
 
