@@ -34,6 +34,7 @@ export default function Desktop({ rootBar }) {
 	const [apps, setApps] = useState([]);
 	const [activeNative, setActiveNative] = useState(null);
 	const [mainWinMaximized, setMainWinMaximized] = useState(true);
+	const [windowXidMap, setWindowXidMap] = useState({});
 
 	const reducer = useCallback((state, action) => {
 		const handler = windowManager[action.type];
@@ -307,7 +308,8 @@ export default function Desktop({ rootBar }) {
 				activeWindowInfo = {
 					mode: 'view',
 					id: focusedWindowId,
-					desktopId: state.activeDesktopId,   // 👈 добавить
+					desktopId: state.activeDesktopId,
+					systemId: windowXidMap[focusedWindowId] || null,
 					title: win.title || app?.title || 'Окно',
 					icon: app?.icon || null,
 					maximized: !!win.maximized,
@@ -380,6 +382,7 @@ export default function Desktop({ rootBar }) {
 		nativeWindows,
 		activeNative,
 		mainWinMaximized,
+		windowXidMap,
 		actions,
 		handleSwitchDesktop,
 		handleFocusView,
@@ -407,6 +410,26 @@ export default function Desktop({ rootBar }) {
 		const activeApp = activeWin?.appId ? (apps || []).find((a) => a.id === activeWin.appId) : null;
 
 	}, [state.activeDesktopId, state.desktops, apps, activeNative]);
+
+	useEffect(() => {
+		const api = window.electron_desktop_API;
+		if (!api) return;
+		const off = api.on('shell:window-event', (event) => {
+			if (!event) return;
+			const { id, type, xid } = event;
+
+			if (type === 'xid-ready' && xid) {
+				setWindowXidMap((prev) => ({ ...prev, [id]: xid }));
+			} else if (type === 'closed') {
+				setWindowXidMap((prev) => {
+					const n = { ...prev };
+					delete n[id];
+					return n;
+				});
+			}
+		});
+		return off;
+	}, []);
 
 	/* ------------------------------------------------------------------ */
 	/* Render                                                              */

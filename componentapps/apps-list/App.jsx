@@ -5,7 +5,6 @@ import {
   Button,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import { viewDispatch } from '@viewRuntime';
 
 /* ------------------------------------------------------------------ */
 /* Константы                                                           */
@@ -53,6 +52,10 @@ function getFirstLetter(title) {
   return '#';
 }
 
+function getNewWindowId() {
+  return `win-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /* ------------------------------------------------------------------ */
 /* Фильтр-кнопка                                                       */
 /* ------------------------------------------------------------------ */
@@ -79,7 +82,7 @@ function FilterButton({ active, label, color, onClick }) {
           borderColor: color,
         },
       }}
-      className='ignore_The_Omniscience_Theme_recursive'
+      className="ignore_The_Omniscience_Theme_recursive"
     >
       {label}
     </Button>
@@ -125,7 +128,7 @@ export default function App({ desktopId }) {
 
     desktopApi.invoke('get-extensions-list')
       .then((list) => setExtensions(list || []))
-      .catch((err) => console.error('[apps-list] ext:', err))
+      .catch((err) => console.error('[apps-list] extensions:', err))
       .finally(() => setLoadingExtensions(false));
   }, []);
 
@@ -133,8 +136,8 @@ export default function App({ desktopId }) {
   const allApps = useMemo(() => {
     const list = [
       ...(baseApps || []).map((a) => ({ ...a, uid: `app:${a.id}`, kind: inferKind(a) })),
-      ...(nativeApps || []).map((a) => ({ ...a, uid: a.id })),
-      ...(extensions || []).map((a) => ({ ...a, uid: a.id })),
+      ...(nativeApps || []).map((a) => ({ ...a, uid: `native:${a.id}` })),
+      ...(extensions || []).map((a) => ({ ...a, uid: `ext:${a.id}` })),
     ];
 
     list.sort((a, b) =>
@@ -188,23 +191,38 @@ export default function App({ desktopId }) {
           loadMore();
         }
       },
-      {
-        root,
-        rootMargin: '300px',
-        threshold: 0,
-      }
+      { root, rootMargin: '300px', threshold: 0 }
     );
 
     observer.observe(target);
     return () => observer.disconnect();
-    // 👇 ВАЖНО: visibleCount в зависимостях — иначе observer не пересоздастся
-    // после подгрузки и не «догонит» следующую порцию, если sentinel всё ещё виден.
   }, [hasMore, loadMore, visibleCount]);
 
-  /* -------- Клик -------- */
-  const handleClick = (app, e) => {
+  /* -------- Открытие окна Omniscience -------- */
+  const openAsBrowserWindow = useCallback(({
+    id, appId, url, preload, title, icon, width = 900, height = 600,
+  }) => {
+    const desktopApi = window.electron_desktop_API;
+    if (!desktopApi) return;
+
+    desktopApi.send('window:create', {
+      id,
+      appId,
+      url,                 // ← сырой URL, main сам разрешит
+      preload: preload || null,
+      title,
+      icon,
+      bounds: null,        // main отцентрирует
+      desktopId,           // ← main сам добавит в query
+      maximized: false,
+    });
+  }, [desktopId]);
+
+  /* -------- Клик по карточке -------- */
+  const handleClick = useCallback((app) => {
     const desktopApi = window.electron_desktop_API;
 
+    // Нативные программы Linux (не наши окна)
     if (app.kind === 'native') {
       desktopApi?.send('launch-native-app', {
         exec: app.exec,
@@ -213,37 +231,37 @@ export default function App({ desktopId }) {
       return;
     }
 
+    // Расширения Chrome — открываются как popup внутри нашего окна
     if (app.kind === 'extension') {
       desktopApi.invoke('get-extension-popup-url', { extensionId: app.extensionId })
         .then((url) => {
           if (!url) return;
-          viewDispatch('createWindow', {
-            desktopId,
+          openAsBrowserWindow({
+            id: getNewWindowId(),
             appId: null,
-            cx: window.innerWidth / 2,
-            cy: window.innerHeight / 2,
+            url,
+            title: app.title,
+            icon: app.icon,
             width: 400,
             height: 550,
-            url,
-            extra: {},
           });
         })
         .catch((err) => console.error('[apps-list] popup:', err));
       return;
     }
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    viewDispatch('createWindow', {
-      desktopId,
+    // Componentapp или webapp — обычное окно Omniscience
+    openAsBrowserWindow({
+      id: getNewWindowId(),
       appId: app.id,
-      cx: rect.left + rect.width / 2,
-      cy: rect.top + rect.height / 2,
+      url: app.url,
+      preload: app.preloadPath || null,
+      title: app.title,
+      icon: app.icon,
       width: 900,
       height: 600,
-      url: app.url || null,
-      extra: { app, filePath: app.path },
     });
-  };
+  }, [openAsBrowserWindow]);
 
   const isLoading = loadingBase || loadingNative || loadingExtensions;
 
@@ -299,12 +317,7 @@ export default function App({ desktopId }) {
           }}
         />
 
-        <Stack
-          direction="row"
-          spacing={1}
-          flexWrap="wrap"
-          sx={{ mt: 1.5, gap: 1 }}
-        >
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5, gap: 1 }}>
           {FILTERS.map((f) => (
             <FilterButton
               key={f.id}
@@ -330,9 +343,7 @@ export default function App({ desktopId }) {
         }}
       >
         {pageItems.length === 0 && !isLoading && (
-          <Typography
-            sx={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', mt: 4 }}
-          >
+          <Typography sx={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', mt: 4 }}>
             Ничего не найдено
           </Typography>
         )}
@@ -410,7 +421,7 @@ export default function App({ desktopId }) {
                       />
 
                       <CardActionArea
-                        onClick={(e) => handleClick(app, e)}
+                        onClick={() => handleClick(app)}
                         sx={{ p: 2, pt: 3, textAlign: 'center' }}
                       >
                         {app.icon ? (
@@ -447,7 +458,6 @@ export default function App({ desktopId }) {
           ));
         })()}
 
-        {/* Sentinel — пока hasMore, держим якорь внизу */}
         {hasMore && (
           <Box
             ref={sentinelRef}
