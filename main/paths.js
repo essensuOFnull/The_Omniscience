@@ -24,6 +24,6 @@ export default function () {
         reactIndex: pathToFileURL(path.join(root,'dist','src','index.html')).href,
         /*важно передавать просто абсолютный путь, а не по протоколу file*/
         reactPreload:path.join(root, '.temp','reactPreload.cjs'),
-        webtabPreload:path.join(root, '.temp','webtabPreload.cjs'),
+        extensionsPreload:path.join(root, '.temp','extensionsPreload.cjs'),
     };
 }

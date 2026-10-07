@@ -50,6 +50,7 @@ export default async function () {
   try {
     const extPreloadPath = require.resolve('electron-chrome-extensions/preload');
     extPreloadCode = await readFile(extPreloadPath, 'utf-8');
+    extPreloadCode = `(() => { if (typeof chrome === 'undefined') { ${extPreloadCode} } })();`;
     console.log('[preloads] chrome-extensions preload loaded, size:', extPreloadCode.length);
   } catch (err) {
     console.error('[preloads] chrome-extensions preload not found:', err.message);
@@ -67,5 +68,11 @@ export default async function () {
     global._.devtools_ipc,
   ].join('\n\n');
 
+  const extensionsPreload = [
+    global._.imports,
+    extPreloadCode,
+  ].join('\n\n');
+
   await createPreload('reactPreload', commonPreload, tmpDir);
+  await createPreload('extensionsPreload', extensionsPreload, tmpDir);
 }

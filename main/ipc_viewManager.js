@@ -31,7 +31,7 @@ export function createView(id, { kind, url, preload, bounds }) {
 
     const view = new WebContentsView({
         webPreferences: {
-            preload: preload,
+            preload: preload || undefined,
             nodeIntegration: false,
             contextIsolation: true,
             transparent: true,
@@ -53,7 +53,7 @@ export function createView(id, { kind, url, preload, bounds }) {
         zIndex: 0,
         kind: kind || 'window',
         url: url || 'about:blank',
-        requestedPreload: preload || null,
+        requestedPreload: preload || undefined,
         scale: 1,
     };
 

@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { session } = electronPkg;
+const { session, ipcMain } = electronPkg;
 import { ElectronChromeExtensions, setSessionPartitionResolver } from 'electron-chrome-extensions';
 import { readdir, stat, mkdir, rm, readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -48,8 +48,13 @@ export default async function () {
 		//    В нём уже вклеены chrome.* API из electron-chrome-extensions.
 		try {
 			await defaultSession.registerPreloadScript({
+				id: 'omniscience-sw-preload',
+				type: 'service-worker',//ВАЖНО
+				filePath: global.paths.extensionsPreload,
+			});
+			await defaultSession.registerPreloadScript({
 				id: 'omniscience-common-preload',
-				type: 'frame',
+				type: 'frame',//ВАЖНО
 				filePath: global.paths.reactPreload,
 			});
 			console.log('[Extensions] Common preload registered for session');
@@ -126,4 +131,50 @@ export default async function () {
 	} catch (error) {
 		console.error('[Extensions] Ошибка инициализации:', error);
 	}
+	/* -------- Extension list / popup API -------- */
+
+	ipcMain.handle('get-extensions-list', () => {
+		try {
+			const session = global.extensionsSession;
+			if (!session) return [];
+
+			const exts = session.extensions?.getAllExtensions?.() || [];
+
+			return exts.map((e) => ({
+				id: `extension:${e.id}`,
+				extensionId: e.id,
+				title: e.name || e.id,
+				icon: null, // позже можно вытянуть из manifest.icons
+				kind: 'extension',
+				version: e.version || '',
+				hasPopup: !!(e.manifest?.action?.default_popup || e.manifest?.browser_action?.default_popup),
+			}));
+		} catch (err) {
+			console.error('[get-extensions-list]', err.message);
+			return [];
+		}
+	});
+
+	ipcMain.handle('get-extension-popup-url', (_e, { extensionId }) => {
+		try {
+			const session = global.extensionsSession;
+			if (!session) return null;
+
+			const exts = session.extensions?.getAllExtensions?.() || [];
+			const ext = exts.find((e) => e.id === extensionId);
+			if (!ext) return null;
+
+			const popupPath =
+				ext.manifest?.action?.default_popup ||
+				ext.manifest?.browser_action?.default_popup ||
+				null;
+
+			if (!popupPath) return null;
+
+			return `chrome-extension://${ext.id}/${popupPath}`;
+		} catch (err) {
+			console.error('[get-extension-popup-url]', err.message);
+			return null;
+		}
+	});
 }
