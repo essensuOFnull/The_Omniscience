@@ -13,4 +13,5 @@ export default function () {
   global.$.ipc_browserContextMenu();
   global.$.ipc_nativeApps();
   global.$.ipc_windowManager();
+  global.$.ipc_topbar();
 }

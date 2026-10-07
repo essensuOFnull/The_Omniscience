@@ -22,6 +22,7 @@ export default function () {
         componentappsDir: path.join(root, 'componentapps'),
 
         reactIndex: pathToFileURL(path.join(root,'dist','src','index.html')).href,
+        topBarIndex: pathToFileURL(path.join(root,'dist','src','topbar.html')).href,
         /*важно передавать просто абсолютный путь, а не по протоколу file*/
         reactPreload:path.join(root, '.temp','reactPreload.cjs'),
         extensionsPreload:path.join(root, '.temp','extensionsPreload.cjs'),

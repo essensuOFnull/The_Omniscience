@@ -66,6 +66,7 @@ export default async function () {
     global._.view_state_ipc,
     global._.react_devtools_backend,
     global._.devtools_ipc,
+    global._.topbar_ipc,
   ].join('\n\n');
 
   const extensionsPreload = [

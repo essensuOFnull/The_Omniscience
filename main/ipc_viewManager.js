@@ -7,17 +7,25 @@ import { attachToWebContents } from './ipc_browserContextMenu.js';
 /* ------------------------------------------------------------------ */
 
 function reorderAll() {
-    if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
+    if (!global.mainWindow) return;
 
-    const list = Object.entries(global.views);
-    list.sort((a, b) => (a[1].zIndex || 0) - (b[1].zIndex || 0));
-
-    for (const [, e] of list) {
-        try { global.mainWindow.contentView.removeChildView(e.view); } catch (_) { }
+    const groups = new Map();   // parentWindow → [entries]
+    for (const [, e] of Object.entries(global.views)) {
+        const pw = e.parentWindow || global.mainWindow;
+        if (!groups.has(pw)) groups.set(pw, []);
+        groups.get(pw).push(e);
     }
-    for (const [, e] of list) {
-        global.mainWindow.contentView.addChildView(e.view);
-        e.view.setBounds(e.bounds);
+
+    for (const [parentWindow, list] of groups) {
+        if (!parentWindow || parentWindow.isDestroyed()) continue;
+        list.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+        for (const e of list) {
+            try { parentWindow.contentView.removeChildView(e.view); } catch (_) { }
+        }
+        for (const e of list) {
+            try { parentWindow.contentView.addChildView(e.view); } catch (_) { }
+            e.view.setBounds(e.bounds);
+        }
     }
 }
 
@@ -25,8 +33,13 @@ function reorderAll() {
 /* Публичное API                                                       */
 /* ------------------------------------------------------------------ */
 
-export function createView(id, { kind, url, preload, bounds }) {
-    if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
+export function createView(id, { kind, url, preload, bounds, parentWindowId }) {
+    // Определяем, к какому окну крепить view
+    let parentWindow = global.mainWindow;
+    if (parentWindowId === 'topbar') parentWindow = global.topbarWindow;
+    else if (parentWindowId) parentWindow = global.views?.[parentWindowId]?.window || global.mainWindow;
+
+    if (!parentWindow || parentWindow.isDestroyed()) return null;
     if (global.views[id]) return global.views[id].view;
 
     const view = new WebContentsView({
@@ -36,7 +49,6 @@ export function createView(id, { kind, url, preload, bounds }) {
             contextIsolation: true,
             transparent: true,
             backgroundColor: '#00000000',
-            sandbox: false,
             webSecurity: true,
             webviewTag: false,
         },
@@ -49,6 +61,7 @@ export function createView(id, { kind, url, preload, bounds }) {
 
     const entry = {
         view,
+        parentWindow,           // 👈 запоминаем
         bounds: { ...b },
         zIndex: 0,
         kind: kind || 'window',
@@ -58,6 +71,7 @@ export function createView(id, { kind, url, preload, bounds }) {
     };
 
     global.views[id] = entry;
+    parentWindow.contentView.addChildView(view);    // 👈 крепим к нужному окну
 
     // Навигационные события — только для окон
     if (kind === 'window') {
@@ -137,7 +151,7 @@ export function updateBounds(id, bounds) {
 export function destroyView(id) {
     const entry = global.views[id];
     if (!entry) return;
-    try { global.mainWindow.contentView.removeChildView(entry.view); } catch (_) { }
+    try { entry.parentWindow?.contentView?.removeChildView(entry.view); } catch (_) { }
     try { entry.view.webContents.destroy(); } catch (_) { }
     delete global.views[id];
 }
@@ -228,7 +242,7 @@ export default function () {
 
     ipcMain.handle('view:get-main-size', () => {
         if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
-        const b = global.mainWindow.contentView.getBounds();
+        const b = entry.parentWindow?.contentView?.getBounds();
         return { width: b.width, height: b.height };
     });
 
@@ -292,7 +306,7 @@ export default function () {
     ipcMain.on('view:maximize', (event) => {
         const id = findIdByWebContents(event.sender.id);
         if (!id) return;
-        const cb = global.mainWindow.contentView.getBounds();
+        const cb = entry.parentWindow?.contentView?.getBounds();
         updateBounds(id, { x: 0, y: 0, width: cb.width, height: cb.height });
     });
 

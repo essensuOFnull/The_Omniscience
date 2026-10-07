@@ -4,6 +4,14 @@ const { app, session } = electronPkg;
 export default async function () {
   await app.whenReady();
 
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
+  await global.$.texts_load();
+  await global.$.preloads_generate();
+
   // Включаем Cross-Origin Isolation для всей сессии
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -14,7 +22,7 @@ export default async function () {
       },
     });
   });
-  
+
   // arkh_protocol уже в global.$ — autoimport его подобрал.
   global.$.arkh_protocol.setupArkhProtocol();
 
@@ -27,6 +35,6 @@ export default async function () {
   await global.$.preloads_generate();
   //await global.$.adblock_init();
   await global.$.mainWindow_create();
-
-  global.$.webContents_on_created();
+  await global.$.TopBar_create();
+  await global.$.ipc_setup();
 }

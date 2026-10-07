@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 const OFFSCREEN = { x: -10000, y: -10000, width: 1, height: 1 };
 
-export default function useTabContentView(viewId, app, containerRef, { desktopId, tabId } = {}) {
+export default function useTabContentView(viewId, app, containerRef, { desktopId, tabId, parentWindowId, } = {}) {
   const [viewCreated, setViewCreated] = useState(false);
   const rafIdRef = useRef(null);
   const lastSentRef = useRef({ x: NaN, y: NaN, width: NaN, height: NaN });
@@ -27,6 +27,7 @@ export default function useTabContentView(viewId, app, containerRef, { desktopId
       url,
       preload,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
+      parentWindowId,
     });
     setViewCreated(true);
 

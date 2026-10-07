@@ -111,6 +111,7 @@ export function listWindows() {
 function attachWindowEvents(id, win) {
     const emit = (type, extra = {}) => {
         send('shell:window-event', { id, type, ...extra });
+        global.topbarBroadcast?.();   // ← добавили
     };
 
     win.on('focus', () => emit('focus'));
@@ -201,7 +202,6 @@ export function createWindowByRequest({
             preload: preload || undefined,
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,
             webSecurity: true,
             webviewTag: false,
             transparent: true,
@@ -245,6 +245,8 @@ export function createWindowByRequest({
         meta: { appId, icon, title, url: finalUrl, preload, xid: null },
     });
 
+    global.topbarBroadcast?.();
+    
     attachWindowEvents(id, win);
 
     send('shell:window-event', {

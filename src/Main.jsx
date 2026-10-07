@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import Desktop from './components/Desktop';
+import DesktopFiles from './components/FileView/DesktopFiles';
 import FrameHandler from './components/FrameHandler';
 import BackgroundRenderer from './components/BackgroundRenderer';
 import ThemeApplier from './components/ThemeApplier';
@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const bgEl      = document.getElementById('background-root');
   const desktopEl = document.getElementById('desktop-root');
   const frameEl   = document.getElementById('frame-root');
-  const barEl     = document.getElementById('desktopbar-root');
 
   if (!bgEl || !desktopEl || !frameEl) {
     console.error('Не найдены контейнеры');
@@ -42,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <React.StrictMode>
       <ThemeProvider theme={darkTheme}>
         <CssBaseline />
-        <Desktop rootBar={createRoot(barEl)} />
+        <DesktopFiles />
       </ThemeProvider>
     </React.StrictMode>
   );

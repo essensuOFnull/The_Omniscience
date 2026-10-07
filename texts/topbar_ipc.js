@@ -1,9 +1,9 @@
 (function () {
 	if (process.contextIsolated) {
 		try {
-			if (window.electron_devtools_API) return;
+			if (window.electron_topbar_API) return;
 
-			contextBridge.exposeInMainWorld('electron_devtools_API', {
+			contextBridge.exposeInMainWorld('electron_topbar_API', {
 				send: (channel, ...args) => ipcRenderer.send(channel, ...args),
 				invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 				on: (channel, cb) => {
@@ -11,7 +11,6 @@
 					ipcRenderer.on(channel, wrapped);
 					return () => ipcRenderer.removeListener(channel, wrapped);
 				},
-				removeListener: (channel, cb) => ipcRenderer.removeListener(channel, cb),
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);

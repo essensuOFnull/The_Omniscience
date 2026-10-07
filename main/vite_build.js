@@ -8,10 +8,10 @@ export default async function () {
   const publicDir = global.paths.publicDir;
   const distDir = global.paths.distDir;
   const componentappsDir = global.paths.componentappsDir;
-  const rendererIndexHtml = path.join(rootDir, 'src', 'index.html');
 
   const input = {
-    main: rendererIndexHtml,
+    main: path.join(rootDir, 'src', 'index.html'),
+    topbar: path.join(rootDir, 'src', 'topbar.html'),
   };
 
   if (fs.existsSync(componentappsDir)) {

@@ -110,7 +110,6 @@ function DesktopFilesInner({ basePath }) {
           py: 0.75,
           mb: 1,
           bgcolor: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(8px)',
           borderBottom: '1px solid rgba(255,255,255,0.08)',
           maxWidth: '100%',
           overflow: 'hidden',

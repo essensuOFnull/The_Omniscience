@@ -1,39 +1,46 @@
 (function () {
-  contextBridge.exposeInMainWorld('electron_mainWindow_API', {
-    // Состояние окна (maximize/fullscreen)
-    onWindowStateChange: (callback) => {
-      const handler = (_, state) => callback(state);
-      ipcRenderer.on('window-state-changed', handler);
-      // Возвращаем функцию для отписки, если понадобится
-      return () => ipcRenderer.removeListener('window-state-changed', handler);
-    },
+  if (process.contextIsolated) {
+    try {
+      contextBridge.exposeInMainWorld('electron_mainWindow_API', {
+        // Состояние окна (maximize/fullscreen)
+        onWindowStateChange: (callback) => {
+          const handler = (_, state) => callback(state);
+          ipcRenderer.on('window-state-changed', handler);
+          // Возвращаем функцию для отписки, если понадобится
+          return () => ipcRenderer.removeListener('window-state-changed', handler);
+        },
 
-    // Запуск ресайза (только направление)
-    startResize: (direction) => {
-      ipcRenderer.send('start-resize', direction);
-    },
+        // Запуск ресайза (только направление)
+        startResize: (direction) => {
+          ipcRenderer.send('start-resize', direction);
+        },
 
-    // Передача координат мыши во время движения
-    sendResizeMove: (screenX, screenY) => {
-      ipcRenderer.send('resize-move', screenX, screenY);
-    },
+        // Передача координат мыши во время движения
+        sendResizeMove: (screenX, screenY) => {
+          ipcRenderer.send('resize-move', screenX, screenY);
+        },
 
-    // Завершение ресайза
-    endResize: () => {
-      ipcRenderer.send('resize-end');
-    },
+        // Завершение ресайза
+        endResize: () => {
+          ipcRenderer.send('resize-end');
+        },
 
-    // Управление окном
-    window_minimize: () => {
-      ipcRenderer.send('window_minimize');
-    },
+        // Управление окном
+        window_minimize: () => {
+          ipcRenderer.send('window_minimize');
+        },
 
-    window_maximize: () => {
-      ipcRenderer.send('window_maximize');
-    },
+        window_maximize: () => {
+          ipcRenderer.send('window_maximize');
+        },
 
-    window_close: () => {
-      ipcRenderer.send('window_close');
+        window_close: () => {
+          ipcRenderer.send('window_close');
+        }
+
+      });
+    } catch (err) {
+      console.error('[preload] contextBridge failed:', err);
     }
-  });
+  }
 })();
