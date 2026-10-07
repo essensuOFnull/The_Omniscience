@@ -22,9 +22,8 @@ export default function () {
       id: 'new-browser-window',
       type: 'browser',
       title: 'Браузер',
-      url: null,                     // не используется
+      url: global.config.homepageUrl,
       icon: global.paths.icon,
-      initialUrl: global.config.homepageUrl,
       useShell: false,               // не важно, т.к. Window сам обрабатывает
     });
 
