@@ -60,6 +60,39 @@ const handleWheelScroll = (e) => {
   }
 };
 
+function Clock() {
+  const [now, setNow] = React.useState(() => new Date());
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1);
+    return () => clearInterval(id);
+  }, []);
+
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const text = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}.${now.getFullYear()} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${pad(now.getMilliseconds(), 3)}`;
+
+  return (
+    <Box
+      component="span"
+      sx={{
+        color: '#fff',
+        fontFamily: 'monospace',
+        fontSize: 12,
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
+        px: 1,
+        userSelect: 'none',
+        WebkitAppRegion: 'no-drag',
+        letterSpacing: '0.3px',
+        opacity: 0.9,
+      }}
+    >
+      {text}
+    </Box>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Иконка нативного окна              */
 /* ------------------------------------------------------------------ */
@@ -318,7 +351,8 @@ export default function TopBar({
               <AddIcon style={{ fontSize: 14 }} />
             </IconButton>
           </Box>
-
+          {/* Часы */}
+          <Clock />
           {/* Системные кнопки главного окна DE */}
           <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
             <IconButton
