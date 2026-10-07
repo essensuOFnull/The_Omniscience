@@ -23,19 +23,36 @@ export async function initTopbarState() {
 
 function buildState() {
     const cfg = global.config?.topbar || {};
-    const focusedId = global.__focusedWindowId || null;
+    const activeXid = global.__activeXid || null;
 
-    const windows = listWindows().map((w) => ({
-        ...w,
-        // ControlGrid ждёт X11 id в systemId
-        systemId: w.xid || null,
-        focused: w.id === focusedId,
+    const ourWindows = listWindows().map((w) => ({
+        id: w.id,
+        kind: 'our',
+        title: w.title,
+        icon: w.icon || null,
+        maximized: !!w.maximized,
+        minimized: !!w.minimized,
+        focused: !!(activeXid && w.xid === activeXid),
+        xid: w.xid || null,
     }));
 
+    const nativeWindows = (global.__lastNativeWindows || []).map((w) => ({
+        id: w.id,                 // X11 XID, например '0x03400004'
+        kind: 'native',
+        title: w.title || w.wmClass || 'Окно',
+        icon: w.icon || null,
+        maximized: !!w.isMaximized,
+        minimized: !!w.isMinimized,
+        focused: !!(activeXid && w.id === activeXid),
+        wmClass: w.wmClass,
+    }));
+
+    const windows = [...ourWindows, ...nativeWindows];
+    const activeWindow = windows.find((w) => w.focused) || null;
+
     return {
-        quickLaunch: cfg.quickLaunch || [],
         windows,
-        activeWindow: windows.find((w) => w.focused) || null,
+        activeWindow,
         apps: cachedApps,
         overviewTabs: cfg.overviewTabs || [
             { id: 'apps-list', visible: true },
@@ -99,6 +116,41 @@ export default function () {
     ipcMain.on('topbar:open-settings', () => {
         try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); }
         catch (err) { console.error('[topbar:open-settings]', err.message); }
+    });
+
+    ipcMain.handle('topbar:get-window-bounds', (_e, { id }) => {
+        const win = getWindowById(id);
+        return win ? win.getBounds() : null;
+    });
+
+    ipcMain.on('topbar:move-window', (_e, { id, x, y }) => {
+        const win = getWindowById(id);
+        if (!win) return;
+        const b = win.getBounds();
+        win.setBounds(
+            { x: Math.round(x), y: Math.round(y), width: b.width, height: b.height },
+            false,   // без анимации
+        );
+    });
+
+    ipcMain.on('topbar:resize-window', (_e, { id, x, y, width, height }) => {
+        const win = getWindowById(id);
+        if (!win) return;
+        win.setBounds(
+            { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) },
+            false,
+        );
+    });
+
+    ipcMain.on('topbar:minimize-window', (_e, { id }) => {
+        getWindowById(id)?.minimize();
+    });
+
+    ipcMain.on('topbar:maximize-window', (_e, { id, maximized }) => {
+        const win = getWindowById(id);
+        if (!win) return;
+        if (maximized) win.unmaximize();
+        else win.maximize();
     });
 
     setTimeout(() => { initTopbarState(); }, 0);

@@ -19,6 +19,8 @@ export default async function () {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
+    focusable: true,      // ← явно
+    acceptFirstMouse: true,  // ← для macOS, но не помешает
     ...(process.platform === 'linux' ? { type: 'dock' } : {}),
     webPreferences: {
       nodeIntegration: false,
@@ -47,6 +49,13 @@ export default async function () {
     if (!w || w.isDestroyed()) return;
     if (visible) w.showInactive();
     else w.hide();
+  });
+
+  ipcMain.handle('topbar:focus-self', () => {
+    const w = global.topbarWindow;
+    if (!w || w.isDestroyed()) return false;
+    if (!w.isFocused()) w.focus();
+    return w.isFocused();
   });
 
   await global.$.TopBar_on_loaded();

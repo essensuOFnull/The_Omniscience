@@ -5,12 +5,15 @@ import { promisify } from 'util';
 import { access, readFile } from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { getWindowById } from './ipc_windowManager.js';
 
 const execAsync = promisify(exec);
 
 const POLL_INTERVAL_MS = 1000;
 
 const IGNORE_CLASS_PARTS = ['the_omniscience', 'electron', 'kwin', 'plasmashell'];
+global.__lastNativeWindows = global.__lastNativeWindows || [];
+global.__activeXid = global.__activeXid || null;
 
 let pollTimer = null;
 let lastHash = '';
@@ -161,10 +164,23 @@ async function tick() {
   isBusy = true;
   try {
     const windows = await getNativeWindows();
-    const hash = hashWindows(windows);
+    global.__lastNativeWindows = windows;
+
+    // Определяем активное X11-окно
+    try {
+      const { stdout } = await execAsync('xdotool getactivewindow');
+      const dec = parseInt(stdout.trim(), 10);
+      if (!isNaN(dec)) {
+        global.__activeXid = '0x' + dec.toString(16).padStart(8, '0');
+      }
+    } catch (_) { }
+
+    const hash = hashWindows(windows) + '|' + (global.__activeXid || '');
     if (hash === lastHash) return;
     lastHash = hash;
+
     global.mainWindow.webContents.send('shell:native-windows-updated', windows);
+    global.topbarBroadcast?.();   // ← добавить
   } finally {
     isBusy = false;
   }
@@ -177,54 +193,75 @@ export default function () {
   /* -------- Управление нативными окнами -------- */
 
   ipcMain.on('native-window:focus', async (_e, { id }) => {
+    const our = getWindowById(id);
+    if (our) {
+      if (our.isMinimized()) our.restore();
+      our.focus();
+      return;
+    }
     try { await execAsync(`wmctrl -i -a ${id}`); tick(); } catch (_) { }
   });
 
   ipcMain.on('native-window:close', async (_e, { id }) => {
+    const our = getWindowById(id);
+    if (our) { our.close(); return; }
     try { await execAsync(`wmctrl -i -c ${id}`); tick(); } catch (_) { }
   });
 
   ipcMain.on('native-window:minimize', async (_e, { id }) => {
+    const our = getWindowById(id);
+    if (our) { our.minimize(); return; }
     try { await execAsync(`xdotool windowminimize ${id}`); tick(); } catch (_) { }
   });
 
-  // Нативная максимизация через EWMH. KWin сам применит.
   ipcMain.on('native-window:maximize', async (_e, { id, maximized }) => {
+    const our = getWindowById(id);
+    if (our) {
+      if (maximized) our.unmaximize();
+      else our.maximize();
+      return;
+    }
     try {
       if (maximized) {
-        // было максимизировано → снять
         await execAsync(`wmctrl -i -r ${id} -b remove,maximized_vert,maximized_horz`);
       } else {
-        // сначала снять (на случай странного состояния), потом добавить
         await execAsync(`wmctrl -i -r ${id} -b remove,maximized_vert,maximized_horz`).catch(() => { });
         await execAsync(`wmctrl -i -r ${id} -b add,maximized_vert,maximized_horz`);
       }
       tick();
-    } catch (err) {
-      console.error('[native-window:maximize]', err.message);
+    } catch (err) { console.error('[maximize]', err.message); }
+  });
+
+  ipcMain.on('native-window:move', (_e, { id, x, y }) => {
+    const our = getWindowById(id);
+    if (our) {
+      const b = our.getBounds();
+      our.setBounds({ x: Math.round(x), y: Math.round(y), width: b.width, height: b.height }, false);
+      return;
     }
-  });
-
-  ipcMain.on('native-window:move', async (_e, { id, x, y }) => {
     userInteracting = true;
-    try {
-      await execAsync(`wmctrl -i -r ${id} -e 0,${Math.round(x)},${Math.round(y)},-1,-1`);
-    } catch (_) { }
+    execAsync(`wmctrl -i -r ${id} -e 0,${Math.round(x)},${Math.round(y)},-1,-1`).catch(() => { });
   });
 
-  // Ресайз через EWMH.
-  ipcMain.on('native-window:resize', async (_e, { id, x, y, width, height }) => {
+  ipcMain.on('native-window:resize', (_e, { id, x, y, width, height }) => {
+    const our = getWindowById(id);
+    if (our) {
+      our.setBounds({
+        x: Math.round(x), y: Math.round(y),
+        width: Math.round(width), height: Math.round(height),
+      }, false);
+      return;
+    }
     userInteracting = true;
-    try {
-      await execAsync(`wmctrl -i -r ${id} -e 0,${Math.round(x)},${Math.round(y)},${Math.round(width)},${Math.round(height)}`);
-    } catch (_) { }
-  });
-
-  ipcMain.on('native-window:release', () => {
-    userInteracting = false;
+    execAsync(`wmctrl -i -r ${id} -e 0,${Math.round(x)},${Math.round(y)},${Math.round(width)},${Math.round(height)}`).catch(() => { });
   });
 
   ipcMain.handle('native-window:get-bounds', async (_e, { id }) => {
+    const our = getWindowById(id);
+    if (our) {
+      const b = our.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    }
     try {
       const { stdout } = await execAsync(`xdotool getwindowgeometry --shell ${id}`);
       const lines = stdout.trim().split('\n');
@@ -232,16 +269,14 @@ export default function () {
         const l = lines.find((s) => s.startsWith(key + '='));
         return l ? parseInt(l.split('=')[1], 10) : 0;
       };
-      return {
-        x: get('X'),
-        y: get('Y'),
-        width: get('WIDTH'),
-        height: get('HEIGHT'),
-      };
-    } catch (_) {
-      return null;
-    }
+      return { x: get('X'), y: get('Y'), width: get('WIDTH'), height: get('HEIGHT') };
+    } catch (_) { return null; }
   });
+
+  ipcMain.on('native-window:release', () => {
+    userInteracting = false;
+  });
+
 
   /* -------- KRunner -------- */
   let krunnerBusy = false;

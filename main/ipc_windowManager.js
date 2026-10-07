@@ -115,7 +115,8 @@ function attachWindowEvents(id, win) {
     };
 
     win.on('focus', () => {
-        global.__focusedWindowId = id;   // ← ключевое
+        global.__focusedWindowId = id;
+        global.topbarBroadcast?.();
         emit('focus');
     });
     win.on('blur', () => emit('blur'));
@@ -141,6 +142,13 @@ function attachWindowEvents(id, win) {
         windows.delete(id);
         emit('closed');
     });
+
+    win.on('focus', () => {
+        global.__focusedWindowId = id;
+        send('shell:window-event', { id, type: 'focus' });
+        global.topbarBroadcast?.();
+    });
+
 }
 
 export function createWindowByRequest({
@@ -232,11 +240,9 @@ export function createWindowByRequest({
 
     win.once('ready-to-show', () => {
         const entry = windows.get(id);
-        if (entry) {
-            entry.meta.xid = getXid(win) || entry.meta.xid;
-            if (entry.meta.xid) {
-                send('shell:window-event', { id, type: 'xid-ready', xid: entry.meta.xid });
-            }
+        if (entry && !entry.meta.xid) {
+            entry.meta.xid = getXid(win);
+            global.topbarBroadcast?.();
         }
         if (maximized) win.maximize();
         win.show();
