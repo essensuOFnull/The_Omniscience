@@ -9,9 +9,6 @@ export default async function () {
   app.commandLine.appendSwitch('disable-renderer-backgrounding');
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
-  await global.$.texts_load();
-  await global.$.preloads_generate();
-
   // Включаем Cross-Origin Isolation для всей сессии
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({

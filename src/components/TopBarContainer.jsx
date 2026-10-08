@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Box } from '@mui/material';
 import TopBar from './TopBar';
-import Overview from './Overview';
 
 export default function TopBarContainer() {
   const [state, setState] = useState({
@@ -11,9 +10,8 @@ export default function TopBarContainer() {
     showWindowList: true,
     showClock: true,
     showClockMs: false,
-    mode: 'normal',
+    overviewOpen: false,
   });
-  const [overviewTab, setOverviewTab] = useState(null);
 
   useEffect(() => {
     const api = window.electron_topbar_API;
@@ -21,11 +19,7 @@ export default function TopBarContainer() {
 
     api.invoke('topbar:get-state')
       .then((s) => {
-        if (!s) return;
-        setState((p) => ({ ...p, ...s }));
-        if (!overviewTab && s.overviewTabs?.length) {
-          setOverviewTab(s.overviewTabs[0].id);
-        }
+        if (s) setState((p) => ({ ...p, ...s }));
       })
       .catch(() => {});
 
@@ -35,42 +29,23 @@ export default function TopBarContainer() {
     return off;
   }, []);
 
-  const send = useCallback((ch, data) => window.electron_topbar_API?.send(ch, data), []);
-
-  const setMode = useCallback((mode) => {
-    send('topbar:set-mode', { mode });
-    setState((p) => ({ ...p, mode }));
-  }, [send]);
-
-  const isOverview = state.mode === 'overview';
-  const toggleOverview = () => setMode(isOverview ? 'normal' : 'overview');
+  const send = useCallback(
+    (ch, data) => window.electron_topbar_API?.send(ch, data),
+    [],
+  );
 
   return (
-    <Box sx={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden',bgcolor: 'rgba(0,0,0,0.6)' }}>
-      {/* TopBar фиксированной высоты */}
-      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72, zIndex: 2 }}>
-        <TopBar
-          {...state}
-          onToggleOverview={toggleOverview}
-          onOpenDevTools={(id) => send('topbar:open-devtools', { id })}
-          onLaunch={(app) => send('topbar:launch-app', { app })}
-          onAddQuickLaunch={() => send('topbar:open-launcher')}
-          onFocusWindow={(w) => send('topbar:focus-window', { id: w.id })}
-          onCloseWindow={(w) => send('topbar:close-window', { id: w.id })}
-          onRequestSearch={() => send('topbar:open-search')}
-          onRequestSettings={() => send('topbar:open-settings')}
-        />
-      </Box>
-
-      {/* Overview поверх всего, ниже TopBar'а */}
-      <Overview
-        isOpen={isOverview}
-        activeTabId={overviewTab}
-        onTabChange={setOverviewTab}
-        onClose={() => setMode('normal')}
-        apps={state.apps || []}
-        tabsConfig={state.overviewTabs || []}
-        parentWindowId="topbar"
+    <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <TopBar
+        {...state}
+        onToggleOverview={() => send('topbar:toggle-overview')}
+        onOpenDevTools={(id) => send('topbar:open-devtools', { id })}
+        onLaunch={(app) => send('topbar:launch-app', { app })}
+        onAddQuickLaunch={() => send('topbar:open-launcher')}
+        onFocusWindow={(w) => send('topbar:focus-window', { id: w.id })}
+        onCloseWindow={(w) => send('topbar:close-window', { id: w.id })}
+        onRequestSearch={() => send('topbar:open-search')}
+        onRequestSettings={() => send('topbar:open-settings')}
       />
     </Box>
   );

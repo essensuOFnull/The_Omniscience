@@ -11,10 +11,32 @@ import {
   minimizeWindowById,
   maximizeWindowById,
 } from './ipc_nativeWindows.js';
+import { openOverview, closeOverview, toggleOverview, isOverviewOpen } from './ipc_overview.js';
 
 const execAsync = promisify(exec);
 
 let cachedApps = [];
+
+/* ------------------------------------------------------------------ */
+/* Фиксация высоты TopBar'а в 72px                                     */
+/* ------------------------------------------------------------------ */
+
+const TOPBAR_HEIGHT = 72;
+
+function enforceTopbarGeometry() {
+  const w = global.topbarWindow;
+  if (!w || w.isDestroyed()) return;
+  try {
+    // Жёсткие границы по высоте: min=72, max=72. Ширина — свободная (1..9999).
+    w.setMinimumSize(1, TOPBAR_HEIGHT);
+    w.setMaximumSize(9999, TOPBAR_HEIGHT);
+
+    const b = w.getBounds();
+    if (b.height !== TOPBAR_HEIGHT) {
+      w.setBounds({ x: b.x, y: b.y, width: b.width, height: TOPBAR_HEIGHT });
+    }
+  } catch { /* ignore */ }
+}
 
 /* ------------------------------------------------------------------ */
 /* Инициализация                                                       */
@@ -29,6 +51,7 @@ export async function initTopbarState() {
   } catch (err) {
     console.error('[topbar] buildAppsList failed:', err.message);
   }
+  enforceTopbarGeometry();
 }
 
 /* ------------------------------------------------------------------ */
@@ -44,7 +67,6 @@ function buildState() {
   const { windows: nativeWindows, activeXid } = getNativeState();
   const activeNorm = normalizeXid(activeXid);
 
-  // --- наши Electron-окна ---
   const ourWindows = listWindows().map((w) => {
     const xid = normalizeXid(w.xid);
     const b = w.bounds || {};
@@ -64,7 +86,6 @@ function buildState() {
 
   const ourXids = new Set(ourWindows.map((w) => w.xid).filter(Boolean));
 
-  // --- нативные X11-окна ---
   const native = nativeWindows
     .filter((w) => !ourXids.has(normalizeXid(w.id)))
     .map((w) => ({
@@ -94,14 +115,16 @@ function buildState() {
     showWindowList: cfg.showWindowList ?? true,
     showClock: cfg.showClock ?? true,
     showClockMs: cfg.showClockMs ?? false,
-    mode: cfg.__mode || 'normal',
+    overviewOpen: isOverviewOpen(),
   };
 }
 
 export function broadcastTopbarState() {
-  const w = global.topbarWindow;
-  if (!w || w.isDestroyed()) return;
-  w.webContents.send('topbar:state-update', buildState());
+  try {
+    const w = global.topbarWindow;
+    if (!w || w.isDestroyed()) return;
+    w.webContents.send('topbar:state-update', buildState());
+  } catch { /* ignore */ }
 }
 
 /* ------------------------------------------------------------------ */
@@ -113,13 +136,27 @@ export default function () {
 
   ipcMain.handle('topbar:get-state', () => buildState());
 
-  ipcMain.on('topbar:set-mode', (_e, { mode }) => {
-    global.config.topbar = global.config.topbar || {};
-    global.config.topbar.__mode = mode;
-    broadcastTopbarState();
+  /* -------- Overview toggle -------- */
+
+  ipcMain.on('topbar:toggle-overview', () => {
+    try { toggleOverview(); } catch (e) {
+      console.error('[topbar:toggle-overview]', e?.message || e);
+    }
   });
 
-  /* --- Единый путь: наши и нативные окна обрабатываются одинаково --- */
+  ipcMain.on('topbar:open-overview', () => {
+    try { openOverview(); } catch (e) {
+      console.error('[topbar:open-overview]', e?.message || e);
+    }
+  });
+
+  ipcMain.on('topbar:close-overview', () => {
+    try { closeOverview(); } catch (e) {
+      console.error('[topbar:close-overview]', e?.message || e);
+    }
+  });
+
+  /* -------- Управление окнами -------- */
 
   ipcMain.on('topbar:focus-window', (_e, { id }) => {
     focusWindowById(id).catch((e) =>
@@ -150,7 +187,6 @@ export default function () {
 
   ipcMain.on('topbar:launch-app', (_e, { app }) => {
     console.log('[topbar] launch', app);
-    // TODO: реализовать по мере необходимости
   });
 
   ipcMain.on('topbar:open-search', async () => {

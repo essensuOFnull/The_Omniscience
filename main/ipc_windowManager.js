@@ -90,18 +90,20 @@ export function getXidForWindow(id) {
 }
 
 export function listWindows() {
-  return Array.from(windows.entries()).map(([id, entry]) => ({
-    id,
-    appId: entry.meta.appId,
-    url: entry.win.webContents.getURL(),
-    title: entry.win.getTitle() || entry.meta.title || '',
-    icon: entry.meta.icon || null,
-    minimized: entry.win.isMinimized(),
-    maximized: entry.win.isMaximized(),
-    focused: entry.win.isFocused(),
-    bounds: entry.win.getBounds(),
-    xid: entry.meta.xid,
-  }));
+  return Array.from(windows.entries())
+    .filter(([, entry]) => !entry.meta.isShell)   // ← shell-окна не показываем
+    .map(([id, entry]) => ({
+      id,
+      appId: entry.meta.appId,
+      url: entry.win.webContents.getURL(),
+      title: entry.win.getTitle() || entry.meta.title || '',
+      icon: entry.meta.icon || null,
+      minimized: entry.win.isMinimized(),
+      maximized: entry.win.isMaximized(),
+      focused: entry.win.isFocused(),
+      bounds: entry.win.getBounds(),
+      xid: entry.meta.xid,
+    }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -332,4 +334,36 @@ export default function () {
       loading: wc.isLoading(),
     };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Shell-окна (Overview и т.п.) — регистрируются вручную из своих      */
+/* модулей, чтобы viewRuntime мог их найти как host для WebContentsView */
+/* ------------------------------------------------------------------ */
+
+export function registerShellWindow(win, id, meta = {}) {
+  if (!id || !win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
+    return false;
+  }
+  windows.set(id, {
+    win,
+    meta: {
+      appId: id,
+      title: meta.title || id,
+      icon: meta.icon || null,
+      isShell: true,
+      xid: getXid(win),
+      ...meta,
+    },
+  });
+  return true;
+}
+
+export function unregisterShellWindow(id) {
+  if (!id) return;
+  windows.delete(id);
+}
+
+export function isShellWindow(id) {
+  return !!windows.get(id)?.meta?.isShell;
 }

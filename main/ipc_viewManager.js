@@ -1,6 +1,32 @@
 import electronPkg from 'electron';
 const { WebContentsView, ipcMain } = electronPkg;
 import { attachToWebContents } from './ipc_browserContextMenu.js';
+import { getWindowById } from './ipc_windowManager.js';
+
+/* ------------------------------------------------------------------ */
+/* Резолвер родительского окна                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Возвращает BrowserWindow по символическому parentWindowId:
+ *   null / undefined  → mainWindow
+ *   'main'            → mainWindow
+ *   'topbar'          → topbarWindow
+ *   любое другое      → ищем в реестре ipc_windowManager (обычные окна + shell)
+ *                       с фолбэком на mainWindow
+ */
+function resolveParentWindow(parentWindowId) {
+    if (!parentWindowId) return global.mainWindow || null;
+    if (parentWindowId === 'main') return global.mainWindow || null;
+    if (parentWindowId === 'topbar') return global.topbarWindow || null;
+
+    try {
+        const w = getWindowById(parentWindowId);
+        if (w && !w.isDestroyed()) return w;
+    } catch { /* ignore */ }
+
+    return global.mainWindow || null;
+}
 
 /* ------------------------------------------------------------------ */
 /* Z-order                                                             */
@@ -30,15 +56,30 @@ function reorderAll() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Автоочистка views при закрытии родительского окна                   */
+/* ------------------------------------------------------------------ */
+
+function hookParentCleanup(parentWindow) {
+    if (!parentWindow || parentWindow.isDestroyed()) return;
+    if (parentWindow.__omniViewCleanupHooked) return;
+    parentWindow.__omniViewCleanupHooked = true;
+
+    parentWindow.on('closed', () => {
+        for (const [vid, ve] of Object.entries(global.views)) {
+            if (ve.parentWindow === parentWindow) {
+                try { ve.view.webContents.destroy(); } catch (_) { }
+                delete global.views[vid];
+            }
+        }
+    });
+}
+
+/* ------------------------------------------------------------------ */
 /* Публичное API                                                       */
 /* ------------------------------------------------------------------ */
 
 export function createView(id, { kind, url, preload, bounds, parentWindowId }) {
-    // Определяем, к какому окну крепить view
-    let parentWindow = global.mainWindow;
-    if (parentWindowId === 'topbar') parentWindow = global.topbarWindow;
-    else if (parentWindowId) parentWindow = global.views?.[parentWindowId]?.window || global.mainWindow;
-
+    const parentWindow = resolveParentWindow(parentWindowId);
     if (!parentWindow || parentWindow.isDestroyed()) return null;
     if (global.views[id]) return global.views[id].view;
 
@@ -61,7 +102,8 @@ export function createView(id, { kind, url, preload, bounds, parentWindowId }) {
 
     const entry = {
         view,
-        parentWindow,           // 👈 запоминаем
+        parentWindow,
+        parentWindowId: parentWindowId || null,   // ← сохраняем для recreateAllViews
         bounds: { ...b },
         zIndex: 0,
         kind: kind || 'window',
@@ -71,7 +113,8 @@ export function createView(id, { kind, url, preload, bounds, parentWindowId }) {
     };
 
     global.views[id] = entry;
-    parentWindow.contentView.addChildView(view);    // 👈 крепим к нужному окну
+    parentWindow.contentView.addChildView(view);
+    hookParentCleanup(parentWindow);
 
     // Навигационные события — только для окон
     if (kind === 'window') {
@@ -98,25 +141,20 @@ export function createView(id, { kind, url, preload, bounds, parentWindowId }) {
     }
 
     // Перехват window.open() и target="_blank".
-    // Вместо нативного окна Electron — отправляем запрос в shell,
-    // и shell создаёт новое окно Omniscience.
     try {
         view.webContents.setWindowOpenHandler(({ url, frameName, features, disposition, referrer, postBody }) => {
             if (!global.mainWindow || global.mainWindow.isDestroyed()) {
                 return { action: 'deny' };
             }
-
             global.mainWindow.webContents.send('shell:open-window-request', {
                 sourceWindowId: id,
                 url,
-                disposition,      // 'foreground-tab' | 'background-tab' | 'new-window' | 'save-to-disk' | 'other'
-                frameName,        // для window.open('url', 'name')
-                features,         // window features string
+                disposition,
+                frameName,
+                features,
                 referrer,
                 hasPostBody: !!postBody,
             });
-
-            // Запрещаем Electron создавать своё окно.
             return { action: 'deny' };
         });
         attachToWebContents(view.webContents);
@@ -180,6 +218,7 @@ export function recreateAllViews() {
         id, kind: e.kind, url: e.url, bounds: e.bounds,
         requestedPreload: e.requestedPreload,
         zIndex: e.zIndex, scale: e.scale,
+        parentWindowId: e.parentWindowId || null,   // ← переносим
     }));
 
     if (snapshot.length === 0) return;
@@ -190,7 +229,11 @@ export function recreateAllViews() {
     for (const s of snapshot) {
         if (s.kind !== 'window') continue;
         createView(s.id, {
-            kind: 'window', url: s.url, preload: s.requestedPreload, bounds: s.bounds,
+            kind: 'window',
+            url: s.url,
+            preload: s.requestedPreload,
+            bounds: s.bounds,
+            parentWindowId: s.parentWindowId,       // ← восстанавливаем
         });
         const e = global.views[s.id];
         if (!e) continue;
@@ -216,7 +259,9 @@ export default function () {
     /* -------- Универсальные операции -------- */
 
     ipcMain.on('view:create', (_e, msg) => {
-        console.log('[DBG] view:create id =', msg?.id, 'kind =', msg?.kind);
+        console.log('[DBG] view:create id =', msg?.id,
+                    'kind =', msg?.kind,
+                    'parentWindowId =', msg?.parentWindowId);
         createView(msg.id, msg);
     });
 
@@ -242,7 +287,7 @@ export default function () {
 
     ipcMain.handle('view:get-main-size', () => {
         if (!global.mainWindow || global.mainWindow.isDestroyed()) return null;
-        const b = entry.parentWindow?.contentView?.getBounds();
+        const b = global.mainWindow.contentView.getBounds();
         return { width: b.width, height: b.height };
     });
 
@@ -306,7 +351,10 @@ export default function () {
     ipcMain.on('view:maximize', (event) => {
         const id = findIdByWebContents(event.sender.id);
         if (!id) return;
-        const cb = entry.parentWindow?.contentView?.getBounds();
+        const entry = global.views[id];
+        if (!entry) return;
+        const cb = entry.parentWindow?.contentView?.getBounds?.();
+        if (!cb) return;
         updateBounds(id, { x: 0, y: 0, width: cb.width, height: cb.height });
     });
 

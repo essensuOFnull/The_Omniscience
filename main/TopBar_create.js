@@ -18,7 +18,7 @@ export default async function () {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
-    focusable: true,      // ← явно
+    focusable: false,
     acceptFirstMouse: true,  // ← для macOS, но не помешает
     type: 'dock',
     alwaysOnTop: true,
@@ -30,15 +30,12 @@ export default async function () {
       webSecurity: true,
     },
   });
-
-  global.topbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
   
   global.topbarWindow.once('ready-to-show', () => {
     const w = global.topbarWindow;
     w.setAlwaysOnTop(true, 'screen-saver');
     w.setBounds({ x: 0, y: 0, width, height: TOPBAR_H });
     w.show();
-    w.focus();
   });
 
   // ── Растянуть/сжать для Overview ──
@@ -47,7 +44,6 @@ export default async function () {
     if (!w || w.isDestroyed()) return;
     const h = mode === 'overview' ? height : TOPBAR_H;
     w.setBounds({ x: 0, y: 0, width: width, height: h });
-    w.focus();
   });
   
   await global.$.TopBar_on_loaded();

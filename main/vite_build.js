@@ -12,6 +12,7 @@ export default async function () {
   const input = {
     main: path.join(rootDir, 'src', 'index.html'),
     topbar: path.join(rootDir, 'src', 'topbar.html'),
+    overview: path.join(rootDir, 'src', 'overview.html'),
   };
 
   if (fs.existsSync(componentappsDir)) {
