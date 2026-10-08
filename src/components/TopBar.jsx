@@ -34,7 +34,6 @@ export default function TopBar({
       display: 'flex',
       alignItems: 'stretch',
       overflow: 'hidden',
-      WebkitAppRegion: 'drag',
     }}>
       {/* ── Крестовина (слева, на всю высоту) ── */}
       <Box sx={{

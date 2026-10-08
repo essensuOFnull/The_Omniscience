@@ -5,13 +5,12 @@ const TOPBAR_H = 72;
 
 export default async function () {
   const display = screen.getPrimaryDisplay();
-  const { width, height } = display.workAreaSize;
+  const { width, height } = display.size;
 
   global.topbarWindow = new BrowserWindow({
+    title: 'The_Omniscience_panel',
     x: 0, y: 0, width, height: TOPBAR_H,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
     resizable: false,
     movable: false,
     minimizable: false,
@@ -19,9 +18,12 @@ export default async function () {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
-    focusable: false,      // ← явно
+    focusable: true,      // ← явно
     acceptFirstMouse: true,  // ← для macOS, но не помешает
-    ...(process.platform === 'linux' ? { type: 'dock' } : {}),
+    type: 'dock',
+    alwaysOnTop: true,
+    transparent: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -30,33 +32,23 @@ export default async function () {
   });
 
   global.topbarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
-
+  
   global.topbarWindow.once('ready-to-show', () => {
-    global.topbarWindow.showInactive();
+    const w = global.topbarWindow;
+    w.setAlwaysOnTop(true, 'screen-saver');
+    w.setBounds({ x: 0, y: 0, width, height: TOPBAR_H });
+    w.show();
+    w.focus();
   });
 
   // ── Растянуть/сжать для Overview ──
   ipcMain.on('topbar:set-mode', (_e, { mode }) => {
     const w = global.topbarWindow;
     if (!w || w.isDestroyed()) return;
-    const wa = screen.getPrimaryDisplay().workAreaSize;
-    const h = mode === 'overview' ? wa.height : TOPBAR_H;
-    w.setBounds({ x: 0, y: 0, width: wa.width, height: h });
+    const h = mode === 'overview' ? height : TOPBAR_H;
+    w.setBounds({ x: 0, y: 0, width: width, height: h });
+    w.focus();
   });
-
-  ipcMain.on('topbar:set-visible', (_e, { visible }) => {
-    const w = global.topbarWindow;
-    if (!w || w.isDestroyed()) return;
-    if (visible) w.showInactive();
-    else w.hide();
-  });
-
-  ipcMain.handle('topbar:focus-self', () => {
-    const w = global.topbarWindow;
-    if (!w || w.isDestroyed()) return false;
-    if (!w.isFocused()) w.focus();
-    return w.isFocused();
-  });
-
+  
   await global.$.TopBar_on_loaded();
 }

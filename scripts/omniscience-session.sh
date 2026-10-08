@@ -194,31 +194,6 @@ npx electron . &
 OMNI_PID=$!
 echo "[session] Electron (PID=$OMNI_PID)"
 
-WIN_ID=""
-i=0
-while [ $i -lt 100 ]; do
-  WIN_ID=$(xdotool search --class "The_Omniscience" 2>/dev/null | head -1)
-  [ -z "$WIN_ID" ] && WIN_ID=$(wmctrl -l -x 2>/dev/null | grep -i omniscience | awk '{print $1}' | head -1)
-  [ -n "$WIN_ID" ] && break
-  if ! kill -0 "$OMNI_PID" 2>/dev/null; then
-    echo "[session] ❌ Electron умер, завершаю сессию"
-    for p in "$KWIN_PID" "$KDED_PID" "$KAMD_PID" "$POLKIT_PID" "$KGA_PID"; do
-      [ -n "$p" ] && kill "$p" 2>/dev/null || true
-    done
-    exit 1
-  fi
-  sleep 0.2; i=$((i+1))
-done
-
-if [ -n "$WIN_ID" ]; then
-  echo "[session] Окно: $WIN_ID"
-  SCREEN_W=$(xrandr --current | grep '\*' | awk '{print $1}' | cut -d'x' -f1)
-  xprop -id "$WIN_ID" -f _NET_WM_STRUT_PARTIAL 32c \
-    -set _NET_WM_STRUT_PARTIAL "0, 0, 72, 0, 0, 0, 0, 0, 0, $((SCREEN_W - 1)), 0, 0" 2>/dev/null || true
-else
-  echo "[session] ⚠️  Окно Omniscience не найдено"
-fi
-
 # ============================================================
 # 6. bluedevil + системные сервисы
 # ============================================================

@@ -11,12 +11,39 @@ import { getWindowById, getXidForWindow } from './ipc_windowManager.js';
 const execFileAsync = promisify(execFile);
 
 /* ------------------------------------------------------------------ */
+/* Глобальная защита процесса                                         */
+/* ------------------------------------------------------------------ */
+
+// Никогда не падать от необработанных reject'ов — их у нас много,
+// потому что X11 работает асинхронно, и окно может исчезнуть в любой момент.
+process.on('unhandledRejection', (reason) => {
+  if (DEBUG) console.warn('[nativeWindows] unhandledRejection:', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  if (err && /X11|BadWindow|BadDrawable|BadMatch|BadValue|BadAtom/i.test(err.message || '')) {
+    if (DEBUG) console.warn('[nativeWindows] uncaught X11 (ignored):', err.message);
+    return;
+  }
+  console.error('[nativeWindows] uncaughtException:', err);
+});
+
+/* ------------------------------------------------------------------ */
 /* Debug                                                               */
 /* ------------------------------------------------------------------ */
 
 const DEBUG = process.env.OMNI_NATIVE_DEBUG !== '0';
 function dbg(...args) { if (DEBUG) console.log('[nativeWindows]', ...args); }
 function dbgWarn(...args) { if (DEBUG) console.warn('[nativeWindows]', ...args); }
+
+// Обёртка: любую async-функцию можно вызвать безопасно и не падать.
+function safe(promise, label) {
+  if (promise && typeof promise.catch === 'function') {
+    promise.catch((e) => {
+      if (DEBUG) dbgWarn(`[safe:${label || '?'}]`, e?.message || e);
+    });
+  }
+  return promise;
+}
 
 /* ------------------------------------------------------------------ */
 /* x11                                                                 */
@@ -104,7 +131,7 @@ const ATOM_NAMES = [
   '_NET_WM_USER_TIME',
   'WM_NAME',
   'WM_CLASS',
-  'WM_STATE',           // ← ICCCM: 1=Normal, 3=Iconic
+  'WM_STATE',
   'WM_PROTOCOLS',
   'WM_DELETE_WINDOW',
   'WM_CHANGE_STATE',
@@ -124,6 +151,11 @@ const REFRESH_DEBOUNCE_MS = 25;
 const FOCUS_POLL_MS = 500;
 const WATCHDOG_MS = 2000;
 const POST_ACTION_REFRESH_MS = 250;
+
+/* X11 «мягкие» коды, которые обычны при гонках с уже убитыми окнами:
+ * 2  BadValue, 3 BadWindow, 5 BadAtom, 8 BadMatch, 9 BadDrawable.
+ */
+const SOFT_X11_CODES = new Set([2, 3, 5, 8, 9]);
 
 /* ------------------------------------------------------------------ */
 /* Shell XIDs                                                          */
@@ -260,21 +292,28 @@ function internAtoms(X, names) {
     let pending = names.length;
     if (!pending) return resolve(atoms);
     for (const name of names) {
-      X.InternAtom(false, name, (err, atom) => {
-        atoms[name] = err ? 0 : atom;
+      try {
+        X.InternAtom(false, name, (err, atom) => {
+          atoms[name] = err ? 0 : atom;
+          if (--pending === 0) resolve(atoms);
+        });
+      } catch {
+        atoms[name] = 0;
         if (--pending === 0) resolve(atoms);
-      });
+      }
     }
   });
 }
 
 function getProperty(X, win, atom, typeAtom = 0) {
   return new Promise((resolve) => {
-    if (!atom) return resolve(null);
-    X.GetProperty(0, win, atom, typeAtom, 0, 0x1fffffff, (err, prop) => {
-      if (err || !prop || !prop.data || prop.data.length === 0) return resolve(null);
-      resolve(prop);
-    });
+    if (!atom || !win) return resolve(null);
+    try {
+      X.GetProperty(0, win, atom, typeAtom, 0, 0x1fffffff, (err, prop) => {
+        if (err || !prop || !prop.data || prop.data.length === 0) return resolve(null);
+        resolve(prop);
+      });
+    } catch { resolve(null); }
   });
 }
 
@@ -299,11 +338,6 @@ async function readWmStateAtoms(X, win, atom) {
   return out;
 }
 
-/**
- * ICCCM WM_STATE: 1 = NormalState, 3 = IconicState.
- * Это свойство клиента — надёжнее, чем _NET_WM_STATE_HIDDEN
- * (который KWin/XFCE иногда ставят на frame, не на клиент).
- */
 async function readIcccmState(X, win, atom) {
   const prop = await getProperty(X, win, atom);
   if (!prop || !prop.data || prop.data.length < 4) return 0;
@@ -351,6 +385,7 @@ async function readDesktop(X, win, atom) {
 
 function getGeometry(X, win, root) {
   return new Promise((resolve) => {
+    if (!win) return resolve(null);
     try {
       X.GetGeometry(win, (err, geo) => {
         if (err || !geo) return resolve(null);
@@ -382,31 +417,38 @@ function getGeometry(X, win, root) {
 function getActiveXidRaw(X, root, atom) {
   return new Promise((resolve) => {
     if (!atom) return resolve(null);
-    X.GetProperty(0, root, atom, 0, 0, 4, (err, prop) => {
-      if (err || !prop || !prop.data || prop.data.length < 4) return resolve(null);
-      const win = readU32At(prop.data, 0) >>> 0;
-      resolve(win ? win : null);
-    });
+    try {
+      X.GetProperty(0, root, atom, 0, 0, 4, (err, prop) => {
+        if (err || !prop || !prop.data || prop.data.length < 4) return resolve(null);
+        const win = readU32At(prop.data, 0) >>> 0;
+        resolve(win ? win : null);
+      });
+    } catch { resolve(null); }
   });
 }
 
 function getInputFocus(X) {
   return new Promise((resolve) => {
-    X.GetInputFocus((err, focus) => {
-      if (err || !focus) return resolve(null);
-      const xid = (focus.focus >>> 0);
-      if (!xid || xid === 1) return resolve(null);
-      resolve(xid);
-    });
+    try {
+      X.GetInputFocus((err, focus) => {
+        if (err || !focus) return resolve(null);
+        const xid = (focus.focus >>> 0);
+        if (!xid || xid === 1) return resolve(null);
+        resolve(xid);
+      });
+    } catch { resolve(null); }
   });
 }
 
 function queryTree(X, win) {
   return new Promise((resolve) => {
-    X.QueryTree(win, (err, tree) => {
-      if (err || !tree) return resolve(null);
-      resolve(tree);
-    });
+    if (!win) return resolve(null);
+    try {
+      X.QueryTree(win, (err, tree) => {
+        if (err || !tree) return resolve(null);
+        resolve(tree);
+      });
+    } catch { resolve(null); }
   });
 }
 
@@ -420,10 +462,7 @@ function warpPointer(X, root, x, y) {
       X.WarpPointer(0, root, 0, 0, 0, 0,
         Math.max(0, Math.round(x)), Math.max(0, Math.round(y)),
         (err) => resolve(!err));
-    } catch (e) {
-      dbgWarn('warpPointer exception:', e?.message);
-      resolve(false);
-    }
+    } catch { resolve(false); }
   });
 }
 
@@ -433,14 +472,15 @@ function warpPointer(X, root, x, y) {
 
 function sendClientMessage(X, root, targetWin, messageType, data) {
   return new Promise((resolve) => {
-    if (!messageType) return resolve(false);
+    if (!messageType || !targetWin) return resolve(false);
     const event = {
       type: 33, format: 32, window: targetWin,
       message_type: messageType,
       data: data || [0, 0, 0, 0, 0],
     };
-    try { X.SendEvent(root, false, SEND_EVENT_MASK, event, () => resolve(true)); }
-    catch { resolve(false); }
+    try {
+      X.SendEvent(root, false, SEND_EVENT_MASK, event, () => resolve(true));
+    } catch { resolve(false); }
   });
 }
 
@@ -451,6 +491,7 @@ function activateWindowX11(X, root, atomMap, win, timestamp = 0) {
 
 function setInputFocusDirect(X, win, timestamp = 0) {
   return new Promise((resolve) => {
+    if (!win) return resolve(false);
     try { X.SetInputFocus(win, 1, (timestamp >>> 0), (err) => resolve(!err)); }
     catch { resolve(false); }
   });
@@ -458,6 +499,7 @@ function setInputFocusDirect(X, win, timestamp = 0) {
 
 function raiseWindowX11(X, win) {
   return new Promise((resolve) => {
+    if (!win) return resolve(false);
     try { X.ConfigureWindow(win, { stackMode: 0 }, (err) => resolve(!err)); }
     catch { resolve(false); }
   });
@@ -472,7 +514,7 @@ function sendWmDeleteWindow(X, win, atomMap, timestamp = 0) {
   return new Promise((resolve) => {
     const wmProtocols = atomMap.WM_PROTOCOLS;
     const wmDelete = atomMap.WM_DELETE_WINDOW;
-    if (!wmProtocols || !wmDelete) return resolve(false);
+    if (!wmProtocols || !wmDelete || !win) return resolve(false);
     const event = {
       type: 33, format: 32, window: win,
       message_type: wmProtocols,
@@ -485,6 +527,7 @@ function sendWmDeleteWindow(X, win, atomMap, timestamp = 0) {
 
 function moveResizeWindowX11(X, win, x, y, width, height) {
   return new Promise((resolve) => {
+    if (!win) return resolve(false);
     try {
       const opts = {};
       if (Number.isFinite(x)) opts.x = Math.round(x);
@@ -545,12 +588,14 @@ function spawnXprop(args) {
 
 async function selfTestDump() {
   if (!DEBUG) return;
-  const [active, clients] = await Promise.all([
-    spawnXprop(['-root', '-notype', '_NET_ACTIVE_WINDOW']),
-    spawnXprop(['-root', '-notype', '_NET_CLIENT_LIST']),
-  ]);
-  console.log('[nativeWindows][selftest] _NET_ACTIVE_WINDOW:', active || '(empty)');
-  console.log('[nativeWindows][selftest] _NET_CLIENT_LIST:', clients);
+  try {
+    const [active, clients] = await Promise.all([
+      spawnXprop(['-root', '-notype', '_NET_ACTIVE_WINDOW']),
+      spawnXprop(['-root', '-notype', '_NET_CLIENT_LIST']),
+    ]);
+    console.log('[nativeWindows][selftest] _NET_ACTIVE_WINDOW:', active || '(empty)');
+    console.log('[nativeWindows][selftest] _NET_CLIENT_LIST:', clients);
+  } catch { /* ignore */ }
 }
 
 /* ------------------------------------------------------------------ */
@@ -562,6 +607,7 @@ class X11Watcher {
     this.onUpdate = onUpdate;
     this.windows = new Map();
     this.frameToClient = new Map();
+    this.brokenWindows = new Set(); // XID → в этой сессии давал BadWindow, не трогаем
     this.activeXid = null;
 
     this.X = null;
@@ -593,8 +639,18 @@ class X11Watcher {
       this.X = display.client;
       this.root = display.screen[0].root;
       dbg('createClient OK. root =', xidToHex(this.root));
-      this.X.on('error', (e) =>
-        console.error('[nativeWindows] X11 error:', e?.message || e));
+
+      // ГЛАВНАЯ защита: X11-ошибки приходят сюда в любом месте.
+      // BadWindow/BadDrawable/BadMatch/BadValue/BadAtom — тихо глотаем,
+      // это нормальные гонки при работе с чужими окнами.
+      this.X.on('error', (e) => {
+        const code = e?.errorCode;
+        if (SOFT_X11_CODES.has(code)) {
+          if (DEBUG) dbg('X11 soft error (ignored): code =', code);
+          return;
+        }
+        console.error('[nativeWindows] X11 error:', e?.message || e, code);
+      });
 
       internAtoms(this.X, ATOM_NAMES).then((atomMap) => {
         if (this.destroyed) return;
@@ -605,18 +661,18 @@ class X11Watcher {
 
         this.focusPollTimer = setInterval(() => {
           if (this.destroyed) return;
-          this.applyActiveXid();
+          safe(this.applyActiveXid(), 'applyActiveXid');
         }, FOCUS_POLL_MS);
 
-        // Watchdog: полный refresh + перечитать состояние каждого окна,
-        // чтобы UI не отставал, даже если WM молчит.
         this.watchdogTimer = setInterval(() => {
           if (this.destroyed) return;
           this.scheduleRefresh();
           for (const win of this.windows.keys()) {
-            this.refreshWmState(win);
+            safe(this.refreshWmState(win), 'watchdog.refreshWmState');
           }
         }, WATCHDOG_MS);
+      }).catch((e) => {
+        console.error('[nativeWindows] internAtoms failed:', e?.message || e);
       });
     });
   }
@@ -632,18 +688,41 @@ class X11Watcher {
     if (this.X) { try { this.X.terminate(); } catch { /* ignore */ } }
   }
 
+  markBroken(win, reason) {
+    if (!win) return;
+    if (!this.brokenWindows.has(win)) {
+      this.brokenWindows.add(win);
+      if (DEBUG) dbgWarn('markBroken', xidToHex(win), reason || '');
+    }
+    // Убираем из активного кэша — больше не пытаемся
+    this.windows.delete(win);
+    for (const [f, c] of [...this.frameToClient.entries()]) {
+      if (c === win) this.frameToClient.delete(f);
+    }
+  }
+
   attachRoot() {
-    const em = x11.eventMask;
-    const mask = em.SubstructureNotify | em.PropertyChange;
-    this.X.ChangeWindowAttributes(this.root, { eventMask: mask }, (err) => {
-      if (err) console.error('[nativeWindows] ChangeWindowAttributes(root):', err.message || err);
-    });
+    try {
+      const em = x11.eventMask;
+      const mask = em.SubstructureNotify | em.PropertyChange;
+      this.X.ChangeWindowAttributes(this.root, { eventMask: mask }, (err) => {
+        if (err && !SOFT_X11_CODES.has(err?.errorCode)) {
+          console.error('[nativeWindows] ChangeWindowAttributes(root):', err.message || err);
+        }
+      });
+    } catch (e) {
+      console.error('[nativeWindows] attachRoot failed:', e?.message || e);
+    }
+
     this.X.on('event', (ev) => {
-      if (ev && typeof ev.time === 'number' && ev.time > this.lastEventTime) {
-        this.lastEventTime = ev.time;
+      try {
+        if (ev && typeof ev.time === 'number' && ev.time > this.lastEventTime) {
+          this.lastEventTime = ev.time;
+        }
+        this.handleEvent(ev);
+      } catch (e) {
+        if (DEBUG) dbgWarn('handleEvent error:', e?.message || e);
       }
-      try { this.handleEvent(ev); }
-      catch (e) { console.error('[nativeWindows] event:', e?.message || e); }
     });
   }
 
@@ -653,7 +732,7 @@ class X11Watcher {
 
     if (t === 'PropertyNotify') {
       if (ev.window === this.root) {
-        if (ev.atom === this.atomMap._NET_ACTIVE_WINDOW) this.applyActiveXid();
+        if (ev.atom === this.atomMap._NET_ACTIVE_WINDOW) safe(this.applyActiveXid(), 'applyActiveXid');
         if (ev.atom === this.atomMap._NET_CLIENT_LIST ||
             ev.atom === this.atomMap._NET_CLIENT_LIST_STACKING) this.scheduleRefresh();
         return;
@@ -661,9 +740,12 @@ class X11Watcher {
       const rec = this.windows.get(ev.window);
       if (!rec) return;
       if (ev.atom === this.atomMap._NET_WM_STATE ||
-          ev.atom === this.atomMap.WM_STATE) this.refreshWmState(ev.window);
-      else if (ev.atom === this.atomMap._NET_WM_NAME ||
-               ev.atom === this.atomMap.WM_NAME) this.refreshTitle(ev.window);
+          ev.atom === this.atomMap.WM_STATE) {
+        safe(this.refreshWmState(ev.window), 'refreshWmState');
+      } else if (ev.atom === this.atomMap._NET_WM_NAME ||
+                 ev.atom === this.atomMap.WM_NAME) {
+        safe(this.refreshTitle(ev.window), 'refreshTitle');
+      }
       return;
     }
 
@@ -676,7 +758,7 @@ class X11Watcher {
     }
 
     if (t === 'ConfigureNotify') {
-      if (this.windows.has(ev.window)) this.refreshGeometry(ev.window);
+      if (this.windows.has(ev.window)) safe(this.refreshGeometry(ev.window), 'refreshGeometry');
       return;
     }
 
@@ -691,7 +773,7 @@ class X11Watcher {
     }
 
     if (t === 'MapNotify' || t === 'UnmapNotify') {
-      if (this.windows.has(ev.window)) this.refreshWmState(ev.window);
+      if (this.windows.has(ev.window)) safe(this.refreshWmState(ev.window), 'refreshWmState');
     }
   }
 
@@ -699,13 +781,14 @@ class X11Watcher {
     if (this.destroyed || this.refreshTimer) return;
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
-      this.refreshAll();
+      safe(this.refreshAll(), 'refreshAll');
     }, REFRESH_DEBOUNCE_MS);
   }
 
-  /** Планирует полный refresh через N мс после действия. */
   forceRefreshSoon(ms = POST_ACTION_REFRESH_MS) {
-    setTimeout(() => { if (!this.destroyed) this.refreshAll(); }, ms);
+    setTimeout(() => {
+      if (!this.destroyed) safe(this.refreshAll(), 'forceRefreshSoon');
+    }, ms);
   }
 
   resolveToClientXid(xid) {
@@ -716,28 +799,36 @@ class X11Watcher {
   }
 
   async readActiveXid() {
-    const focusXid = await getInputFocus(this.X);
-    if (focusXid) {
-      const resolved = this.resolveToClientXid(focusXid);
-      if (resolved != null) {
+    try {
+      const focusXid = await getInputFocus(this.X);
+      if (focusXid) {
+        const resolved = this.resolveToClientXid(focusXid);
+        if (resolved != null) {
+          const hex = xidToHex(resolved);
+          if (!SHELL_XIDS.has(hex)) return hex;
+        }
+      }
+      const rawNum = await getActiveXidRaw(this.X, this.root, this.atomMap._NET_ACTIVE_WINDOW);
+      if (rawNum) {
+        const resolved = this.resolveToClientXid(rawNum) ?? rawNum;
         const hex = xidToHex(resolved);
         if (!SHELL_XIDS.has(hex)) return hex;
       }
-    }
-    const rawNum = await getActiveXidRaw(this.X, this.root, this.atomMap._NET_ACTIVE_WINDOW);
-    if (rawNum) {
-      const resolved = this.resolveToClientXid(rawNum) ?? rawNum;
-      const hex = xidToHex(resolved);
-      if (!SHELL_XIDS.has(hex)) return hex;
+    } catch (e) {
+      if (DEBUG) dbgWarn('readActiveXid error:', e?.message || e);
     }
     return this.activeXid;
   }
 
   async applyActiveXid() {
-    const next = await this.readActiveXid();
-    if (next === this.activeXid) return;
-    this.activeXid = next;
-    this.emit();
+    try {
+      const next = await this.readActiveXid();
+      if (next === this.activeXid) return;
+      this.activeXid = next;
+      this.emit();
+    } catch (e) {
+      if (DEBUG) dbgWarn('applyActiveXid error:', e?.message || e);
+    }
   }
 
   async refreshAll() {
@@ -749,23 +840,36 @@ class X11Watcher {
       const seen = new Set();
 
       for (const win of ids) {
-        if (!win) continue;
+        if (!win || this.brokenWindows.has(win)) continue;
         seen.add(win);
         let rec = this.windows.get(win);
         if (!rec) {
-          const [wmClass, title, stateAtoms, icccmState, pid, desk, geo] = await Promise.all([
-            readWmClass(this.X, win, this.atomMap.WM_CLASS),
-            readWindowTitle(this.X, win, this.atomMap),
-            readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
-            readIcccmState(this.X, win, this.atomMap.WM_STATE),
-            readPid(this.X, win, this.atomMap._NET_WM_PID),
-            readDesktop(this.X, win, this.atomMap._NET_WM_DESKTOP),
-            getGeometry(this.X, win, this.root),
-          ]);
+          let wmClass = '';
+          let title = '';
+          let stateAtoms = [];
+          let icccmState = 0;
+          let pid = 0;
+          let desk = 0;
+          let geo = null;
+          try {
+            [wmClass, title, stateAtoms, icccmState, pid, desk, geo] = await Promise.all([
+              readWmClass(this.X, win, this.atomMap.WM_CLASS),
+              readWindowTitle(this.X, win, this.atomMap),
+              readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
+              readIcccmState(this.X, win, this.atomMap.WM_STATE),
+              readPid(this.X, win, this.atomMap._NET_WM_PID),
+              readDesktop(this.X, win, this.atomMap._NET_WM_DESKTOP),
+              getGeometry(this.X, win, this.root),
+            ]);
+          } catch (e) {
+            if (DEBUG) dbgWarn('read props for', xidToHex(win), ':', e?.message || e);
+          }
+
           if (IGNORE_CLASS_PARTS.some((c) => wmClass.includes(c))) continue;
 
           const { minimized, maximized } = parseWmState(stateAtoms, this.atomMap, icccmState);
-          const icon = await resolveIconForWmClass(wmClass);
+          let icon = null;
+          try { icon = await resolveIconForWmClass(wmClass); } catch { /* ignore */ }
 
           rec = {
             id: xidToHex(win),
@@ -783,19 +887,23 @@ class X11Watcher {
           this.windows.set(win, rec);
           this.subscribeToWindow(win);
 
-          const tree = await queryTree(this.X, win);
-          if (tree && tree.parent && tree.parent !== this.root) {
-            this.frameToClient.set(tree.parent, win);
-            rec.frameXid = tree.parent;
-          }
+          try {
+            const tree = await queryTree(this.X, win);
+            if (tree && tree.parent && tree.parent !== this.root) {
+              this.frameToClient.set(tree.parent, win);
+              rec.frameXid = tree.parent;
+            }
+          } catch { /* ignore */ }
         } else {
-          const geo = await getGeometry(this.X, win, this.root);
-          if (geo) {
-            rec.x = num(geo.x, rec.x);
-            rec.y = num(geo.y, rec.y);
-            rec.width = num(geo.width, rec.width);
-            rec.height = num(geo.height, rec.height);
-          }
+          try {
+            const geo = await getGeometry(this.X, win, this.root);
+            if (geo) {
+              rec.x = num(geo.x, rec.x);
+              rec.y = num(geo.y, rec.y);
+              rec.width = num(geo.width, rec.width);
+              rec.height = num(geo.height, rec.height);
+            }
+          } catch { /* ignore */ }
         }
       }
 
@@ -810,6 +918,8 @@ class X11Watcher {
 
       this.activeXid = await this.readActiveXid();
       this.emit(true);
+    } catch (e) {
+      if (DEBUG) dbgWarn('refreshAll fatal:', e?.message || e);
     } finally {
       this.refreshing = false;
       if (this.pendingRefresh) {
@@ -820,11 +930,16 @@ class X11Watcher {
   }
 
   subscribeToWindow(win) {
-    if (!this.X) return;
-    const em = x11.eventMask;
+    if (!this.X || !win) return;
     try {
+      const em = x11.eventMask;
       this.X.ChangeWindowAttributes(win, {
         eventMask: em.StructureNotify | em.PropertyChange,
+      }, (err) => {
+        if (err && SOFT_X11_CODES.has(err?.errorCode)) {
+          // окно уже умерло между добавлением в список и подпиской
+          this.markBroken(win, 'subscribeToWindow: ' + (err.message || err.errorCode));
+        }
       });
     } catch { /* окно могло умереть */ }
   }
@@ -832,65 +947,79 @@ class X11Watcher {
   async refreshWmState(win) {
     const rec = this.windows.get(win);
     if (!rec) return;
-    const [atoms, icccm] = await Promise.all([
-      readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
-      readIcccmState(this.X, win, this.atomMap.WM_STATE),
-    ]);
-    const { minimized, maximized } = parseWmState(atoms, this.atomMap, icccm);
-    if (rec.isMinimized === minimized && rec.isMaximized === maximized) return;
-    rec.isMinimized = minimized;
-    rec.isMaximized = maximized;
-    this.emit();
+    try {
+      const [atoms, icccm] = await Promise.all([
+        readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
+        readIcccmState(this.X, win, this.atomMap.WM_STATE),
+      ]);
+      const { minimized, maximized } = parseWmState(atoms, this.atomMap, icccm);
+      if (rec.isMinimized === minimized && rec.isMaximized === maximized) return;
+      rec.isMinimized = minimized;
+      rec.isMaximized = maximized;
+      this.emit();
+    } catch (e) {
+      if (DEBUG) dbgWarn('refreshWmState error:', e?.message || e);
+    }
   }
 
-  /** Свежая проверка «окно свёрнуто» без опоры на кэш. */
   async isMinimizedNow(win) {
-    const icccm = await readIcccmState(this.X, win, this.atomMap.WM_STATE);
-    if (icccm === 3) return true;
-    const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
-    return atoms.includes(this.atomMap._NET_WM_STATE_HIDDEN);
+    try {
+      const icccm = await readIcccmState(this.X, win, this.atomMap.WM_STATE);
+      if (icccm === 3) return true;
+      const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
+      return atoms.includes(this.atomMap._NET_WM_STATE_HIDDEN);
+    } catch { return false; }
   }
 
-  /** Свежая проверка «окно максимизировано» без опоры на кэш. */
   async isMaximizedNow(win) {
-    const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
-    return atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_VERT) &&
-           atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
+    try {
+      const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
+      return atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_VERT) &&
+             atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
+    } catch { return false; }
   }
 
   async refreshTitle(win) {
     const rec = this.windows.get(win);
     if (!rec) return;
-    const title = await readWindowTitle(this.X, win, this.atomMap);
-    if (rec.title === title) return;
-    rec.title = title;
-    this.emit();
+    try {
+      const title = await readWindowTitle(this.X, win, this.atomMap);
+      if (rec.title === title) return;
+      rec.title = title;
+      this.emit();
+    } catch { /* ignore */ }
   }
 
   async refreshGeometry(win) {
     const rec = this.windows.get(win);
     if (!rec) return;
-    const geo = await getGeometry(this.X, win, this.root);
-    if (!geo) return;
-    const x = num(geo.x, rec.x);
-    const y = num(geo.y, rec.y);
-    const width = num(geo.width, rec.width);
-    const height = num(geo.height, rec.height);
-    if (rec.x === x && rec.y === y && rec.width === width && rec.height === height) return;
-    rec.x = x; rec.y = y; rec.width = width; rec.height = height;
-    this.emit();
+    try {
+      const geo = await getGeometry(this.X, win, this.root);
+      if (!geo) return;
+      const x = num(geo.x, rec.x);
+      const y = num(geo.y, rec.y);
+      const width = num(geo.width, rec.width);
+      const height = num(geo.height, rec.height);
+      if (rec.x === x && rec.y === y && rec.width === width && rec.height === height) return;
+      rec.x = x; rec.y = y; rec.width = width; rec.height = height;
+      this.emit();
+    } catch { /* ignore */ }
   }
 
   emit(force = false) {
-    const payload = [...this.windows.values()];
-    const hash = payload
-      .map((w) => `${w.id},${w.x},${w.y},${w.width},${w.height},${w.title},`
-        + `${w.isMinimized ? 1 : 0},${w.isMaximized ? 1 : 0},${w.icon ? 1 : 0}`)
-      .join(';') + '|' + (this.activeXid || '');
-    if (!force && hash === this.lastHash) return;
-    this.lastHash = hash;
-    if (this.suppressEmit) return;
-    this.onUpdate(payload, this.activeXid);
+    try {
+      const payload = [...this.windows.values()];
+      const hash = payload
+        .map((w) => `${w.id},${w.x},${w.y},${w.width},${w.height},${w.title},`
+          + `${w.isMinimized ? 1 : 0},${w.isMaximized ? 1 : 0},${w.icon ? 1 : 0}`)
+        .join(';') + '|' + (this.activeXid || '');
+      if (!force && hash === this.lastHash) return;
+      this.lastHash = hash;
+      if (this.suppressEmit) return;
+      this.onUpdate(payload, this.activeXid);
+    } catch (e) {
+      if (DEBUG) dbgWarn('emit error:', e?.message || e);
+    }
   }
 
   /* ---------------- управление ---------------- */
@@ -898,85 +1027,97 @@ class X11Watcher {
   async focus(win) {
     if (!this.X) return false;
     const hex = xidToHex(win);
+    try {
+      const minimized = await this.isMinimizedNow(win);
+      if (minimized) {
+        dbg('focus: minimized → wmctrl -ia', hex);
+        await runWmctrl(['-i', '-a', hex]);
+        await new Promise((r) => setTimeout(r, 200));
+        this.forceRefreshSoon(100);
+        return true;
+      }
 
-    // Свежая проверка — окно свёрнуто?
-    const minimized = await this.isMinimizedNow(win);
-    if (minimized) {
-      dbg('focus: minimized → wmctrl -ia', hex);
+      const ts = this.lastEventTime || 0;
+      await activateWindowX11(this.X, this.root, this.atomMap, win, ts);
+      await new Promise((r) => setTimeout(r, 150));
+      let cur = await getInputFocus(this.X);
+      let resolved = cur != null ? this.resolveToClientXid(cur) : null;
+      if (resolved === win) { this.forceRefreshSoon(150); return true; }
+
+      await raiseWindowX11(this.X, win);
+      await setInputFocusDirect(this.X, win, ts);
+      await new Promise((r) => setTimeout(r, 100));
+      cur = await getInputFocus(this.X);
+      resolved = cur != null ? this.resolveToClientXid(cur) : null;
+      if (resolved === win) { this.forceRefreshSoon(150); return true; }
+
+      dbg('focus: fallback → wmctrl -ia', hex);
       await runWmctrl(['-i', '-a', hex]);
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 150));
       this.forceRefreshSoon(100);
       return true;
+    } catch (e) {
+      if (DEBUG) dbgWarn('focus error:', e?.message || e);
+      return false;
     }
-
-    const ts = this.lastEventTime || 0;
-    await activateWindowX11(this.X, this.root, this.atomMap, win, ts);
-    await new Promise((r) => setTimeout(r, 150));
-    let cur = await getInputFocus(this.X);
-    let resolved = cur != null ? this.resolveToClientXid(cur) : null;
-    if (resolved === win) { this.forceRefreshSoon(150); return true; }
-
-    await raiseWindowX11(this.X, win);
-    await setInputFocusDirect(this.X, win, ts);
-    await new Promise((r) => setTimeout(r, 100));
-    cur = await getInputFocus(this.X);
-    resolved = cur != null ? this.resolveToClientXid(cur) : null;
-    if (resolved === win) { this.forceRefreshSoon(150); return true; }
-
-    // Последний шанс
-    dbg('focus: fallback → wmctrl -ia', hex);
-    await runWmctrl(['-i', '-a', hex]);
-    await new Promise((r) => setTimeout(r, 150));
-    this.forceRefreshSoon(100);
-    return true;
   }
 
   async close(win) {
     if (!this.X) return false;
     const ts = this.lastEventTime || 0;
+    try {
+      try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
+      await new Promise((r) => setTimeout(r, 60));
 
-    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, 60));
+      await closeWindowX11(this.X, this.root, this.atomMap, win, ts);
+      await new Promise((r) => setTimeout(r, 200));
+      if (!this.windows.has(win)) return true;
 
-    await closeWindowX11(this.X, this.root, this.atomMap, win, ts);
-    await new Promise((r) => setTimeout(r, 200));
-    if (!this.windows.has(win)) return true;
+      await sendWmDeleteWindow(this.X, win, this.atomMap, ts);
+      await new Promise((r) => setTimeout(r, 200));
+      if (!this.windows.has(win)) return true;
 
-    await sendWmDeleteWindow(this.X, win, this.atomMap, ts);
-    await new Promise((r) => setTimeout(r, 200));
-    if (!this.windows.has(win)) return true;
-
-    return new Promise((resolve) => {
-      try { this.X.KillClient(win, (err) => resolve(!err)); }
-      catch { resolve(false); }
-    });
+      return await new Promise((resolve) => {
+        try { this.X.KillClient(win, (err) => resolve(!err)); }
+        catch { resolve(false); }
+      });
+    } catch (e) {
+      if (DEBUG) dbgWarn('close error:', e?.message || e);
+      return false;
+    }
   }
 
   async minimize(win) {
     const hex = xidToHex(win);
-    // Если уже свёрнуто — не трогаем
-    const min = await this.isMinimizedNow(win);
-    if (min) { dbg('minimize: уже свёрнуто'); return true; }
+    try {
+      const min = await this.isMinimizedNow(win);
+      if (min) { dbg('minimize: уже свёрнуто'); return true; }
 
-    dbg('minimize via xdotool:', hex);
-    const ok = await runXdotool(['windowminimize', hex]);
-    this.forceRefreshSoon();
-    return ok;
+      dbg('minimize via xdotool:', hex);
+      const ok = await runXdotool(['windowminimize', hex]);
+      this.forceRefreshSoon();
+      return ok;
+    } catch (e) {
+      if (DEBUG) dbgWarn('minimize error:', e?.message || e);
+      return false;
+    }
   }
 
-  /**
-   * Состояние берём СВЕЖЕЕ из X11, чтобы UI-флаг не влиял.
-   */
   async maximize(win, _ignoredFromUi) {
     const hex = xidToHex(win);
-    const isMax = await this.isMaximizedNow(win);
-    const prop = isMax
-      ? 'remove,maximized_vert,maximized_horz'
-      : 'add,maximized_vert,maximized_horz';
-    dbg('maximize via wmctrl:', hex, isMax ? '(was max → unmax)' : '(was normal → max)');
-    const ok = await runWmctrl(['-i', '-r', hex, '-b', prop]);
-    this.forceRefreshSoon();
-    return ok;
+    try {
+      const isMax = await this.isMaximizedNow(win);
+      const prop = isMax
+        ? 'remove,maximized_vert,maximized_horz'
+        : 'add,maximized_vert,maximized_horz';
+      dbg('maximize via wmctrl:', hex, isMax ? '(was max → unmax)' : '(was normal → max)');
+      const ok = await runWmctrl(['-i', '-r', hex, '-b', prop]);
+      this.forceRefreshSoon();
+      return ok;
+    } catch (e) {
+      if (DEBUG) dbgWarn('maximize error:', e?.message || e);
+      return false;
+    }
   }
 
   async setBounds(win, bounds) {
@@ -994,93 +1135,121 @@ let initialized = false;
 
 export function getNativeState() {
   if (!watcher) return { windows: [], activeXid: null };
-  const all = [...watcher.windows.values()];
-  const filtered = all.filter((w) => {
-    const x = String(w.id || '').toLowerCase();
-    return x && !SHELL_XIDS.has(x);
-  });
-  return { windows: filtered, activeXid: watcher.activeXid };
+  try {
+    const all = [...watcher.windows.values()];
+    const filtered = all.filter((w) => {
+      const x = String(w.id || '').toLowerCase();
+      return x && !SHELL_XIDS.has(x);
+    });
+    return { windows: filtered, activeXid: watcher.activeXid };
+  } catch {
+    return { windows: [], activeXid: null };
+  }
 }
 
 export function isX11Available() { return !!(watcher && watcher.X); }
 
 function resolveTarget(id) {
   if (id == null) return null;
-  const our = getWindowById(id);
-  if (our) {
-    const xidHex = getXidForWindow(id);
-    if (!xidHex) return { kind: 'our', xid: null, appId: id };
-    return { kind: 'our', xid: parseXid(xidHex), appId: id };
+  try {
+    const our = getWindowById(id);
+    if (our) {
+      const xidHex = getXidForWindow(id);
+      if (!xidHex) return { kind: 'our', xid: null, appId: id };
+      return { kind: 'our', xid: parseXid(xidHex), appId: id };
+    }
+    const xid = parseXid(id);
+    if (!xid) return null;
+    return { kind: 'native', xid };
+  } catch {
+    return null;
   }
-  const xid = parseXid(id);
-  if (!xid) return null;
-  return { kind: 'native', xid };
 }
 
 /* ---------- Публичные операции ---------- */
 
 export async function focusWindowById(id) {
-  const t = resolveTarget(id);
-  if (!t) return { ok: false };
-  if (t.kind === 'our') {
-    const w = getWindowById(t.appId);
-    try {
-      if (w.isMinimized()) w.restore();
-      w.show(); w.focus(); w.moveTop();
-    } catch { /* ignore */ }
+  try {
+    const t = resolveTarget(id);
+    if (!t) return { ok: false };
+    if (t.kind === 'our') {
+      const w = getWindowById(t.appId);
+      try {
+        if (w.isMinimized()) w.restore();
+        w.show(); w.focus(); w.moveTop();
+      } catch { /* ignore */ }
+    }
+    if (t.xid != null && watcher) {
+      const ok = await watcher.focus(t.xid);
+      watcher.scheduleRefresh();
+      return { ok };
+    }
+    return { ok: true };
+  } catch (e) {
+    if (DEBUG) dbgWarn('focusWindowById error:', e?.message || e);
+    return { ok: false };
   }
-  if (t.xid != null && watcher) {
-    const ok = await watcher.focus(t.xid);
-    watcher.scheduleRefresh();
-    return { ok };
-  }
-  return { ok: true };
 }
 
 export async function closeWindowById(id) {
-  const t = resolveTarget(id);
-  if (!t) return { ok: false };
-  if (t.kind === 'our') {
-    const w = getWindowById(t.appId);
-    if (w) w.close();
-    return { ok: true };
+  try {
+    const t = resolveTarget(id);
+    if (!t) return { ok: false };
+    if (t.kind === 'our') {
+      const w = getWindowById(t.appId);
+      if (w) w.close();
+      return { ok: true };
+    }
+    if (t.xid != null && watcher) {
+      const ok = await watcher.close(t.xid);
+      watcher.scheduleRefresh();
+      return { ok };
+    }
+    return { ok: false };
+  } catch (e) {
+    if (DEBUG) dbgWarn('closeWindowById error:', e?.message || e);
+    return { ok: false };
   }
-  if (t.xid != null && watcher) {
-    const ok = await watcher.close(t.xid);
-    watcher.scheduleRefresh();
-    return { ok };
-  }
-  return { ok: false };
 }
 
 export async function minimizeWindowById(id) {
-  const t = resolveTarget(id);
-  if (!t) return { ok: false };
-  if (t.kind === 'our') {
-    const w = getWindowById(t.appId);
-    if (w) w.minimize();
-    return { ok: true };
+  try {
+    const t = resolveTarget(id);
+    if (!t) return { ok: false };
+    if (t.kind === 'our') {
+      const w = getWindowById(t.appId);
+      if (w) w.minimize();
+      return { ok: true };
+    }
+    if (t.xid != null && watcher) {
+      const ok = await watcher.minimize(t.xid);
+      return { ok };
+    }
+    return { ok: false };
+  } catch (e) {
+    if (DEBUG) dbgWarn('minimizeWindowById error:', e?.message || e);
+    return { ok: false };
   }
-  if (t.xid != null && watcher) {
-    const ok = await watcher.minimize(t.xid);
-    return { ok };
-  }
-  return { ok: false };
 }
 
 export async function maximizeWindowById(id, maximized) {
-  const t = resolveTarget(id);
-  if (!t) return { ok: false };
-  if (t.kind === 'our') {
-    const w = getWindowById(t.appId);
-    if (w) { if (maximized) w.unmaximize(); else w.maximize(); }
-    return { ok: true };
+  try {
+    const t = resolveTarget(id);
+    if (!t) return { ok: false };
+    if (t.kind === 'our') {
+      const w = getWindowById(t.appId);
+      if (w) { if (maximized) w.unmaximize(); else w.maximize(); }
+      return { ok: true };
+    }
+    if (t.xid != null && watcher) {
+      const ok = await watcher.maximize(t.xid, maximized);
+      return { ok };
+    }
+    return { ok: false };
+  } catch (e) {
+    if (DEBUG) dbgWarn('maximizeWindowById error:', e?.message || e);
+    return { ok: false };
   }
-  if (t.xid != null && watcher) {
-    const ok = await watcher.maximize(t.xid, maximized);
-    return { ok };
-  }
-  return { ok: false };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1091,19 +1260,23 @@ export default async function () {
   if (initialized) return;
   initialized = true;
 
-  await detectXdotool();
-  await detectWmctrl();
+  try { await detectXdotool(); } catch { /* ignore */ }
+  try { await detectWmctrl(); } catch { /* ignore */ }
 
   registerShellWindow(global.topbarWindow, 'topbar');
   registerShellWindow(global.mainWindow, 'main');
 
   watcher = new X11Watcher({
     onUpdate: (windows, activeXid) => {
-      global.__lastNativeWindows = windows;
-      global.__activeXid = activeXid;
-      global.topbarBroadcast?.();
-      if (global.mainWindow && !global.mainWindow.isDestroyed()) {
-        global.mainWindow.webContents.send('shell:native-windows-updated', windows);
+      try {
+        global.__lastNativeWindows = windows;
+        global.__activeXid = activeXid;
+        global.topbarBroadcast?.();
+        if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+          global.mainWindow.webContents.send('shell:native-windows-updated', windows);
+        }
+      } catch (e) {
+        if (DEBUG) dbgWarn('onUpdate error:', e?.message || e);
       }
     },
   });
@@ -1111,70 +1284,80 @@ export default async function () {
 
   /* -------- prepare-drag -------- */
   ipcMain.handle('native-window:prepare-drag', async (_e, { id, mode, direction }) => {
-    const t = resolveTarget(id);
-    if (!t || !watcher || !watcher.X) return { ok: false };
+    try {
+      const t = resolveTarget(id);
+      if (!t || !watcher || !watcher.X) return { ok: false };
 
-    if (t.kind === 'our') {
-      const w = getWindowById(t.appId);
-      if (!w) return { ok: false };
-      const b = w.getBounds();
-      const bounds = {
-        x: num(b.x), y: num(b.y),
-        width: num(b.width), height: num(b.height),
-      };
-      const target = computeDragTarget(mode, direction, bounds, bounds);
+      if (t.kind === 'our') {
+        const w = getWindowById(t.appId);
+        if (!w) return { ok: false };
+        const b = w.getBounds();
+        const bounds = {
+          x: num(b.x), y: num(b.y),
+          width: num(b.width), height: num(b.height),
+        };
+        const target = computeDragTarget(mode, direction, bounds, bounds);
+        const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
+        return { ok: true, kind: 'our', cursor: target, bounds };
+      }
+
+      const clientGeo = await getGeometry(watcher.X, t.xid, watcher.root);
+      if (!clientGeo) return { ok: false };
+
+      let frameGeo = null;
+      const rec = watcher.windows.get(t.xid);
+      if (rec && rec.frameXid) {
+        frameGeo = await getGeometry(watcher.X, rec.frameXid, watcher.root);
+      }
+
+      const target = computeDragTarget(mode, direction, frameGeo, clientGeo);
       const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
-      return { ok: true, kind: 'our', cursor: target, bounds };
+
+      return { ok: true, kind: 'native', cursor: target, bounds: clientGeo };
+    } catch (e) {
+      if (DEBUG) dbgWarn('prepare-drag error:', e?.message || e);
+      return { ok: false };
     }
-
-    const clientGeo = await getGeometry(watcher.X, t.xid, watcher.root);
-    if (!clientGeo) return { ok: false };
-
-    let frameGeo = null;
-    const rec = watcher.windows.get(t.xid);
-    if (rec && rec.frameXid) {
-      frameGeo = await getGeometry(watcher.X, rec.frameXid, watcher.root);
-    }
-
-    const target = computeDragTarget(mode, direction, frameGeo, clientGeo);
-    const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
-
-    return { ok: true, kind: 'native', cursor: target, bounds: clientGeo };
   });
 
   /* -------- set-bounds -------- */
   ipcMain.on('native-window:set-bounds', async (_e, { id, bounds }) => {
-    const t = resolveTarget(id);
-    if (!t || !bounds) return;
+    try {
+      const t = resolveTarget(id);
+      if (!t || !bounds) return;
 
-    if (t.kind === 'our') {
-      const w = getWindowById(t.appId);
-      if (w) {
-        w.setBounds({
-          x: Math.round(num(bounds.x)),
-          y: Math.round(num(bounds.y)),
-          width: Math.round(num(bounds.width, 100)),
-          height: Math.round(num(bounds.height, 100)),
-        });
+      if (t.kind === 'our') {
+        const w = getWindowById(t.appId);
+        if (w) {
+          w.setBounds({
+            x: Math.round(num(bounds.x)),
+            y: Math.round(num(bounds.y)),
+            width: Math.round(num(bounds.width, 100)),
+            height: Math.round(num(bounds.height, 100)),
+          });
+        }
+        return;
       }
-      return;
-    }
-    if (t.xid != null && watcher) {
-      watcher.suppressEmit = true;
-      await watcher.setBounds(t.xid, bounds);
-      const rec = watcher.windows.get(t.xid);
-      if (rec) {
-        rec.x = Math.round(num(bounds.x, rec.x));
-        rec.y = Math.round(num(bounds.y, rec.y));
-        rec.width = Math.round(num(bounds.width, rec.width));
-        rec.height = Math.round(num(bounds.height, rec.height));
+      if (t.xid != null && watcher) {
+        watcher.suppressEmit = true;
+        await watcher.setBounds(t.xid, bounds);
+        const rec = watcher.windows.get(t.xid);
+        if (rec) {
+          rec.x = Math.round(num(bounds.x, rec.x));
+          rec.y = Math.round(num(bounds.y, rec.y));
+          rec.width = Math.round(num(bounds.width, rec.width));
+          rec.height = Math.round(num(bounds.height, rec.height));
+        }
+        watcher.suppressEmit = false;
       }
-      watcher.suppressEmit = false;
+    } catch (e) {
+      if (watcher) watcher.suppressEmit = false;
+      if (DEBUG) dbgWarn('set-bounds error:', e?.message || e);
     }
   });
 
   ipcMain.on('native-window:drag-end', () => {
-    if (watcher) watcher.scheduleRefresh();
+    try { watcher?.scheduleRefresh(); } catch { /* ignore */ }
   });
 
   /* -------- прямые IPC-каналы -------- */
@@ -1185,14 +1368,18 @@ export default async function () {
     maximizeWindowById(id, maximized));
 
   ipcMain.handle('native-window:get-bounds', async (_e, { id }) => {
-    const t = resolveTarget(id);
-    if (!t || t.xid == null) return null;
-    if (t.kind === 'our') {
-      const w = getWindowById(t.appId);
-      if (w) { const b = w.getBounds(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }
+    try {
+      const t = resolveTarget(id);
+      if (!t || t.xid == null) return null;
+      if (t.kind === 'our') {
+        const w = getWindowById(t.appId);
+        if (w) { const b = w.getBounds(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }
+      }
+      if (!watcher || !watcher.X) return null;
+      return await getGeometry(watcher.X, t.xid, watcher.root);
+    } catch {
+      return null;
     }
-    if (!watcher || !watcher.X) return null;
-    return await getGeometry(watcher.X, t.xid, watcher.root);
   });
 
   /* -------- KRunner / Systemsettings -------- */

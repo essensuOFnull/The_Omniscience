@@ -46,7 +46,7 @@ export default function TopBarContainer() {
   const toggleOverview = () => setMode(isOverview ? 'normal' : 'overview');
 
   return (
-    <Box sx={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden',bgcolor: 'rgba(0,0,0,0.6)' }}>
+    <Box sx={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden',bgcolor: 'rgba(0,0,0,0.6)' }}>
       {/* TopBar фиксированной высоты */}
       <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 72, zIndex: 2 }}>
         <TopBar
