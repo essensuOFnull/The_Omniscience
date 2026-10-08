@@ -62,17 +62,33 @@ function buildState() {
         xid: w.xid || null,
     }));
 
-    const nativeWindows = (global.__lastNativeWindows || []).map((w) => ({
-        id: w.id,                 // X11 XID, например '0x03400004'
-        kind: 'native',
-        title: w.title || w.wmClass || 'Окно',
-        icon: w.icon || null,
-        maximized: !!w.isMaximized,
-        minimized: !!w.isMinimized,
-        focused: !!(activeXid && w.id === activeXid),
-        wmClass: w.wmClass,
-    }));
+    // Собираем XID'ы наших окон, чтобы исключить их дублирование
+    // как нативных. Приводим к нижнему регистру для надёжного сравнения
+    // (X11 XID могут быть в разных регистрах: '0x03400004' vs '0x3400004').
+    const ourXids = new Set(
+        ourWindows
+            .map((w) => w.xid)
+            .filter(Boolean)
+            .map((x) => String(x).toLowerCase())
+    );
 
+    const nativeWindows = (global.__lastNativeWindows || [])
+        .filter((w) => {
+            if (!w.id) return true;
+            return !ourXids.has(String(w.id).toLowerCase());
+        })
+        .map((w) => ({
+            id: w.id,
+            kind: 'native',
+            title: w.title || w.wmClass || 'Окно',
+            icon: w.icon || null,
+            maximized: !!w.isMaximized,
+            minimized: !!w.isMinimized,
+            focused: !!(activeXid && w.id === activeXid),
+            wmClass: w.wmClass,
+        }));
+
+    // Наши окна идут первыми — приоритет при поиске activeWindow и в UI
     const windows = [...ourWindows, ...nativeWindows];
     const activeWindow = windows.find((w) => w.focused) || null;
 
