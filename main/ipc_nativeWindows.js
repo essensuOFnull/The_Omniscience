@@ -1,11 +1,14 @@
 import electronPkg from 'electron';
 const { ipcMain } = electronPkg;
-import { spawn } from 'child_process';
+import { spawn, execFile } from 'child_process';
+import { promisify } from 'util';
 import { access, readFile } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
 import { getWindowById, getXidForWindow } from './ipc_windowManager.js';
+
+const execFileAsync = promisify(execFile);
 
 /* ------------------------------------------------------------------ */
 /* Debug                                                               */
@@ -26,6 +29,57 @@ try {
   dbg('x11 package loaded');
 } catch {
   console.error('[nativeWindows] пакет "x11" не установлен. Выполните: npm install x11');
+}
+
+/* ------------------------------------------------------------------ */
+/* xdotool / wmctrl                                                    */
+/* ------------------------------------------------------------------ */
+
+let xdotoolAvailable = false;
+let wmctrlAvailable = false;
+
+async function detectXdotool() {
+  try {
+    await execFileAsync('which', ['xdotool']);
+    xdotoolAvailable = true;
+    dbg('xdotool: найден');
+  } catch {
+    xdotoolAvailable = false;
+    console.error('[nativeWindows] xdotool не найден. Установите: sudo apt install xdotool');
+  }
+}
+
+async function detectWmctrl() {
+  try {
+    await execFileAsync('which', ['wmctrl']);
+    wmctrlAvailable = true;
+    dbg('wmctrl: найден');
+  } catch {
+    wmctrlAvailable = false;
+    console.error('[nativeWindows] wmctrl не найден. Установите: sudo apt install wmctrl');
+  }
+}
+
+async function runXdotool(args) {
+  if (!xdotoolAvailable) return false;
+  try {
+    await execFileAsync('xdotool', args, { timeout: 2000 });
+    return true;
+  } catch (e) {
+    dbgWarn('xdotool', args.join(' '), '→', e?.message || e);
+    return false;
+  }
+}
+
+async function runWmctrl(args) {
+  if (!wmctrlAvailable) return false;
+  try {
+    await execFileAsync('wmctrl', args, { timeout: 2000 });
+    return true;
+  } catch (e) {
+    dbgWarn('wmctrl', args.join(' '), '→', e?.message || e);
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -50,8 +104,10 @@ const ATOM_NAMES = [
   '_NET_WM_USER_TIME',
   'WM_NAME',
   'WM_CLASS',
+  'WM_STATE',           // ← ICCCM: 1=Normal, 3=Iconic
   'WM_PROTOCOLS',
   'WM_DELETE_WINDOW',
+  'WM_CHANGE_STATE',
   'UTF8_STRING',
   'STRING',
   '_NET_WM_STATE_HIDDEN',
@@ -66,6 +122,8 @@ const SEND_EVENT_MASK = x11
 
 const REFRESH_DEBOUNCE_MS = 25;
 const FOCUS_POLL_MS = 500;
+const WATCHDOG_MS = 2000;
+const POST_ACTION_REFRESH_MS = 250;
 
 /* ------------------------------------------------------------------ */
 /* Shell XIDs                                                          */
@@ -241,9 +299,22 @@ async function readWmStateAtoms(X, win, atom) {
   return out;
 }
 
-function parseWmState(atoms, atomMap) {
+/**
+ * ICCCM WM_STATE: 1 = NormalState, 3 = IconicState.
+ * Это свойство клиента — надёжнее, чем _NET_WM_STATE_HIDDEN
+ * (который KWin/XFCE иногда ставят на frame, не на клиент).
+ */
+async function readIcccmState(X, win, atom) {
+  const prop = await getProperty(X, win, atom);
+  if (!prop || !prop.data || prop.data.length < 4) return 0;
+  return readU32At(prop.data, 0);
+}
+
+function parseWmState(atoms, atomMap, icccmState = 0) {
+  const iconic = (icccmState === 3);
+  const hiddenByEwmh = atoms.includes(atomMap._NET_WM_STATE_HIDDEN);
   return {
-    minimized: atoms.includes(atomMap._NET_WM_STATE_HIDDEN),
+    minimized: iconic || hiddenByEwmh,
     maximized:
       atoms.includes(atomMap._NET_WM_STATE_MAXIMIZED_VERT) &&
       atoms.includes(atomMap._NET_WM_STATE_MAXIMIZED_HORZ),
@@ -283,17 +354,13 @@ function getGeometry(X, win, root) {
     try {
       X.GetGeometry(win, (err, geo) => {
         if (err || !geo) return resolve(null);
-
         const width = num(geo.width, 0);
         const height = num(geo.height, 0);
         const localX = num(geo.x, 0);
         const localY = num(geo.y, 0);
-
         try {
           X.TranslateCoordinates(win, root, 0, 0, (err2, tc) => {
-            if (err2 || !tc) {
-              return resolve({ x: localX, y: localY, width, height });
-            }
+            if (err2 || !tc) return resolve({ x: localX, y: localY, width, height });
             const dstX = tc.dstX ?? tc.destX ?? tc.dst_x ?? tc.x;
             const dstY = tc.dstY ?? tc.destY ?? tc.dst_y ?? tc.y;
             const x = num(dstX, NaN);
@@ -350,7 +417,6 @@ function warpPointer(X, root, x, y) {
       return resolve(false);
     }
     try {
-      // (srcWindow=0, dstWindow=root, ..., dstX, dstY)
       X.WarpPointer(0, root, 0, 0, 0, 0,
         Math.max(0, Math.round(x)), Math.max(0, Math.round(y)),
         (err) => resolve(!err));
@@ -362,7 +428,7 @@ function warpPointer(X, root, x, y) {
 }
 
 /* ------------------------------------------------------------------ */
-/* ClientMessage / управление                                          */
+/* ClientMessage                                                       */
 /* ------------------------------------------------------------------ */
 
 function sendClientMessage(X, root, targetWin, messageType, data) {
@@ -417,23 +483,6 @@ function sendWmDeleteWindow(X, win, atomMap, timestamp = 0) {
   });
 }
 
-function setWmState(X, root, atomMap, win, action, a1, a2 = 0) {
-  return sendClientMessage(X, root, win, atomMap._NET_WM_STATE, [action, a1, a2, 2, 0]);
-}
-
-function minimizeWindowX11(X, root, atomMap, win) {
-  return setWmState(X, root, atomMap, win, 1, atomMap._NET_WM_STATE_HIDDEN);
-}
-
-function maximizeWindowX11(X, root, atomMap, win, maximized) {
-  const action = maximized ? 0 : 1;    // 0=remove (unmaximize), 1=add (maximize)
-  return setWmState(
-    X, root, atomMap, win, action,
-    atomMap._NET_WM_STATE_MAXIMIZED_VERT,
-    atomMap._NET_WM_STATE_MAXIMIZED_HORZ,
-  );
-}
-
 function moveResizeWindowX11(X, win, x, y, width, height) {
   return new Promise((resolve) => {
     try {
@@ -453,8 +502,6 @@ function moveResizeWindowX11(X, win, x, y, width, height) {
 /* ------------------------------------------------------------------ */
 
 function computeDragTarget(mode, direction, frameGeo, clientGeo) {
-  // x — из frame (визуальная граница окна),
-  // y — из client (frame XFCE имеет невидимый бордер/тень сверху).
   const fx = num(frameGeo?.x, num(clientGeo?.x, 0));
   const fw = num(frameGeo?.width, num(clientGeo?.width, 0));
   const cy = num(clientGeo?.y, num(frameGeo?.y, 0));
@@ -525,6 +572,7 @@ class X11Watcher {
 
     this.refreshTimer = null;
     this.focusPollTimer = null;
+    this.watchdogTimer = null;
 
     this.refreshing = false;
     this.pendingRefresh = false;
@@ -559,6 +607,16 @@ class X11Watcher {
           if (this.destroyed) return;
           this.applyActiveXid();
         }, FOCUS_POLL_MS);
+
+        // Watchdog: полный refresh + перечитать состояние каждого окна,
+        // чтобы UI не отставал, даже если WM молчит.
+        this.watchdogTimer = setInterval(() => {
+          if (this.destroyed) return;
+          this.scheduleRefresh();
+          for (const win of this.windows.keys()) {
+            this.refreshWmState(win);
+          }
+        }, WATCHDOG_MS);
       });
     });
   }
@@ -567,8 +625,10 @@ class X11Watcher {
     this.destroyed = true;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     if (this.focusPollTimer) clearInterval(this.focusPollTimer);
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
     this.refreshTimer = null;
     this.focusPollTimer = null;
+    this.watchdogTimer = null;
     if (this.X) { try { this.X.terminate(); } catch { /* ignore */ } }
   }
 
@@ -600,9 +660,18 @@ class X11Watcher {
       }
       const rec = this.windows.get(ev.window);
       if (!rec) return;
-      if (ev.atom === this.atomMap._NET_WM_STATE) this.refreshWmState(ev.window);
+      if (ev.atom === this.atomMap._NET_WM_STATE ||
+          ev.atom === this.atomMap.WM_STATE) this.refreshWmState(ev.window);
       else if (ev.atom === this.atomMap._NET_WM_NAME ||
                ev.atom === this.atomMap.WM_NAME) this.refreshTitle(ev.window);
+      return;
+    }
+
+    if (ev.window === this.root &&
+        (t === 'CreateNotify' || t === 'MapNotify' ||
+         t === 'UnmapNotify' || t === 'DestroyNotify' ||
+         t === 'ReparentNotify')) {
+      this.scheduleRefresh();
       return;
     }
 
@@ -632,6 +701,11 @@ class X11Watcher {
       this.refreshTimer = null;
       this.refreshAll();
     }, REFRESH_DEBOUNCE_MS);
+  }
+
+  /** Планирует полный refresh через N мс после действия. */
+  forceRefreshSoon(ms = POST_ACTION_REFRESH_MS) {
+    setTimeout(() => { if (!this.destroyed) this.refreshAll(); }, ms);
   }
 
   resolveToClientXid(xid) {
@@ -679,17 +753,18 @@ class X11Watcher {
         seen.add(win);
         let rec = this.windows.get(win);
         if (!rec) {
-          const [wmClass, title, stateAtoms, pid, desk, geo] = await Promise.all([
+          const [wmClass, title, stateAtoms, icccmState, pid, desk, geo] = await Promise.all([
             readWmClass(this.X, win, this.atomMap.WM_CLASS),
             readWindowTitle(this.X, win, this.atomMap),
             readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
+            readIcccmState(this.X, win, this.atomMap.WM_STATE),
             readPid(this.X, win, this.atomMap._NET_WM_PID),
             readDesktop(this.X, win, this.atomMap._NET_WM_DESKTOP),
             getGeometry(this.X, win, this.root),
           ]);
           if (IGNORE_CLASS_PARTS.some((c) => wmClass.includes(c))) continue;
 
-          const { minimized, maximized } = parseWmState(stateAtoms, this.atomMap);
+          const { minimized, maximized } = parseWmState(stateAtoms, this.atomMap, icccmState);
           const icon = await resolveIconForWmClass(wmClass);
 
           rec = {
@@ -757,12 +832,30 @@ class X11Watcher {
   async refreshWmState(win) {
     const rec = this.windows.get(win);
     if (!rec) return;
-    const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
-    const { minimized, maximized } = parseWmState(atoms, this.atomMap);
+    const [atoms, icccm] = await Promise.all([
+      readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE),
+      readIcccmState(this.X, win, this.atomMap.WM_STATE),
+    ]);
+    const { minimized, maximized } = parseWmState(atoms, this.atomMap, icccm);
     if (rec.isMinimized === minimized && rec.isMaximized === maximized) return;
     rec.isMinimized = minimized;
     rec.isMaximized = maximized;
     this.emit();
+  }
+
+  /** Свежая проверка «окно свёрнуто» без опоры на кэш. */
+  async isMinimizedNow(win) {
+    const icccm = await readIcccmState(this.X, win, this.atomMap.WM_STATE);
+    if (icccm === 3) return true;
+    const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
+    return atoms.includes(this.atomMap._NET_WM_STATE_HIDDEN);
+  }
+
+  /** Свежая проверка «окно максимизировано» без опоры на кэш. */
+  async isMaximizedNow(win) {
+    const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
+    return atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_VERT) &&
+           atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
   }
 
   async refreshTitle(win) {
@@ -804,29 +897,43 @@ class X11Watcher {
 
   async focus(win) {
     if (!this.X) return false;
-    const ts = this.lastEventTime || 0;
-    dbg('focus', xidToHex(win), 'ts =', ts);
+    const hex = xidToHex(win);
 
+    // Свежая проверка — окно свёрнуто?
+    const minimized = await this.isMinimizedNow(win);
+    if (minimized) {
+      dbg('focus: minimized → wmctrl -ia', hex);
+      await runWmctrl(['-i', '-a', hex]);
+      await new Promise((r) => setTimeout(r, 200));
+      this.forceRefreshSoon(100);
+      return true;
+    }
+
+    const ts = this.lastEventTime || 0;
     await activateWindowX11(this.X, this.root, this.atomMap, win, ts);
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 150));
     let cur = await getInputFocus(this.X);
     let resolved = cur != null ? this.resolveToClientXid(cur) : null;
-    if (resolved === win) { dbg('focus: EWMH ok'); return true; }
+    if (resolved === win) { this.forceRefreshSoon(150); return true; }
 
-    dbg('focus: EWMH failed, XSetInputFocus');
     await raiseWindowX11(this.X, win);
-    const ok = await setInputFocusDirect(this.X, win, ts);
-    await new Promise((r) => setTimeout(r, 80));
+    await setInputFocusDirect(this.X, win, ts);
+    await new Promise((r) => setTimeout(r, 100));
     cur = await getInputFocus(this.X);
     resolved = cur != null ? this.resolveToClientXid(cur) : null;
-    dbg('focus: XSetInputFocus →', ok, 'resolved =', resolved === win);
-    return resolved === win;
+    if (resolved === win) { this.forceRefreshSoon(150); return true; }
+
+    // Последний шанс
+    dbg('focus: fallback → wmctrl -ia', hex);
+    await runWmctrl(['-i', '-a', hex]);
+    await new Promise((r) => setTimeout(r, 150));
+    this.forceRefreshSoon(100);
+    return true;
   }
 
   async close(win) {
     if (!this.X) return false;
     const ts = this.lastEventTime || 0;
-    dbg('close', xidToHex(win), 'ts =', ts);
 
     try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
     await new Promise((r) => setTimeout(r, 60));
@@ -835,12 +942,10 @@ class X11Watcher {
     await new Promise((r) => setTimeout(r, 200));
     if (!this.windows.has(win)) return true;
 
-    dbg('close: WM_DELETE_WINDOW');
     await sendWmDeleteWindow(this.X, win, this.atomMap, ts);
     await new Promise((r) => setTimeout(r, 200));
     if (!this.windows.has(win)) return true;
 
-    dbg('close: XKillClient (hard)');
     return new Promise((resolve) => {
       try { this.X.KillClient(win, (err) => resolve(!err)); }
       catch { resolve(false); }
@@ -848,23 +953,29 @@ class X11Watcher {
   }
 
   async minimize(win) {
-    if (!this.X) return false;
-    const ts = this.lastEventTime || 0;
-    // XFCE часто игнорирует _NET_WM_STATE для неактивного окна.
-    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, 50));
-    const ok = await minimizeWindowX11(this.X, this.root, this.atomMap, win);
-    dbg('minimize', xidToHex(win), '→', ok);
+    const hex = xidToHex(win);
+    // Если уже свёрнуто — не трогаем
+    const min = await this.isMinimizedNow(win);
+    if (min) { dbg('minimize: уже свёрнуто'); return true; }
+
+    dbg('minimize via xdotool:', hex);
+    const ok = await runXdotool(['windowminimize', hex]);
+    this.forceRefreshSoon();
     return ok;
   }
 
-  async maximize(win, maximized) {
-    if (!this.X) return false;
-    const ts = this.lastEventTime || 0;
-    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, 50));
-    const ok = await maximizeWindowX11(this.X, this.root, this.atomMap, win, maximized);
-    dbg('maximize', xidToHex(win), maximized, '→', ok);
+  /**
+   * Состояние берём СВЕЖЕЕ из X11, чтобы UI-флаг не влиял.
+   */
+  async maximize(win, _ignoredFromUi) {
+    const hex = xidToHex(win);
+    const isMax = await this.isMaximizedNow(win);
+    const prop = isMax
+      ? 'remove,maximized_vert,maximized_horz'
+      : 'add,maximized_vert,maximized_horz';
+    dbg('maximize via wmctrl:', hex, isMax ? '(was max → unmax)' : '(was normal → max)');
+    const ok = await runWmctrl(['-i', '-r', hex, '-b', prop]);
+    this.forceRefreshSoon();
     return ok;
   }
 
@@ -948,12 +1059,13 @@ export async function minimizeWindowById(id) {
   if (t.kind === 'our') {
     const w = getWindowById(t.appId);
     if (w) w.minimize();
+    return { ok: true };
   }
   if (t.xid != null && watcher) {
-    await watcher.minimize(t.xid);
-    watcher.scheduleRefresh();
+    const ok = await watcher.minimize(t.xid);
+    return { ok };
   }
-  return { ok: true };
+  return { ok: false };
 }
 
 export async function maximizeWindowById(id, maximized) {
@@ -962,21 +1074,25 @@ export async function maximizeWindowById(id, maximized) {
   if (t.kind === 'our') {
     const w = getWindowById(t.appId);
     if (w) { if (maximized) w.unmaximize(); else w.maximize(); }
+    return { ok: true };
   }
   if (t.xid != null && watcher) {
-    await watcher.maximize(t.xid, maximized);
-    watcher.scheduleRefresh();
+    const ok = await watcher.maximize(t.xid, maximized);
+    return { ok };
   }
-  return { ok: true };
+  return { ok: false };
 }
 
 /* ------------------------------------------------------------------ */
 /* export default                                                      */
 /* ------------------------------------------------------------------ */
 
-export default function () {
+export default async function () {
   if (initialized) return;
   initialized = true;
+
+  await detectXdotool();
+  await detectWmctrl();
 
   registerShellWindow(global.topbarWindow, 'topbar');
   registerShellWindow(global.mainWindow, 'main');
@@ -1008,16 +1124,11 @@ export default function () {
       };
       const target = computeDragTarget(mode, direction, bounds, bounds);
       const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
-      dbg('prepare-drag (our)', id, mode, direction,
-          '→ bounds', bounds, 'target', target, 'ok =', warped);
       return { ok: true, kind: 'our', cursor: target, bounds };
     }
 
     const clientGeo = await getGeometry(watcher.X, t.xid, watcher.root);
-    if (!clientGeo) {
-      dbgWarn('prepare-drag: getGeometry null для', xidToHex(t.xid));
-      return { ok: false };
-    }
+    if (!clientGeo) return { ok: false };
 
     let frameGeo = null;
     const rec = watcher.windows.get(t.xid);
@@ -1028,15 +1139,7 @@ export default function () {
     const target = computeDragTarget(mode, direction, frameGeo, clientGeo);
     const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
 
-    dbg('prepare-drag', xidToHex(t.xid), mode, direction,
-        '→ client', clientGeo, 'frame', frameGeo,
-        'target', target, 'ok =', warped);
-
-    return {
-      ok: true, kind: 'native',
-      cursor: target,
-      bounds: clientGeo,
-    };
+    return { ok: true, kind: 'native', cursor: target, bounds: clientGeo };
   });
 
   /* -------- set-bounds -------- */
