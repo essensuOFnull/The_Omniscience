@@ -14,5 +14,4 @@ export default function () {
   global.$.ipc_nativeApps();
   global.$.ipc_windowManager();
   global.$.ipc_topbar();
-  global.$.ipc_windowDrag();
 }

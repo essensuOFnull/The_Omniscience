@@ -19,7 +19,7 @@ export default async function () {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
-    focusable: true,      // ← явно
+    focusable: false,      // ← явно
     acceptFirstMouse: true,  // ← для macOS, но не помешает
     ...(process.platform === 'linux' ? { type: 'dock' } : {}),
     webPreferences: {

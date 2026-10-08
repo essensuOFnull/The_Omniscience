@@ -17,9 +17,11 @@ export default async function () {
         backgroundColor: '#00000000',
         resizable: true,
         show: true,
-        ...(isSession ? { type: 'desktop' } : {}),
+        type: 'desktop',
         frame: false,
         icon: global.paths.icon,
+        focusable: true,
+        skipTaskbar: true,
         webPreferences: {
             enableRemoteModule: false,
             nodeIntegration: false,

@@ -1,196 +1,176 @@
 import electronPkg from 'electron';
 const { ipcMain } = electronPkg;
-import { listWindows, destroyWindowById, getWindowById, getXidForWindow } from './ipc_windowManager.js';
 import { spawn } from 'child_process';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { listWindows, getWindowById } from './ipc_windowManager.js';
+import {
+  getNativeState,
+  focusWindowById,
+  closeWindowById,
+  minimizeWindowById,
+  maximizeWindowById,
+} from './ipc_nativeWindows.js';
+
 const execAsync = promisify(exec);
 
-// Общая функция активации — работает и для наших, и для нативных
-function activateWindow(id) {
-    const our = getWindowById(id);
-    if (our && !our.isDestroyed()) {
-        // 1. Electron-путь (быстро, но не всегда срабатывает)
-        try {
-            if (our.isMinimized()) our.restore();
-            our.show();
-            our.focus();
-            our.moveTop();
-        } catch (_) { }
-
-        // 2. X11-путь (fire-and-forget, работает всегда)
-        const xid = getXidForWindow(id);
-        if (xid) {
-            execAsync(`xdotool windowactivate --sync ${xid}`).catch(() => { });
-        }
-        return;
-    }
-
-    // Нативное X11-окно
-    execAsync(`xdotool windowactivate --sync ${id}`).catch(async () => {
-        try { await execAsync(`wmctrl -i -a ${id}`); } catch (_) { }
-    });
-}
-
-let focusedWindowId = null;
 let cachedApps = [];
 
-// Вызывается один раз при старте, после mainWindow_create
+/* ------------------------------------------------------------------ */
+/* Инициализация                                                       */
+/* ------------------------------------------------------------------ */
+
 export async function initTopbarState() {
-    try {
-        const mod = await import('./ipc_getAppsList.js');
-        if (typeof mod.buildAppsList === 'function') {
-            cachedApps = await mod.buildAppsList();
-        }
-    } catch (err) {
-        console.error('[topbar] buildAppsList failed:', err.message);
+  try {
+    const mod = await import('./ipc_getAppsList.js');
+    if (typeof mod.buildAppsList === 'function') {
+      cachedApps = await mod.buildAppsList();
     }
+  } catch (err) {
+    console.error('[topbar] buildAppsList failed:', err.message);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Сборка состояния                                                    */
+/* ------------------------------------------------------------------ */
+
+function normalizeXid(x) {
+  return x ? String(x).toLowerCase() : null;
 }
 
 function buildState() {
-    const cfg = global.config?.topbar || {};
-    const activeXid = global.__activeXid || null;
+  const cfg = global.config?.topbar || {};
+  const { windows: nativeWindows, activeXid } = getNativeState();
+  const activeNorm = normalizeXid(activeXid);
 
-    const ourWindows = listWindows().map((w) => ({
-        id: w.id,
-        kind: 'our',
-        title: w.title,
-        icon: w.icon || null,
-        maximized: !!w.maximized,
-        minimized: !!w.minimized,
-        focused: !!(activeXid && w.xid === activeXid),
-        xid: w.xid || null,
+  // --- наши Electron-окна ---
+  const ourWindows = listWindows().map((w) => {
+    const xid = normalizeXid(w.xid);
+    const b = w.bounds || {};
+    return {
+      id: w.id,
+      xid,
+      kind: 'our',
+      title: w.title || '',
+      icon: w.icon || null,
+      maximized: !!w.maximized,
+      minimized: !!w.minimized,
+      focused: !!(activeNorm && xid && xid === activeNorm),
+      wmClass: null,
+      x: b.x, y: b.y, width: b.width, height: b.height,
+    };
+  });
+
+  const ourXids = new Set(ourWindows.map((w) => w.xid).filter(Boolean));
+
+  // --- нативные X11-окна ---
+  const native = nativeWindows
+    .filter((w) => !ourXids.has(normalizeXid(w.id)))
+    .map((w) => ({
+      id: w.id,
+      xid: w.id,
+      kind: 'native',
+      title: w.title || w.wmClass || 'Окно',
+      icon: w.icon || null,
+      maximized: !!w.isMaximized,
+      minimized: !!w.isMinimized,
+      focused: !!(activeNorm && normalizeXid(w.id) === activeNorm),
+      wmClass: w.wmClass,
+      x: w.x, y: w.y, width: w.width, height: w.height,
     }));
 
-    // Собираем XID'ы наших окон, чтобы исключить их дублирование
-    // как нативных. Приводим к нижнему регистру для надёжного сравнения
-    // (X11 XID могут быть в разных регистрах: '0x03400004' vs '0x3400004').
-    const ourXids = new Set(
-        ourWindows
-            .map((w) => w.xid)
-            .filter(Boolean)
-            .map((x) => String(x).toLowerCase())
-    );
+  const windows = [...ourWindows, ...native];
+  const activeWindow = windows.find((w) => w.focused) || null;
 
-    const nativeWindows = (global.__lastNativeWindows || [])
-        .filter((w) => {
-            if (!w.id) return true;
-            return !ourXids.has(String(w.id).toLowerCase());
-        })
-        .map((w) => ({
-            id: w.id,
-            kind: 'native',
-            title: w.title || w.wmClass || 'Окно',
-            icon: w.icon || null,
-            maximized: !!w.isMaximized,
-            minimized: !!w.isMinimized,
-            focused: !!(activeXid && w.id === activeXid),
-            wmClass: w.wmClass,
-        }));
-
-    // Наши окна идут первыми — приоритет при поиске activeWindow и в UI
-    const windows = [...ourWindows, ...nativeWindows];
-    const activeWindow = windows.find((w) => w.focused) || null;
-
-    return {
-        windows,
-        activeWindow,
-        apps: cachedApps,
-        overviewTabs: cfg.overviewTabs || [
-            { id: 'apps-list', visible: true },
-            { id: 'settings', visible: true },
-        ],
-        showWindowList: cfg.showWindowList ?? true,
-        showClock: cfg.showClock ?? true,
-        showClockMs: cfg.showClockMs ?? false,
-        mode: cfg.__mode || 'normal',
-    };
+  return {
+    windows,
+    activeWindow,
+    apps: cachedApps,
+    overviewTabs: cfg.overviewTabs || [
+      { id: 'apps-list', visible: true },
+      { id: 'settings', visible: true },
+    ],
+    showWindowList: cfg.showWindowList ?? true,
+    showClock: cfg.showClock ?? true,
+    showClockMs: cfg.showClockMs ?? false,
+    mode: cfg.__mode || 'normal',
+  };
 }
 
 export function broadcastTopbarState() {
-    const w = global.topbarWindow;
-    if (!w || w.isDestroyed()) return;
-    w.webContents.send('topbar:state-update', buildState());
+  const w = global.topbarWindow;
+  if (!w || w.isDestroyed()) return;
+  w.webContents.send('topbar:state-update', buildState());
 }
 
+/* ------------------------------------------------------------------ */
+/* Модуль                                                              */
+/* ------------------------------------------------------------------ */
+
 export default function () {
-    global.topbarBroadcast = broadcastTopbarState;
+  global.topbarBroadcast = broadcastTopbarState;
 
-    ipcMain.handle('topbar:get-state', () => buildState());
+  ipcMain.handle('topbar:get-state', () => buildState());
 
-    ipcMain.on('topbar:set-mode', (_e, { mode }) => {
-        global.config.topbar = global.config.topbar || {};
-        global.config.topbar.__mode = mode;
-        broadcastTopbarState();
-    });
+  ipcMain.on('topbar:set-mode', (_e, { mode }) => {
+    global.config.topbar = global.config.topbar || {};
+    global.config.topbar.__mode = mode;
+    broadcastTopbarState();
+  });
 
-    ipcMain.on('topbar:focus-window', (_e, { id }) => {
-        activateWindow(id);
-        global.__focusedWindowId = id;
-        broadcastTopbarState();
-    });
+  /* --- Единый путь: наши и нативные окна обрабатываются одинаково --- */
 
-    ipcMain.on('topbar:close-window', (_e, { id }) => destroyWindowById(id));
+  ipcMain.on('topbar:focus-window', (_e, { id }) => {
+    focusWindowById(id).catch((e) =>
+      console.error('[topbar:focus-window]', e?.message || e));
+  });
 
-    ipcMain.on('topbar:open-devtools', (_e, { id }) => {
-        const targetId = id || focusedWindowId;
-        if (!targetId) return;
-        const win = getWindowById(targetId);
-        if (!win) return;
-        win.webContents.openDevTools({ mode: 'detach' });
-    });
+  ipcMain.on('topbar:close-window', (_e, { id }) => {
+    closeWindowById(id).catch((e) =>
+      console.error('[topbar:close-window]', e?.message || e));
+  });
 
-    ipcMain.on('topbar:launch-app', (_e, { app }) => {
-        console.log('[topbar] launch', app);
-        // TODO: native → launch-native-app; componentapp → createWindowByRequest
-    });
+  ipcMain.on('topbar:minimize-window', (_e, { id }) => {
+    minimizeWindowById(id).catch((e) =>
+      console.error('[topbar:minimize-window]', e?.message || e));
+  });
 
-    ipcMain.on('topbar:open-search', async () => {
-        try {
-            try { await execAsync('qdbus org.kde.krunner /App display'); }
-            catch (_) { spawn('krunner', [], { detached: true, stdio: 'ignore' }).unref(); }
-        } catch (err) { console.error('[topbar:open-search]', err.message); }
-    });
+  ipcMain.on('topbar:maximize-window', (_e, { id, maximized }) => {
+    maximizeWindowById(id, maximized).catch((e) =>
+      console.error('[topbar:maximize-window]', e?.message || e));
+  });
 
-    ipcMain.on('topbar:open-settings', () => {
-        try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); }
-        catch (err) { console.error('[topbar:open-settings]', err.message); }
-    });
+  ipcMain.on('topbar:open-devtools', (_e, { id }) => {
+    if (!id) return;
+    const win = getWindowById(id);
+    if (!win) return;
+    win.webContents.openDevTools({ mode: 'detach' });
+  });
 
-    ipcMain.handle('topbar:get-window-bounds', (_e, { id }) => {
-        const win = getWindowById(id);
-        return win ? win.getBounds() : null;
-    });
+  ipcMain.on('topbar:launch-app', (_e, { app }) => {
+    console.log('[topbar] launch', app);
+    // TODO: реализовать по мере необходимости
+  });
 
-    ipcMain.on('topbar:move-window', (_e, { id, x, y }) => {
-        const win = getWindowById(id);
-        if (!win) return;
-        const b = win.getBounds();
-        win.setBounds(
-            { x: Math.round(x), y: Math.round(y), width: b.width, height: b.height },
-            false,   // без анимации
-        );
-    });
+  ipcMain.on('topbar:open-search', async () => {
+    try {
+      try { await execAsync('qdbus org.kde.krunner /App display'); }
+      catch { spawn('krunner', [], { detached: true, stdio: 'ignore' }).unref(); }
+    } catch (err) {
+      console.error('[topbar:open-search]', err.message);
+    }
+  });
 
-    ipcMain.on('topbar:resize-window', (_e, { id, x, y, width, height }) => {
-        const win = getWindowById(id);
-        if (!win) return;
-        win.setBounds(
-            { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) },
-            false,
-        );
-    });
+  ipcMain.on('topbar:open-settings', () => {
+    try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); }
+    catch (err) { console.error('[topbar:open-settings]', err.message); }
+  });
 
-    ipcMain.on('topbar:minimize-window', (_e, { id }) => {
-        getWindowById(id)?.minimize();
-    });
+  ipcMain.handle('topbar:get-window-bounds', (_e, { id }) => {
+    const win = getWindowById(id);
+    return win ? win.getBounds() : null;
+  });
 
-    ipcMain.on('topbar:maximize-window', (_e, { id, maximized }) => {
-        const win = getWindowById(id);
-        if (!win) return;
-        if (maximized) win.unmaximize();
-        else win.maximize();
-    });
-
-    setTimeout(() => { initTopbarState(); }, 0);
+  setTimeout(() => { initTopbarState(); }, 0);
 }
