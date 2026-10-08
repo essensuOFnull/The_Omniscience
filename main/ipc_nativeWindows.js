@@ -47,6 +47,7 @@ const ATOM_NAMES = [
   '_NET_WM_PID',
   '_NET_WM_DESKTOP',
   '_NET_WM_WINDOW_TYPE',
+  '_NET_WM_USER_TIME',
   'WM_NAME',
   'WM_CLASS',
   'WM_PROTOCOLS',
@@ -277,10 +278,6 @@ async function readDesktop(X, win, atom) {
   return readU32At(prop.data, 0);
 }
 
-/* ------------------------------------------------------------------ */
-/* ГЕОМЕТРИЯ — ключевая функция, защищена от undefined                 */
-/* ------------------------------------------------------------------ */
-
 function getGeometry(X, win, root) {
   return new Promise((resolve) => {
     try {
@@ -297,17 +294,13 @@ function getGeometry(X, win, root) {
             if (err2 || !tc) {
               return resolve({ x: localX, y: localY, width, height });
             }
-            // Разные версии x11-пакета используют разные имена полей.
             const dstX = tc.dstX ?? tc.destX ?? tc.dst_x ?? tc.x;
             const dstY = tc.dstY ?? tc.destY ?? tc.dst_y ?? tc.y;
-
             const x = num(dstX, NaN);
             const y = num(dstY, NaN);
-
             if (Number.isFinite(x) && Number.isFinite(y)) {
               resolve({ x, y, width, height });
             } else {
-              // TranslateCoordinates вернул мусор — берём локальные.
               resolve({ x: localX, y: localY, width, height });
             }
           });
@@ -315,9 +308,7 @@ function getGeometry(X, win, root) {
           resolve({ x: localX, y: localY, width, height });
         }
       });
-    } catch {
-      resolve(null);
-    }
+    } catch { resolve(null); }
   });
 }
 
@@ -359,54 +350,14 @@ function warpPointer(X, root, x, y) {
       return resolve(false);
     }
     try {
-      X.WarpPointer(root, 0, 0, 0, 0, 0,
+      // (srcWindow=0, dstWindow=root, ..., dstX, dstY)
+      X.WarpPointer(0, root, 0, 0, 0, 0,
         Math.max(0, Math.round(x)), Math.max(0, Math.round(y)),
         (err) => resolve(!err));
-    } catch { resolve(false); }
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Fresh timestamp                                                     */
-/* ------------------------------------------------------------------ */
-
-const TS_PROP_NAME = `_OMNI_TS_${process.pid}`;
-let tsAtom = 0;
-
-function ensureTsAtom(X) {
-  return new Promise((resolve) => {
-    if (tsAtom) return resolve(tsAtom);
-    X.InternAtom(false, TS_PROP_NAME, (err, atom) => {
-      if (err || !atom) return resolve(0);
-      tsAtom = atom;
-      resolve(atom);
-    });
-  });
-}
-
-function getFreshTimestamp(X, root, atomMap) {
-  return new Promise((resolve) => {
-    ensureTsAtom(X).then((atom) => {
-      if (!atom) return resolve(0);
-      let done = false;
-      const onEvent = (ev) => {
-        if (ev.name === 'PropertyNotify' && ev.window === root && ev.atom === atom) {
-          done = true;
-          X.removeListener('event', onEvent);
-          resolve(ev.time >>> 0);
-        }
-      };
-      X.on('event', onEvent);
-      const data = Buffer.from(String(Date.now()), 'utf8');
-      X.ChangeProperty(0, root, atom, atomMap.STRING, 8, data, () => { /* ignore */ });
-      setTimeout(() => {
-        if (!done) {
-          done = true;
-          X.removeListener('event', onEvent);
-          resolve(0);
-        }
-      }, 200);
-    });
+    } catch (e) {
+      dbgWarn('warpPointer exception:', e?.message);
+      resolve(false);
+    }
   });
 }
 
@@ -475,10 +426,12 @@ function minimizeWindowX11(X, root, atomMap, win) {
 }
 
 function maximizeWindowX11(X, root, atomMap, win, maximized) {
-  const action = maximized ? 0 : 1;
-  return setWmState(X, root, atomMap, win, action,
+  const action = maximized ? 0 : 1;    // 0=remove (unmaximize), 1=add (maximize)
+  return setWmState(
+    X, root, atomMap, win, action,
     atomMap._NET_WM_STATE_MAXIMIZED_VERT,
-    atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
+    atomMap._NET_WM_STATE_MAXIMIZED_HORZ,
+  );
 }
 
 function moveResizeWindowX11(X, win, x, y, width, height) {
@@ -496,21 +449,23 @@ function moveResizeWindowX11(X, win, x, y, width, height) {
 }
 
 /* ------------------------------------------------------------------ */
-/* computeDragTarget — защищён от невалидных bounds                    */
+/* computeDragTarget                                                   */
 /* ------------------------------------------------------------------ */
 
-function computeDragTarget(mode, direction, b) {
-  const x = num(b?.x, 0);
-  const y = num(b?.y, 0);
-  const w = num(b?.width, 0);
-  const h = num(b?.height, 0);
+function computeDragTarget(mode, direction, frameGeo, clientGeo) {
+  // x — из frame (визуальная граница окна),
+  // y — из client (frame XFCE имеет невидимый бордер/тень сверху).
+  const fx = num(frameGeo?.x, num(clientGeo?.x, 0));
+  const fw = num(frameGeo?.width, num(clientGeo?.width, 0));
+  const cy = num(clientGeo?.y, num(frameGeo?.y, 0));
+  const ch = num(clientGeo?.height, num(frameGeo?.height, 0));
 
-  const xL = x;
-  const xR = x + w;
-  const xC = Math.round(x + w / 2);
-  const yT = y;
-  const yB = y + h;
-  const yC = Math.round(y + h / 2);
+  const xL = fx;
+  const xR = fx + fw - 1;
+  const xC = Math.round(fx + fw / 2);
+  const yT = cy;
+  const yB = cy + ch - 1;
+  const yC = Math.round(cy + ch / 2);
 
   if (mode === 'move') return { x: xC, y: yT + 15 };
 
@@ -575,6 +530,7 @@ class X11Watcher {
     this.pendingRefresh = false;
     this.lastHash = '';
 
+    this.lastEventTime = 0;
     this.suppressEmit = false;
   }
 
@@ -623,6 +579,9 @@ class X11Watcher {
       if (err) console.error('[nativeWindows] ChangeWindowAttributes(root):', err.message || err);
     });
     this.X.on('event', (ev) => {
+      if (ev && typeof ev.time === 'number' && ev.time > this.lastEventTime) {
+        this.lastEventTime = ev.time;
+      }
       try { this.handleEvent(ev); }
       catch (e) { console.error('[nativeWindows] event:', e?.message || e); }
     });
@@ -736,6 +695,7 @@ class X11Watcher {
           rec = {
             id: xidToHex(win),
             xid: win,
+            frameXid: null,
             x: num(geo?.x, 0),
             y: num(geo?.y, 0),
             width: num(geo?.width, 0),
@@ -751,6 +711,7 @@ class X11Watcher {
           const tree = await queryTree(this.X, win);
           if (tree && tree.parent && tree.parent !== this.root) {
             this.frameToClient.set(tree.parent, win);
+            rec.frameXid = tree.parent;
           }
         } else {
           const geo = await getGeometry(this.X, win, this.root);
@@ -843,12 +804,15 @@ class X11Watcher {
 
   async focus(win) {
     if (!this.X) return false;
-    const ts = await getFreshTimestamp(this.X, this.root, this.atomMap);
+    const ts = this.lastEventTime || 0;
+    dbg('focus', xidToHex(win), 'ts =', ts);
+
     await activateWindowX11(this.X, this.root, this.atomMap, win, ts);
     await new Promise((r) => setTimeout(r, 120));
     let cur = await getInputFocus(this.X);
     let resolved = cur != null ? this.resolveToClientXid(cur) : null;
     if (resolved === win) { dbg('focus: EWMH ok'); return true; }
+
     dbg('focus: EWMH failed, XSetInputFocus');
     await raiseWindowX11(this.X, win);
     const ok = await setInputFocusDirect(this.X, win, ts);
@@ -861,8 +825,11 @@ class X11Watcher {
 
   async close(win) {
     if (!this.X) return false;
-    const ts = await getFreshTimestamp(this.X, this.root, this.atomMap);
+    const ts = this.lastEventTime || 0;
     dbg('close', xidToHex(win), 'ts =', ts);
+
+    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 60));
 
     await closeWindowX11(this.X, this.root, this.atomMap, win, ts);
     await new Promise((r) => setTimeout(r, 200));
@@ -875,19 +842,30 @@ class X11Watcher {
 
     dbg('close: XKillClient (hard)');
     return new Promise((resolve) => {
-      try { X.KillClient(win, (err) => resolve(!err)); }
+      try { this.X.KillClient(win, (err) => resolve(!err)); }
       catch { resolve(false); }
     });
   }
 
   async minimize(win) {
     if (!this.X) return false;
-    return minimizeWindowX11(this.X, this.root, this.atomMap, win);
+    const ts = this.lastEventTime || 0;
+    // XFCE часто игнорирует _NET_WM_STATE для неактивного окна.
+    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 50));
+    const ok = await minimizeWindowX11(this.X, this.root, this.atomMap, win);
+    dbg('minimize', xidToHex(win), '→', ok);
+    return ok;
   }
 
   async maximize(win, maximized) {
     if (!this.X) return false;
-    return maximizeWindowX11(this.X, this.root, this.atomMap, win, maximized);
+    const ts = this.lastEventTime || 0;
+    try { await setInputFocusDirect(this.X, win, ts); } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, 50));
+    const ok = await maximizeWindowX11(this.X, this.root, this.atomMap, win, maximized);
+    dbg('maximize', xidToHex(win), maximized, '→', ok);
+    return ok;
   }
 
   async setBounds(win, bounds) {
@@ -1015,12 +993,11 @@ export default function () {
   });
   watcher.start();
 
-  /* -------- prepare-drag: свежая геометрия + WarpPointer -------- */
+  /* -------- prepare-drag -------- */
   ipcMain.handle('native-window:prepare-drag', async (_e, { id, mode, direction }) => {
     const t = resolveTarget(id);
     if (!t || !watcher || !watcher.X) return { ok: false };
 
-    // Свои Electron-окна
     if (t.kind === 'our') {
       const w = getWindowById(t.appId);
       if (!w) return { ok: false };
@@ -1029,39 +1006,40 @@ export default function () {
         x: num(b.x), y: num(b.y),
         width: num(b.width), height: num(b.height),
       };
-
-      const target = computeDragTarget(mode, direction, bounds);
+      const target = computeDragTarget(mode, direction, bounds, bounds);
       const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
       dbg('prepare-drag (our)', id, mode, direction,
           '→ bounds', bounds, 'target', target, 'ok =', warped);
-
-      return {
-        ok: true, kind: 'our',
-        cursor: target, bounds,
-      };
+      return { ok: true, kind: 'our', cursor: target, bounds };
     }
 
-    // Нативное окно — читаем геометрию СВЕЖУЮ, не из кэша
-    const bounds = await getGeometry(watcher.X, t.xid, watcher.root);
-    if (!bounds) {
-      dbgWarn('prepare-drag: getGeometry вернул null для', xidToHex(t.xid));
+    const clientGeo = await getGeometry(watcher.X, t.xid, watcher.root);
+    if (!clientGeo) {
+      dbgWarn('prepare-drag: getGeometry null для', xidToHex(t.xid));
       return { ok: false };
     }
 
-    const target = computeDragTarget(mode, direction, bounds);
+    let frameGeo = null;
+    const rec = watcher.windows.get(t.xid);
+    if (rec && rec.frameXid) {
+      frameGeo = await getGeometry(watcher.X, rec.frameXid, watcher.root);
+    }
+
+    const target = computeDragTarget(mode, direction, frameGeo, clientGeo);
     const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
 
     dbg('prepare-drag', xidToHex(t.xid), mode, direction,
-        '→ bounds', bounds, 'target', target, 'ok =', warped);
+        '→ client', clientGeo, 'frame', frameGeo,
+        'target', target, 'ok =', warped);
 
     return {
       ok: true, kind: 'native',
       cursor: target,
-      bounds,
+      bounds: clientGeo,
     };
   });
 
-  /* -------- set-bounds (ручной drag) -------- */
+  /* -------- set-bounds -------- */
   ipcMain.on('native-window:set-bounds', async (_e, { id, bounds }) => {
     const t = resolveTarget(id);
     if (!t || !bounds) return;
