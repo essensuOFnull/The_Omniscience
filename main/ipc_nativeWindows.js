@@ -279,24 +279,14 @@ export default function () {
 
 
   /* -------- KRunner -------- */
-  let krunnerBusy = false;
-
   ipcMain.handle('shell:run-krunner', async () => {
-    if (krunnerBusy) return { ok: true };
-    krunnerBusy = true;
     try {
-      try {
-        await execAsync('qdbus org.kde.krunner /App display');
-        return { ok: true, via: 'dbus' };
-      } catch (_) { }
       const child = spawn('krunner', [], { detached: true, stdio: 'ignore' });
       child.unref();
       return { ok: true, via: 'spawn' };
     } catch (err) {
       console.error('[shell:run-krunner]', err.message);
       return { ok: false, error: err.message };
-    } finally {
-      setTimeout(() => { krunnerBusy = false; }, 300);
     }
   });
 
