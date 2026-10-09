@@ -18,8 +18,6 @@ export default async function () {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
-    focusable: false,
-    acceptFirstMouse: true,  // ← для macOS, но не помешает
     type: 'dock',
     alwaysOnTop: true,
     transparent: true,
@@ -30,13 +28,9 @@ export default async function () {
       webSecurity: true,
     },
   });
-  
-  global.topbarWindow.once('ready-to-show', () => {
-    const w = global.topbarWindow;
-    w.setAlwaysOnTop(true, 'screen-saver');
-    w.setBounds({ x: 0, y: 0, width, height: TOPBAR_H });
-    w.show();
-  });
+
+  global.topbarWindow.loadURL(global.paths.topBarIndex);
+  global.$.initPanelStruts();
 
   // ── Растянуть/сжать для Overview ──
   ipcMain.on('topbar:set-mode', (_e, { mode }) => {
@@ -45,6 +39,4 @@ export default async function () {
     const h = mode === 'overview' ? height : TOPBAR_H;
     w.setBounds({ x: 0, y: 0, width: width, height: h });
   });
-  
-  await global.$.TopBar_on_loaded();
 }
