@@ -33,7 +33,7 @@ function isHorizontal(rect) {
  */
 function computeOverviewBounds() {
   const display = screen.getPrimaryDisplay();
-  const scr = display.workArea;//на случай чужеродного DE
+  const scr = display.size;
 
   const tb = global.topbarWindow;
   const tbB = tb.getBounds();
