@@ -1,7 +1,13 @@
 #!/bin/bash
 # install-omniscience-session.sh
-# Только конфигурация и регистрация сессии.
-# Все системные пакеты ставит scripts/install-deps.sh.
+# Установка сессии Omniscience: конфиги KWin, PipeWire, EasyEffects,
+# регистрация сессии в DM, установка сопутствующих скриптов.
+#
+# ВАЖНО: этот скрипт НЕ ставит системные пакеты. Пакеты ставит
+# scripts/install-deps.sh — запускай его ПЕРВЫМ.
+#
+# Скрипт сам вызывает scripts/install-shortcuts.sh в конце — не нужно
+# запускать его отдельно.
 
 set -e
 
@@ -147,7 +153,7 @@ context.properties = {
 }
 EOF
 
-# --- Автозагрузка KDE (~/.config/autostart) ---
+# --- Автозагрузка KDE ---
 # Обе программы кладём в ~/.config/autostart — их видит и редактирует
 # systemsettings → Автозагрузка и завершение работы.
 # Запускает их наш сессионный скрипт (см. launch_autostart в omniscience-session.sh),
@@ -176,19 +182,41 @@ if command -v curl >/dev/null 2>&1; then
     || echo "⚠️  Не удалось установить пресеты"
 fi
 
-# --- Скрипт сессии ---
-if [ ! -f "$OMNI_ROOT/scripts/omniscience-session.sh" ]; then
-  echo "❌ scripts/omniscience-session.sh не найден"
-  exit 1
+# --- Сопутствующие скрипты: копируем в /usr/local/bin только если изменились ---
+for pair in \
+  "scripts/omniscience-session.sh:/usr/local/bin/omniscience-session" \
+  "scripts/install-shortcuts.sh:/usr/local/bin/install-shortcuts" ; do
+  SRC="$OMNI_ROOT/${pair%%:*}"
+  DST="${pair##*:}"
+  if [ ! -f "$SRC" ]; then
+    echo "❌ Не найден $SRC"
+    exit 1
+  fi
+  if [ ! -f "$DST" ] || [ "$(md5sum "$SRC" | awk '{print $1}')" != "$(md5sum "$DST" | awk '{print $1}')" ]; then
+    sudo cp -f "$SRC" "$DST"
+    sudo chmod +x "$DST"
+    echo "✅ Установлен/обновлён $DST"
+  else
+    echo "✅ $DST уже актуален"
+  fi
+done
+
+# --- Конфигурация сочетаний клавиш (kglobalacceld) ---
+# Вызывается как часть установки сессии — отдельно запускать не нужно.
+if [ -x /usr/local/bin/install-shortcuts ]; then
+  echo ""
+  echo "⌨️  Конфигурирую сочетания клавиш..."
+  /usr/local/bin/install-shortcuts
+else
+  echo "⚠️  /usr/local/bin/install-shortcuts не найден — пропускаю настройку сочетаний"
 fi
-sudo cp "$OMNI_ROOT/scripts/omniscience-session.sh" /usr/local/bin/omniscience-session
-sudo chmod +x /usr/local/bin/omniscience-session
 
 # --- Регистрация сессии ---
+echo ""
 echo "📝 Регистрирую сессию..."
 sudo mkdir -p /usr/share/xsessions
 sudo rm -f /usr/share/xsessions/omniscience-*.desktop
-sudo rm -f /usr/share/wayland-sessions/omniscience-*.desktop
+sudo rm -f /usr/share/wayland-sessions/omniscience-*.desktop 2>/dev/null || true
 
 sudo tee /usr/share/xsessions/omniscience.desktop > /dev/null << 'EOF'
 [Desktop Entry]
