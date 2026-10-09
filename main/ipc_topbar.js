@@ -203,6 +203,11 @@ export default function () {
     catch (err) { console.error('[topbar:open-settings]', err.message); }
   });
 
+  ipcMain.on('topbar:logout', () => {
+    try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll')}
+    catch (err) { console.error('[topbar:logout]', err.message); }
+  });
+
   ipcMain.handle('topbar:get-window-bounds', (_e, { id }) => {
     const win = getWindowById(id);
     return win ? win.getBounds() : null;

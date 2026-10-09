@@ -66,6 +66,7 @@
 					ipcRenderer.invoke('fs:create-from-template', { dir, templatePath, name }),
 				openKRunner: () => ipcRenderer.invoke('shell:run-krunner'),
 				openSystemSettings: () => ipcRenderer.invoke('shell:systemsettings'),
+				openLogout: () => ipcRenderer.invoke('shell:logout'),
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);

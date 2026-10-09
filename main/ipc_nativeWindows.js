@@ -1,6 +1,6 @@
 import electronPkg from 'electron';
 const { ipcMain } = electronPkg;
-import { spawn, execFile } from 'child_process';
+import { spawn, execFile, exec } from 'child_process';
 import { promisify } from 'util';
 import { access, readFile } from 'fs/promises';
 import path from 'path';
@@ -1389,6 +1389,10 @@ export default async function () {
   });
   ipcMain.handle('shell:systemsettings', async () => {
     try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); return { ok: true }; }
+    catch (err) { return { ok: false, error: err.message }; }
+  });
+  ipcMain.handle('shell:logout', async () => {
+    try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll')}
     catch (err) { return { ok: false, error: err.message }; }
   });
 

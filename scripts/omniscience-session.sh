@@ -40,6 +40,7 @@ if [ -f "$CANONICAL" ] && [ "$SELF_PATH" != "$(readlink -f "$CANONICAL")" ]; the
   CANON_MD5="$(md5sum "$CANONICAL" 2>/dev/null | awk '{print $1}')"
   if [ "$SELF_MD5" != "$CANON_MD5" ]; then
     log "⚠️  bin устарел ($SELF_MD5 ≠ $CANON_MD5)"
+    [ -x "$CANONICAL" ] || chmod +x "$CANONICAL" 2>/dev/null || true
     if sudo -n cp -f "$CANONICAL" "$INSTALL_PATH" 2>/dev/null \
        && sudo -n chmod +x "$INSTALL_PATH" 2>/dev/null; then
       log "🔄 bin обновлён, exec $INSTALL_PATH"
@@ -75,8 +76,6 @@ log "DBus: $DBUS_SESSION_BUS_ADDRESS"
 systemctl --user is-system-running >/dev/null 2>&1 \
   || die "systemd --user не отвечает"
 
-# Пробрасываем графическое окружение в systemd --user. dbus-update-activation-environment
-# может не успеть; set-environment срабатывает гарантированно.
 systemctl --user set-environment \
   DISPLAY="$DISPLAY" \
   XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" \
@@ -127,14 +126,40 @@ cleanup() {
 
   log "Останавливаю сервисы..."
 
+  # ------------------------------------------------------------
+  # Electron — первым и с SIGTERM.
+  # Ему нужен SIGTERM, чтобы сработал process.on('SIGTERM') в JS
+  # и вызвал shutdownAll(): закрыть чужие окна, потом mainWindow,
+  # потом app.quit(). Ждём до 2 секунд; если не ответил — SIGKILL.
+  # ------------------------------------------------------------
+  if [ -n "$OMNI_PID" ] && kill -0 "$OMNI_PID" 2>/dev/null; then
+    log "SIGTERM → Electron (PID=$OMNI_PID)"
+    kill -TERM "$OMNI_PID" 2>/dev/null || true
+    i=0
+    while [ $i -lt 20 ] && kill -0 "$OMNI_PID" 2>/dev/null; do
+      sleep 0.1; i=$((i+1))
+    done
+    if kill -0 "$OMNI_PID" 2>/dev/null; then
+      log "⚠️  Electron не вышел за 2с — SIGKILL"
+      kill -KILL "$OMNI_PID" 2>/dev/null || true
+    else
+      log "Electron завершился чисто"
+    fi
+  fi
+
+  # ------------------------------------------------------------
+  # EasyEffects и systemsettings
+  # ------------------------------------------------------------
   pkill -f 'easyeffects --service-mode' 2>/dev/null || true
   pkill -x systemsettings 2>/dev/null || true
 
+  # ------------------------------------------------------------
+  # KDE-демоны и KWin
+  # ------------------------------------------------------------
   for pid in "${KDE_PIDS[@]}" "$KWIN_PID" "$BLUEDEVIL_PID"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
   done
 
-  # kglobalaccel стартовал через systemd — гасим симметрично.
   systemctl --user stop plasma-kglobalaccel.service 2>/dev/null || true
 
   systemctl --user stop pipewire-pulse.service wireplumber.service pipewire.service 2>/dev/null || true
@@ -183,7 +208,6 @@ done
 # ============================================================
 log "Запускаю KDE-демоны..."
 
-# --- kded6: оркестратор KDE-модулей ---
 command -v kded6 >/dev/null 2>&1 \
   || die "kded6 не найден — установите kf6-kded / plasma-workspace"
 kded6 >/dev/null 2>&1 &
@@ -191,13 +215,6 @@ KDED_PID=$!
 KDE_PIDS+=("$KDED_PID")
 log "kded6 (PID=$KDED_PID)"
 
-# --- kglobalacceld: глобальные сочетания клавиш ---
-# Plasma 6: standalone DBus-демон. Запускаем через systemd --user, чтобы
-# он оказался на той же шине, что и всё остальное, и был жив ДО KWin —
-# иначе KWin не успеет зарегистрировать свои шорткаты.
-#
-# Гейт по наличию systemd unit, а НЕ по command -v: на Arch/Manjaro бинарь
-# лежит в /usr/lib/kglobalacceld и не виден в $PATH, но unit есть.
 systemctl --user daemon-reload 2>/dev/null || true
 if systemctl --user cat plasma-kglobalaccel.service >/dev/null 2>&1; then
   systemctl --user reset-failed plasma-kglobalaccel.service 2>/dev/null || true
@@ -208,10 +225,8 @@ if systemctl --user cat plasma-kglobalaccel.service >/dev/null 2>&1; then
   log "kglobalacceld активен (org.kde.kglobalaccel)"
 else
   log "⚠️  plasma-kglobalaccel.service не найден — глобальные сочетания работать не будут"
-  log "   Запусти scripts/install-shortcuts.sh или проверь пакет kglobalacceld"
 fi
 
-# --- kactivitymanagerd ---
 if command -v kactivitymanagerd >/dev/null 2>&1; then
   kactivitymanagerd >/dev/null 2>&1 &
   KAMD_PID=$!
@@ -219,7 +234,6 @@ if command -v kactivitymanagerd >/dev/null 2>&1; then
   log "kactivitymanagerd (PID=$KAMD_PID)"
 fi
 
-# --- polkit-kde-agent ---
 POLKIT_BIN=""
 for b in /usr/lib/*/libexec/polkit-kde-authentication-agent-1 \
          /usr/libexec/polkit-kde-authentication-agent-1 \
@@ -272,10 +286,24 @@ done
 # ============================================================
 # 7. Electron
 # ============================================================
+# Запускаем напрямую через node_modules/.bin/electron, а НЕ через npx.
+# Причина: npx — это прослойка-родитель. $! указывает на неё, а не на
+# сам Electron. SIGTERM, посланный в cleanup, убивает npx, но дочерний
+# Electron остаётся сиротой и продолжает висеть на экране.
+# Прямой запуск делает $OMNI_PID настоящим Electron'ом, и SIGTERM
+# доходит до process.on('SIGTERM') в mainWindow-модуле.
 log "Запускаю Omniscience (Electron)..."
-npx electron . &
-OMNI_PID=$!
-log "Electron (PID=$OMNI_PID)"
+ELECTRON_BIN="$PROJECT_ROOT/node_modules/.bin/electron"
+if [ -x "$ELECTRON_BIN" ]; then
+  "$ELECTRON_BIN" . &
+  OMNI_PID=$!
+  log "Electron (PID=$OMNI_PID, bin=$ELECTRON_BIN)"
+else
+  log "⚠️  $ELECTRON_BIN не найден — откат на npx (сигналы уйдут в прослойку!)"
+  npx electron . &
+  OMNI_PID=$!
+  log "Electron via npx (PID=$OMNI_PID)"
+fi
 
 # ============================================================
 # 8. bluedevil + системные сервисы
@@ -288,7 +316,6 @@ fi
 
 sudo systemctl start bluetooth.service 2>/dev/null || true
 
-# NetworkManager
 if ! systemctl is-active --quiet NetworkManager 2>/dev/null; then
   sudo systemctl start NetworkManager 2>/dev/null || true
 fi
@@ -323,7 +350,6 @@ launch_autostart() {
     exec_line=$(grep -m1 '^Exec=' "$f" | cut -d= -f2-)
     [ -z "$exec_line" ] && { log "[autostart] skip (no Exec): $(basename "$f")"; continue; }
 
-    # field codes: %u %U %f %F %d %D %n %N %i %c %k %v %m
     exec_line=$(printf '%s' "$exec_line" | sed 's/%[uUfFdDnNickvm]//g')
 
     log "[autostart] launch: $(basename "$f") → $exec_line"

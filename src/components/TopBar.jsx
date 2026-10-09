@@ -3,6 +3,7 @@ import { Box, Button, IconButton } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
 import SettingsIcon from '@mui/icons-material/Settings';
+import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
 
 import ControlGrid from './ControlGrid';
 import Clock from './topbar/Clock';
@@ -24,6 +25,7 @@ export default function TopBar({
   onCloseWindow,
   onRequestSearch,
   onRequestSettings,
+  onRequestLogout
 }) {
   return (
     <Box sx={{
@@ -67,6 +69,10 @@ export default function TopBar({
           <IconButton size="small" onClick={onRequestSettings}
             sx={{ color: '#fff', WebkitAppRegion: 'no-drag', width: 24, height: 24 }}>
             <SettingsIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+          <IconButton size="small" onClick={onRequestLogout}
+            sx={{ color: '#fff', WebkitAppRegion: 'no-drag', width: 24, height: 24 }}>
+            <PowerSettingsNewIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Box>
 
