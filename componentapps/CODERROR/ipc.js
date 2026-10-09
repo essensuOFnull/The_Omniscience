@@ -4,16 +4,13 @@ const { ipcMain, app } = electronPkg;
 import fs from 'fs/promises';
 import path from 'path';
 
-// Корень приложения. Если оно упаковано в asar — app.getAppPath() вернёт путь
-// внутрь asar, писать туда нельзя. В этом случае раскомментируйте альтернативу:
-// const ROOT = path.dirname(app.getPath('exe'));
-const ROOT = `${app.getAppPath()}/componentapps/CODERROR/`;
+// Кроссплатформенный путь к корню приложения через path.join
+const ROOT = path.join(app.getAppPath(), 'componentapps', 'CODERROR');
 
 /** Приводит относительный путь к абсолютному*/
 function resolveSafe(rel) {
-	//игра должна иметь доступ ко всему по рофлу)
-	const abs = path.resolve(ROOT, rel);
-	return abs;
+	// игра должна иметь доступ ко всему по рофлу)
+	return path.resolve(ROOT, rel);
 }
 
 ipcMain.handle('fs:readFile', async (_e, rel, encoding = null) => {
@@ -35,7 +32,6 @@ ipcMain.handle('fs:writeFile', async (_e, rel, data, encoding = null) => {
 	} else if (data instanceof ArrayBuffer) {
 		await fs.writeFile(abs, Buffer.from(data));
 	} else if (ArrayBuffer.isView(data)) {
-		// Uint8Array, DataView, Buffer — все сюда
 		await fs.writeFile(abs, Buffer.from(data.buffer, data.byteOffset, data.byteLength));
 	} else {
 		throw new Error('fs:writeFile: неподдерживаемый тип данных: ' + Object.prototype.toString.call(data));

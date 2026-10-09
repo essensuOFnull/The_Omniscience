@@ -36,12 +36,16 @@ export default async function () {
 			callback({
 				responseHeaders: {
 					...details.responseHeaders,
+					// Добавляем arkh: во все ключевые места, чтобы веб-воркеры и скрипты могли загружать WASM
 					'content-security-policy': [
-						"default-src * 'unsafe-inline' 'unsafe-eval' data: blob: filesystem:;"
+						"default-src * arkh: 'unsafe-inline' 'unsafe-eval' data: blob: filesystem:; " +
+						"script-src * arkh: 'unsafe-inline' 'unsafe-eval' blob:; " +
+						"worker-src * arkh: 'unsafe-inline' 'unsafe-eval' blob:;"
 					]
 				}
 			});
 		});
+
 		console.log('[Extensions] CSP disabled for all sites in session');
 
 		// 1. Регистрируем НАШ общий preload как session-preload для всех frame.

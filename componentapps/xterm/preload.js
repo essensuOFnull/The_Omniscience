@@ -1,5 +1,4 @@
-import electronPkg from 'electron';
-const { contextBridge, ipcRenderer } = electronPkg;
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron_componentapp_xterm_API', {
   on: (event, callback) => {
