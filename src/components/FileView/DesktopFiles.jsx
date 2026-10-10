@@ -168,15 +168,13 @@ function DesktopFilesInner({ basePath }) {
       </Box>
 
       {/* Контент */}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <FileView
-          path={currentPath}
-          layout="grid"
-          onContextMenu={(file, e) => handleContextMenu(file, e)}
-          onPathChange={handleOpenFolder}
-          emptyText="Папка пуста"
-        />
-      </Box>
+      <FileView
+        path={currentPath}
+        layout="grid"
+        onContextMenu={(file, e) => handleContextMenu(file, e)}
+        onPathChange={handleOpenFolder}
+        emptyText="Папка пуста"
+      />
 
       {/* Контекстное меню файла (DOM) */}
       <FileContextMenu
