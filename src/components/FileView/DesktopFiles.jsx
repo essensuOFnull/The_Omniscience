@@ -3,10 +3,13 @@ import { Box, IconButton, Breadcrumbs, Link } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import FileView from './FileView';
-import FileContextMenu from './FileContextMenu';
 import CreateMenu from './CreateMenu';
 import useDirectory from './useDirectory';
 import { useSetting } from '../../settings/useSettings';
+
+/* ------------------------------------------------------------------ */
+/* Утилиты путей                                                        */
+/* ------------------------------------------------------------------ */
 
 function buildCrumbs(fullPath) {
   if (!fullPath) return [];
@@ -41,6 +44,10 @@ function isRoot(p) {
   return false;
 }
 
+/* ------------------------------------------------------------------ */
+/* Обёртка DesktopFiles                                                 */
+/* ------------------------------------------------------------------ */
+
 export default function DesktopFiles() {
   const enabled = useSetting('desktopFiles.enabled');
   const configuredPath = useSetting('desktopFiles.path');
@@ -60,20 +67,57 @@ export default function DesktopFiles() {
   return <DesktopFilesInner key={basePath} basePath={basePath} />;
 }
 
+/* ------------------------------------------------------------------ */
+/* Внутренний компонент                                                 */
+/* ------------------------------------------------------------------ */
+
 function DesktopFilesInner({ basePath }) {
   const [currentPath, setCurrentPath] = useState(basePath);
-  const [fileMenu, setFileMenu] = useState({ open: false, x: 0, y: 0, file: null });
   const [createMenu, setCreateMenu] = useState({ open: false, x: 0, y: 0 });
 
   const { reload } = useDirectory(currentPath);
 
-  const handleContextMenu = useCallback((file, e) => {
-    setFileMenu({ open: true, x: e.clientX, y: e.clientY, file });
-  }, []);
+  /* ---------- Слушаем запросы из нативного контекстного меню ---------- */
 
-  const handleCloseFileMenu = useCallback(() => {
-    setFileMenu((m) => ({ ...m, open: false }));
-  }, []);
+  useEffect(() => {
+    const api = window.electron_desktop_API;
+    if (!api?.on) return;
+
+    // Создать файл/папку из нативного меню (ПКМ на пустом месте)
+    const offCreate = api.on('fs:request-create', (payload) => {
+      if (!payload || typeof payload.dir !== 'string') return;
+      const kind = payload.kind === 'folder' ? 'folder' : 'file';
+      const defaultName = kind === 'folder' ? 'Новая папка' : 'Новый файл.txt';
+      const name = window.prompt(
+        kind === 'folder' ? 'Имя новой папки:' : 'Имя нового файла:',
+        defaultName,
+      );
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      const promise = kind === 'folder'
+        ? api.createFolder(payload.dir, trimmed)
+        : api.createFile(payload.dir, trimmed);
+      promise.then((res) => {
+        if (!res?.success) {
+          window.alert(`Не удалось создать: ${res?.error || 'unknown'}`);
+        } else {
+          reload();
+        }
+      });
+    });
+
+    // Перезагрузка после операций из меню
+    const offReload = api.on('fs:request-reload', () => {
+      reload();
+    });
+
+    return () => {
+      offCreate?.();
+      offReload?.();
+    };
+  }, [reload]);
+
+  /* ---------- Навигация ---------- */
 
   const handleOpenFolder = useCallback((folderPath) => {
     setCurrentPath(folderPath);
@@ -98,7 +142,13 @@ function DesktopFilesInner({ basePath }) {
   const canGoBack = !isRoot(currentPath);
 
   return (
-    <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'auto' }}>
+    <Box
+      sx={{
+        position: 'absolute', inset: 0, zIndex: 0,
+        pointerEvents: 'none',
+        display: 'flex', flexDirection: 'column',
+      }}
+    >
       {/* Панель навигации */}
       <Box
         sx={{
@@ -113,6 +163,7 @@ function DesktopFilesInner({ basePath }) {
           borderBottom: '1px solid rgba(255,255,255,0.08)',
           maxWidth: '100%',
           overflow: 'hidden',
+          flexShrink: 0,
         }}
       >
         <IconButton
@@ -167,25 +218,17 @@ function DesktopFilesInner({ basePath }) {
         </Breadcrumbs>
       </Box>
 
-      {/* Контент */}
-      <FileView
-        path={currentPath}
-        layout="grid"
-        onContextMenu={(file, e) => handleContextMenu(file, e)}
-        onPathChange={handleOpenFolder}
-        emptyText="Папка пуста"
-      />
+      {/* Контент — FileView растягивается на всё оставшееся место */}
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+        <FileView
+          path={currentPath}
+          layout="grid"
+          onPathChange={handleOpenFolder}
+          emptyText="Папка пуста"
+        />
+      </Box>
 
-      {/* Контекстное меню файла (DOM) */}
-      <FileContextMenu
-        open={fileMenu.open}
-        anchorPosition={{ x: fileMenu.x, y: fileMenu.y }}
-        file={fileMenu.file}
-        onClose={handleCloseFileMenu}
-        onReload={reload}
-      />
-
-      {/* Меню создания (DOM) */}
+      {/* CreateMenu для клика по кнопке "+" */}
       <CreateMenu
         open={createMenu.open}
         anchorPosition={{ x: createMenu.x, y: createMenu.y }}

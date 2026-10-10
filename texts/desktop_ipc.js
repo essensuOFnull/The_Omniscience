@@ -67,6 +67,10 @@
 				openKRunner: () => ipcRenderer.invoke('shell:run-krunner'),
 				openSystemSettings: () => ipcRenderer.invoke('shell:systemsettings'),
 				openLogout: () => ipcRenderer.invoke('shell:logout'),
+				setContextPaths: (payload) => ipcRenderer.send('fs:context-paths', payload),
+				copyFiles: (paths) => ipcRenderer.invoke('fs:copy', { paths }),
+				cutFiles: (paths) => ipcRenderer.invoke('fs:cut', { paths }),
+				pasteFiles: (dir) => ipcRenderer.invoke('fs:paste', { dir }),
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);

@@ -1,6 +1,18 @@
 import electronPkg from 'electron';
-const { app, Menu, clipboard, shell, dialog, BrowserWindow,webContents } = electronPkg;
+const { app, Menu, clipboard, shell, dialog, BrowserWindow, webContents, screen } = electronPkg;
 import path from 'path';
+import {
+  consumePendingFileContext,
+  openPath as fsOpenPath,
+  revealPath as fsRevealPath,
+  trashPath as fsTrashPath,
+  deletePath as fsDeletePath,
+  copyFiles as fsCopyFiles,
+  cutFiles as fsCutFiles,
+  pasteFiles as fsPasteFiles,
+} from './ipc_files.js';
+
+import { createWindowByRequest } from './ipc_windowManager.js';
 
 /* ------------------------------------------------------------------ */
 /* Открытие ссылки в новом окне Omniscience                            */
@@ -23,21 +35,182 @@ function openInNewWindow(wc, url) {
   });
 }
 
+function openComponentApp(appId, { title, extra, width = 480, height = 240 } = {}) {
+  const id = `${appId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return createWindowByRequest({
+    id,
+    appId,
+    url: `componentapps/${appId}/index.html`,
+    title: title || appId,
+    icon: null,
+    bounds: {
+      x: Math.round((screen.getPrimaryDisplay().workAreaSize.width  - width)  / 2),
+      y: Math.round((screen.getPrimaryDisplay().workAreaSize.height - height) / 2),
+      width,
+      height,
+    },
+    extra,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Блок «Файлы» / «Рабочий стол»                                       */
+/* ------------------------------------------------------------------ */
+
+function buildFilesBlock(wc, ctx) {
+  const { kind, paths } = ctx || {};
+  if (!paths || paths.length === 0) return [];
+
+  const items = [];
+  items.push({ type: 'separator' });
+
+  /* --- Рабочий стол: ПКМ на пустом месте --- */
+  if (kind === 'background') {
+    const dir = paths[0];
+    items.push({ label: 'Рабочий стол', enabled: false });
+
+    items.push({
+      label: 'Создать папку',
+      click: () => wc.send('fs:request-create', { dir, kind: 'folder' }),
+    });
+    items.push({
+      label: 'Создать файл',
+      click: () => wc.send('fs:request-create', { dir, kind: 'file' }),
+    });
+
+    items.push({ type: 'separator' });
+
+    items.push({
+      label: 'Вставить',
+      click: async () => {
+        const res = await fsPasteFiles(dir);
+        if (res?.success) wc.send('fs:request-reload', { dir });
+      },
+    });
+
+    items.push({ type: 'separator' });
+
+    items.push({
+      label: 'Обновить',
+      click: () => wc.send('fs:request-reload', { dir }),
+    });
+    return items;
+  }
+
+  /* --- Файлы --- */
+  const n = paths.length;
+  const onlyOne = n === 1;
+
+  items.push({
+    label: onlyOne ? 'Файл' : `Выделено файлов: ${n}`,
+    enabled: false,
+  });
+
+  items.push({
+    label: onlyOne ? 'Открыть' : `Открыть все (${n})`,
+    click: async () => {
+      for (const p of paths) {
+        try { await fsOpenPath(p); } catch (_) {}
+      }
+    },
+  });
+
+  items.push({
+    label: 'Открыть с помощью…',
+    click: () => {
+      openComponentApp('open-with', {
+        title: 'Открыть с помощью',
+        width: 520, height: 460,
+        extra: { paths: JSON.stringify(paths) },
+      });
+    },
+  });
+
+  items.push({ type: 'separator' });
+
+  items.push({
+    label: 'Переименовать',
+    enabled: onlyOne,
+    click: onlyOne ? () => {
+      openComponentApp('rename', {
+        title: 'Переименовать',
+        width: 460, height: 200,
+        extra: {
+          filePath: paths[0],
+          currentName: path.basename(paths[0]),
+        },
+      });
+    } : undefined,
+  });
+
+  items.push({
+    label: onlyOne ? 'Скопировать путь' : `Скопировать ${n} путей`,
+    click: () => clipboard.writeText(paths.join('\n')),
+  });
+
+  items.push({
+    label: 'Показать в файловом менеджере',
+    enabled: onlyOne,
+    click: onlyOne ? () => fsRevealPath(paths[0]) : undefined,
+  });
+
+  items.push({ type: 'separator' });
+
+  items.push({
+    label: 'Копировать',
+    click: () => fsCopyFiles(paths),
+  });
+  items.push({
+    label: 'Вырезать',
+    click: () => fsCutFiles(paths),
+  });
+
+  items.push({ type: 'separator' });
+
+  items.push({
+    label: onlyOne ? 'Удалить в корзину' : `Удалить ${n} в корзину`,
+    click: async () => {
+      for (const p of paths) {
+        try { await fsTrashPath(p); } catch (_) {}
+      }
+      wc.send('fs:request-reload', { dir: path.dirname(paths[0]) });
+    },
+  });
+
+  items.push({
+    label: onlyOne ? 'Удалить безвозвратно' : `Удалить безвозвратно (${n})`,
+    click: async () => {
+      const win = BrowserWindow.fromWebContents(wc) || global.mainWindow;
+      const message = onlyOne
+        ? `Удалить безвозвратно "${path.basename(paths[0])}"?`
+        : `Удалить безвозвратно ${n} файлов? Это действие необратимо.`;
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'warning',
+        buttons: ['Отмена', 'Удалить'],
+        defaultId: 0, cancelId: 0,
+        message,
+      });
+      if (response !== 1) return;
+      for (const p of paths) {
+        try { await fsDeletePath(p); } catch (_) {}
+      }
+      wc.send('fs:request-reload', { dir: path.dirname(paths[0]) });
+    },
+  });
+
+  return items;
+}
+
 /* ------------------------------------------------------------------ */
 /* Построение меню                                                      */
 /* ------------------------------------------------------------------ */
 
-function buildMenu(wc, params) {
+function buildMenu(wc, params, fileCtx) {
   const {
     x, y,
-    linkURL,
-    srcURL,
-    mediaType,
-    selectionText,
-    isEditable,
-    editFlags,
-    pageURL,
-    title,
+    linkURL, srcURL, mediaType,
+    selectionText, isEditable, editFlags,
+    pageURL, title,
   } = params;
 
   const items = [];
@@ -109,28 +282,11 @@ function buildMenu(wc, params) {
   /* ---- Текст в поле ввода ---- */
   if (isEditable) {
     items.push({ type: 'separator' });
-    items.push({
-      label: 'Вырезать',
-      enabled: !!editFlags?.canCut,
-      click: () => wc.cut(),
-    });
-    items.push({
-      label: 'Копировать',
-      enabled: !!editFlags?.canCopy,
-      click: () => wc.copy(),
-    });
-    items.push({
-      label: 'Вставить',
-      enabled: !!editFlags?.canPaste,
-      click: () => wc.paste(),
-    });
-    items.push({
-      label: 'Выделить всё',
-      enabled: !!editFlags?.canSelectAll,
-      click: () => wc.selectAll(),
-    });
+    items.push({ label: 'Вырезать', enabled: !!editFlags?.canCut, click: () => wc.cut() });
+    items.push({ label: 'Копировать', enabled: !!editFlags?.canCopy, click: () => wc.copy() });
+    items.push({ label: 'Вставить', enabled: !!editFlags?.canPaste, click: () => wc.paste() });
+    items.push({ label: 'Выделить всё', enabled: !!editFlags?.canSelectAll, click: () => wc.selectAll() });
   } else if (selectionText) {
-    /* ---- Выделенный текст ---- */
     items.push({ type: 'separator' });
     items.push({
       label: 'Копировать',
@@ -175,10 +331,7 @@ function buildMenu(wc, params) {
       }
     },
   });
-  items.push({
-    label: 'Печать…',
-    click: () => wc.print(),
-  });
+  items.push({ label: 'Печать…', click: () => wc.print() });
   items.push({
     label: 'Показать код страницы',
     click: () => openInNewWindow(wc, `view-source:${pageURL}`),
@@ -186,25 +339,18 @@ function buildMenu(wc, params) {
 
   /* ---- Зум ---- */
   items.push({ type: 'separator' });
-  items.push({
-    label: 'Увеличить',
-    click: () => wc.setZoomLevel((wc.getZoomLevel() || 0) + 0.5),
-  });
-  items.push({
-    label: 'Уменьшить',
-    click: () => wc.setZoomLevel((wc.getZoomLevel() || 0) - 0.5),
-  });
-  items.push({
-    label: 'Сбросить масштаб',
-    click: () => wc.setZoomLevel(0),
-  });
+  items.push({ label: 'Увеличить', click: () => wc.setZoomLevel((wc.getZoomLevel() || 0) + 0.5) });
+  items.push({ label: 'Уменьшить', click: () => wc.setZoomLevel((wc.getZoomLevel() || 0) - 0.5) });
+  items.push({ label: 'Сбросить масштаб', click: () => wc.setZoomLevel(0) });
 
   /* ---- DevTools ---- */
   items.push({ type: 'separator' });
-  items.push({
-    label: 'Проверить элемент',
-    click: () => wc.inspectElement(x, y),
-  });
+  items.push({ label: 'Проверить элемент', click: () => wc.inspectElement(x, y) });
+
+  /* ---- Файлы / рабочий стол (в самом низу) ---- */
+  if (fileCtx) {
+    for (const it of buildFilesBlock(wc, fileCtx)) items.push(it);
+  }
 
   return items;
 }
@@ -214,7 +360,6 @@ function buildMenu(wc, params) {
 /* ------------------------------------------------------------------ */
 
 export function attachToWebContents(wc) {
-  // Защита от двойной привязки
   if (wc.__omniCtxMenuAttached) return;
   wc.__omniCtxMenuAttached = true;
 
@@ -223,10 +368,15 @@ export function attachToWebContents(wc) {
     if (url.startsWith('devtools://')) return;
     if (url.startsWith('chrome-extension://')) return;
 
-    console.log('[ctx-menu] fire for', url.slice(0, 60), 'at', params.x, params.y);
+    let fileCtx = null;
+    try {
+      fileCtx = consumePendingFileContext(wc.id);
+    } catch (err) {
+      console.warn('[ctx-menu] consume file context failed:', err.message);
+    }
 
     try {
-      const menu = Menu.buildFromTemplate(buildMenu(wc, params));
+      const menu = Menu.buildFromTemplate(buildMenu(wc, params, fileCtx));
       const win = BrowserWindow.fromWebContents(wc) || global.mainWindow;
       menu.popup({ window: win });
     } catch (err) {

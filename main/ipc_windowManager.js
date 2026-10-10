@@ -57,13 +57,19 @@ function resolveAppUrl(url) {
   }
 }
 
-function buildFinalUrl(rawUrl, { id, desktopId }) {
+function buildFinalUrl(rawUrl, { id, desktopId, extra }) {
   const resolved = resolveAppUrl(rawUrl);
   if (resolved.startsWith('file://') && id) {
     try {
       const u = new URL(resolved);
       u.searchParams.set('windowId', id);
       if (desktopId) u.searchParams.set('desktopId', desktopId);
+      if (extra && typeof extra === 'object') {
+        for (const [k, v] of Object.entries(extra)) {
+          if (v == null) continue;
+          u.searchParams.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+        }
+      }
       return u.href;
     } catch { return resolved; }
   }
@@ -154,6 +160,7 @@ function attachWindowEvents(id, win) {
 export function createWindowByRequest({
   id, appId, url, preload, title, icon,
   bounds, maximized = false, desktopId,
+  extra = null,
 }) {
   const existing = windows.get(id);
   if (existing) {
@@ -174,7 +181,7 @@ export function createWindowByRequest({
     };
 
   const session = getShellSession();
-  const finalUrl = buildFinalUrl(url, { id, desktopId });
+  const finalUrl = buildFinalUrl(url, { id, desktopId, extra });
 
   const win = new BrowserWindow({
     x: b.x, y: b.y, width: b.width, height: b.height,

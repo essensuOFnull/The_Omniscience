@@ -9,9 +9,9 @@ import { useFileIcon } from './useIcons';
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_BRUSH_RADIUS = 55;
-const MIN_BRUSH_RADIUS     = 15;
-const WHEEL_SENSITIVITY    = 0.15;
-const STORAGE_KEY          = 'fileview.brushRadius';
+const MIN_BRUSH_RADIUS = 15;
+const WHEEL_SENSITIVITY = 0.15;
+const STORAGE_KEY = 'fileview.brushRadius';
 const RADIUS_SPRING = { stiffness: 260, damping: 26, mass: 0.5 };
 
 const AUTOPLAY_VIDEO_LIMIT = 12;
@@ -74,7 +74,10 @@ function MediaThumb({ file, autoPlayVideo }) {
 /* Одна иконка файла                                                    */
 /* ------------------------------------------------------------------ */
 
-function FileItem({ file, selected, onSelect, onOpen, onContextMenu, registerRef, autoPlayVideo }) {
+function FileItem({
+    file, selected, onSelect, onOpen, onContextRequest,
+    registerRef, autoPlayVideo,
+}) {
     const iconUrl = useFileIcon(file.id);
     const [iconFailed, setIconFailed] = useState(false);
     const [mediaFailed, setMediaFailed] = useState(false);
@@ -93,12 +96,17 @@ function FileItem({ file, selected, onSelect, onOpen, onContextMenu, registerRef
         if (e.shiftKey) return;
         onOpen(file);
     };
-    const handleContextMenu = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    const handleMouseDown = (e) => {
+        // ПКМ — сообщаем наверх о контексте. НЕ меняем выделение.
+        if (e.button !== 2) return;
         if (e.shiftKey) return;
-        onSelect(file.id, e);
-        onContextMenu(e, file);
+        e.stopPropagation();
+        onContextRequest(file);
+    };
+    const handleContextMenu = (e) => {
+        // НЕ preventDefault — пусть Electron покажет нативное меню.
+        // Просто не даём событию всплыть до контейнера.
+        e.stopPropagation();
     };
 
     const hasMedia = file.mediaKind && !mediaFailed;
@@ -109,6 +117,7 @@ function FileItem({ file, selected, onSelect, onOpen, onContextMenu, registerRef
             data-file-item=""
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
+            onMouseDown={handleMouseDown}
             onContextMenu={handleContextMenu}
             sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -171,7 +180,6 @@ export default function FileView({
     path,
     layout = 'grid',
     onOpen,
-    onContextMenu,
     onPathChange,
     navigateSelf = false,
     emptyText = 'Папка пуста',
@@ -197,7 +205,7 @@ export default function FileView({
     const brushY = useMotionValue(0);
 
     const brushLeft = useTransform([brushX, radiusSpring], ([x, r]) => x - r);
-    const brushTop  = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
+    const brushTop = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
     const brushSize = useTransform(radiusSpring, (r) => r * 2);
 
     const containerRef = useRef(null);
@@ -232,7 +240,7 @@ export default function FileView({
         else fileRefs.current.delete(id);
     }, []);
 
-    /* -------------------- Выделение кликом -------------------- */
+    /* -------------------- Обычное выделение кликом -------------------- */
 
     const handleSelect = useCallback((id, e) => {
         if (e && e.shiftKey) return;
@@ -265,17 +273,35 @@ export default function FileView({
         await api.openPath(file.id);
     }, [onOpen, navigateSelf, onPathChange]);
 
-    /* -------------------- Контекстное меню -------------------- */
+    /* -------------------- ПКМ: отправка контекста в main -------------------- */
 
-    const handleContextMenu = useCallback((e, file) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (shiftHeld) return;
-        if (file) {
-            setSelectedIds((prev) => (prev.has(file.id) ? prev : new Set([file.id])));
+    // Клик ПКМ по конкретному файлу. Не меняем выделение:
+    // если файл уже выделен — шлём все выделенные, иначе только он.
+    const handleItemContextRequest = useCallback((file) => {
+        const api = window.electron_desktop_API;
+        if (!api?.setContextPaths) return;
+        const selected = selectedIdsRef.current;
+        const paths = selected.has(file.id) ? [...selected] : [file.id];
+        api.setContextPaths({ kind: 'files', paths });
+    }, []);
+
+    // ПКМ по пустому месту. Если что-то выделено — шлём выделенные,
+    // иначе — «рабочий стол».
+    const handleContainerMouseDown = useCallback((e) => {
+        if (e.button !== 2) return;
+        if (e.shiftKey) return;
+        if (e.target instanceof Element && e.target.closest('[data-file-item]')) return;
+
+        const api = window.electron_desktop_API;
+        if (!api?.setContextPaths) return;
+
+        const selected = selectedIdsRef.current;
+        if (selected.size > 0) {
+            api.setContextPaths({ kind: 'files', paths: [...selected] });
+        } else {
+            api.setContextPaths({ kind: 'background', paths: [activePath] });
         }
-        onContextMenu?.(file, e, { reload, path: activePath });
-    }, [shiftHeld, onContextMenu, reload, activePath]);
+    }, [activePath]);
 
     /* -------------------- Трекер мыши -------------------- */
 
@@ -301,8 +327,8 @@ export default function FileView({
             }
         };
         const onKeyDown = (e) => applyShift(e);
-        const onKeyUp   = (e) => applyShift(e);
-        const onBlur    = () => {
+        const onKeyUp = (e) => applyShift(e);
+        const onBlur = () => {
             setShiftHeld(false);
             setBrushMode(null);
             brushRef.current = { mode: null, workingSet: null };
@@ -329,7 +355,7 @@ export default function FileView({
             const delta = -e.deltaY * WHEEL_SENSITIVITY;
             const next = Math.max(MIN_BRUSH_RADIUS, radiusTarget.get() + delta);
             radiusTarget.set(next);
-            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) {}
+            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) { }
         };
         document.addEventListener('wheel', onWheel, { passive: false });
         return () => document.removeEventListener('wheel', onWheel);
@@ -355,7 +381,7 @@ export default function FileView({
                 if (!el) return;
                 const rect = el.getBoundingClientRect();
                 const closestX = Math.max(rect.left, Math.min(x, rect.right));
-                const closestY = Math.max(rect.top,  Math.min(y, rect.bottom));
+                const closestY = Math.max(rect.top, Math.min(y, rect.bottom));
                 const dx = x - closestX;
                 const dy = y - closestY;
                 if (dx * dx + dy * dy <= r2) {
@@ -428,6 +454,75 @@ export default function FileView({
         };
     }, [shiftHeld, radiusSpring, brushX, brushY]);
 
+    /* -------------------- Ctrl+C / Ctrl+X / Ctrl+V / Delete -------------------- */
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            // Игнорируем, если фокус в поле ввода / contenteditable
+            const t = e.target;
+            if (t instanceof HTMLElement) {
+                const tag = t.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
+            }
+
+            const api = window.electron_desktop_API;
+            if (!api) return;
+            const selected = selectedIdsRef.current;
+
+            // Ctrl/Cmd + ...
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                const key = e.key.toLowerCase();
+
+                if (key === 'c' && selected.size > 0) {
+                    e.preventDefault();
+                    api.copyFiles([...selected]);
+                    return;
+                }
+                if (key === 'x' && selected.size > 0) {
+                    e.preventDefault();
+                    api.cutFiles([...selected]);
+                    return;
+                }
+                if (key === 'v') {
+                    e.preventDefault();
+                    api.pasteFiles(activePath).then((res) => {
+                        if (res?.success) reload();
+                    });
+                    return;
+                }
+                if (key === 'a') {
+                    e.preventDefault();
+                    setSelectedIds(new Set(files.map((f) => f.id)));
+                    return;
+                }
+            }
+
+            // Delete / Shift+Delete
+            if (e.key === 'Delete' && selected.size > 0) {
+                e.preventDefault();
+                const paths = [...selected];
+                const hard = e.shiftKey;
+                const run = async () => {
+                    if (hard) {
+                        if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
+                        for (const p of paths) {
+                            try { await api.deletePath(p); } catch (_) { }
+                        }
+                    } else {
+                        for (const p of paths) {
+                            try { await api.trashPath(p); } catch (_) { }
+                        }
+                    }
+                    reload();
+                };
+                run();
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activePath, files, reload]);
+
     /* -------------------- Стили контейнера -------------------- */
 
     const containerStyle = useMemo(() => ({
@@ -449,8 +544,20 @@ export default function FileView({
     return (
         <Box
             ref={containerRef}
-            onContextMenu={(e) => handleContextMenu(e, null)}
-            sx={containerStyle}
+            tabIndex={-1}                              // ← фокусируемо программно
+            onMouseDown={(e) => {
+                // При любом клике внутри FileView забираем фокус ввода на контейнер,
+                // чтобы работали Ctrl+C/X/V/Delete. ПКМ не трогаем — она для контекста.
+                if (e.button === 0) {
+                    containerRef.current?.focus?.();
+                }
+                handleContainerMouseDown(e);
+            }}
+            onContextMenu={(e) => e.preventDefault()}
+            sx={{
+                ...containerStyle,
+                outline: 'none',                       // ← убрать дефолтную рамку фокуса
+            }}
         >
             {loading && files.length === 0 && (
                 <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 5 }}>
@@ -475,7 +582,8 @@ export default function FileView({
                         key={file.id} file={file}
                         selected={selectedIds.has(file.id)}
                         onSelect={handleSelect} onOpen={handleOpen}
-                        onContextMenu={handleContextMenu} registerRef={registerRef}
+                        onContextRequest={handleItemContextRequest}
+                        registerRef={registerRef}
                     />
                 ))
                 : files.map((file) => (
@@ -483,7 +591,8 @@ export default function FileView({
                         key={file.id} file={file}
                         selected={selectedIds.has(file.id)}
                         onSelect={handleSelect} onOpen={handleOpen}
-                        onContextMenu={handleContextMenu} registerRef={registerRef}
+                        onContextRequest={handleItemContextRequest}
+                        registerRef={registerRef}
                         autoPlayVideo={autoPlayVideo}
                     />
                 ))}
@@ -499,12 +608,12 @@ export default function FileView({
                         border: '2px solid',
                         borderColor:
                             brushMode === 'add' ? 'rgba(80, 230, 130, 0.95)'
-                            : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.95)'
-                            : 'rgba(190, 190, 230, 0.55)',
+                                : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.95)'
+                                    : 'rgba(190, 190, 230, 0.55)',
                         background:
                             brushMode === 'add' ? 'rgba(80, 230, 130, 0.18)'
-                            : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.18)'
-                            : 'transparent',
+                                : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.18)'
+                                    : 'transparent',
                         boxShadow: brushMode
                             ? `0 0 16px ${brushMode === 'add' ? 'rgba(80,230,130,0.55)' : 'rgba(255,90,90,0.55)'}, inset 0 0 12px ${brushMode === 'add' ? 'rgba(80,230,130,0.25)' : 'rgba(255,90,90,0.25)'}`
                             : '0 0 8px rgba(190,190,230,0.2)',
@@ -522,7 +631,9 @@ export default function FileView({
 /* Ряд для list-режима                                                  */
 /* ------------------------------------------------------------------ */
 
-function FileListRow({ file, selected, onSelect, onOpen, onContextMenu, registerRef }) {
+function FileListRow({
+    file, selected, onSelect, onOpen, onContextRequest, registerRef,
+}) {
     const iconUrl = useFileIcon(file.id);
     const [iconFailed, setIconFailed] = useState(false);
     const [mediaFailed, setMediaFailed] = useState(false);
@@ -539,17 +650,21 @@ function FileListRow({ file, selected, onSelect, onOpen, onContextMenu, register
         onSelect(file.id, e);
     };
 
+    const handleMouseDown = (e) => {
+        if (e.button !== 2) return;
+        if (e.shiftKey) return;
+        e.stopPropagation();
+        onContextRequest(file);
+    };
+
     return (
         <Box
             ref={setRef}
             data-file-item=""
             onClick={handleClick}
             onDoubleClick={(e) => { e.stopPropagation(); if (!e.shiftKey) onOpen(file); }}
-            onContextMenu={(e) => {
-                e.preventDefault(); e.stopPropagation();
-                if (e.shiftKey) return;
-                onContextMenu(e, file);
-            }}
+            onMouseDown={handleMouseDown}
+            onContextMenu={(e) => e.stopPropagation()}
             sx={{
                 display: 'flex', alignItems: 'center', gap: 1,
                 px: 1, py: 0.5,

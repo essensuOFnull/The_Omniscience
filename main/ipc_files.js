@@ -2,15 +2,16 @@ import electronPkg from 'electron';
 const { ipcMain, app } = electronPkg;
 import {
     readdir, stat, rename as fsRename, unlink, readFile, rm,
-    mkdir, writeFile, copyFile, access, open,
+    mkdir, writeFile, copyFile, access, open, cp,
 } from 'fs/promises';
 import { constants as fsConstants } from 'fs';
 import { watch } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { pathToFileURL } from 'url';
 import path from 'path';
 import os from 'os';
+import { clipboard } from 'electron';
+import { pathToFileURL, fileURLToPath } from 'url';
 
 const execAsync = promisify(exec);
 const yieldToEventLoop = () => new Promise((r) => setImmediate(r));
@@ -202,7 +203,7 @@ async function openPath(filePath) {
                 await execAsync(`"${filePath.replace(/"/g, '\\"')}"`);
                 return { success: true };
             }
-        } catch (_) {}
+        } catch (_) { }
         await execAsync(`xdg-open "${filePath.replace(/"/g, '\\"')}"`);
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
@@ -240,6 +241,83 @@ async function renamePath(oldPath, newName) {
     } catch (err) { return { success: false, error: err.message }; }
 }
 
+/* ------------------------------------------------------------------ */
+/* Буфер обмена: copy / cut / paste                                    */
+/* ------------------------------------------------------------------ */
+
+let cutPaths = null;
+
+export async function copyFiles(paths) {
+    if (!Array.isArray(paths) || paths.length === 0) {
+        return { success: false, error: 'no_paths' };
+    }
+    try {
+        clipboard.writeText(paths.map((p) => pathToFileURL(p).href).join('\n'));
+        cutPaths = null;
+        return { success: true, count: paths.length };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function cutFiles(paths) {
+    if (!Array.isArray(paths) || paths.length === 0) {
+        return { success: false, error: 'no_paths' };
+    }
+    try {
+        clipboard.writeText(paths.map((p) => pathToFileURL(p).href).join('\n'));
+        cutPaths = [...paths];
+        return { success: true, count: paths.length };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function pasteFiles(destDir) {
+    if (!destDir) return { success: false, error: 'no_dest' };
+
+    let text;
+    try { text = clipboard.readText(); } catch (_) { return { success: false, error: 'clipboard' }; }
+    if (!text) return { success: false, error: 'empty' };
+
+    const urls = text.split('\n').map((s) => s.trim()).filter(Boolean);
+    const srcPaths = urls
+        .filter((u) => u.startsWith('file://'))
+        .map((u) => { try { return fileURLToPath(u); } catch { return null; } })
+        .filter(Boolean);
+
+    if (srcPaths.length === 0) return { success: false, error: 'no_files' };
+
+    const isCut = cutPaths
+        && cutPaths.length === srcPaths.length
+        && cutPaths.every((p) => srcPaths.includes(p));
+    cutPaths = null;
+
+    const results = [];
+    for (const src of srcPaths) {
+        const dest = path.join(destDir, path.basename(src));
+        try {
+            if (isCut) {
+                await fsRename(src, dest);
+            } else {
+                // Пытаемся как файл; если это папка — cp с recursive.
+                try {
+                    await copyFile(src, dest);
+                } catch (err) {
+                    if (err.code === 'EISDIR' || err.code === 'EPERM') {
+                        await cp(src, dest, { recursive: true });
+                    } else {
+                        throw err;
+                    }
+                }
+            }
+            results.push({ src, dest, ok: true });
+        } catch (err) {
+            results.push({ src, dest, ok: false, error: err.message });
+        }
+    }
+    return { success: true, results };
+}
 /* ================================================================== */
 /* ИКОНКИ — freedesktop lookup, возвращаем file:// URL                 */
 /* ================================================================== */
@@ -299,7 +377,7 @@ function getCurrentIconTheme() {
             const { stdout } = await execAsync('gsettings get org.gnome.desktop.interface icon-theme');
             theme = stdout.trim().replace(/^'|'$/g, '') || null;
             if (theme) console.log('[icon] theme via gsettings:', theme);
-        } catch (_) {}
+        } catch (_) { }
         if (!theme) {
             try {
                 const kdeglobalsPath = path.join(os.homedir(), '.config', 'kdeglobals');
@@ -315,7 +393,7 @@ function getCurrentIconTheme() {
                     }
                 }
                 if (theme) console.log('[icon] theme via kdeglobals:', theme);
-            } catch (_) {}
+            } catch (_) { }
         }
         if (!theme) { theme = 'hicolor'; console.log('[icon] theme fallback: hicolor'); }
         return theme;
@@ -547,7 +625,7 @@ async function getFileIcon(filePath) {
                     iconLookupCache.set(filePath, dataUrl);
                     return { success: true, fileUrl: dataUrl };
                 }
-            } catch (_) {}
+            } catch (_) { }
             iconLookupCache.set(filePath, null);
             return { success: false };
         }
@@ -558,7 +636,7 @@ async function getFileIcon(filePath) {
             if (icon && !icon.isEmpty()) {
                 return { success: true, fileUrl: icon.toDataURL() };
             }
-        } catch (_) {}
+        } catch (_) { }
         return { success: false };
     } catch (err) {
         console.error('[icon] getFileIcon error:', err);
@@ -598,7 +676,7 @@ async function readDesktopEntry(id) {
                 else if (trimmed.startsWith('Name=')) name = trimmed.slice(5);
             }
             return { id, name: nameRu || name || id, fullPath };
-        } catch (_) {}
+        } catch (_) { }
     }
     return null;
 }
@@ -684,8 +762,34 @@ export async function createFromTemplate(dir, templatePath, name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* IPC                                                                  */
+/* Контекст для нативного меню: рендер сообщает нам, куда кликнули     */
 /* ------------------------------------------------------------------ */
+
+const pendingFileContexts = new Map();  // wcId → { kind, paths, timestamp }
+const CONTEXT_TTL_MS = 800;
+
+ipcMain.on('fs:context-paths', (event, payload) => {
+    if (!payload) return;
+    pendingFileContexts.set(event.sender.id, {
+        kind: payload.kind || 'files',
+        paths: Array.isArray(payload.paths) ? payload.paths : [],
+        timestamp: Date.now(),
+    });
+});
+
+/**
+ * Забирает (и удаляет) pending-контекст для указанного webContents.
+ * Если прошло больше 800 мс — считаем устаревшим.
+ */
+export function consumePendingFileContext(wcId) {
+    const entry = pendingFileContexts.get(wcId);
+    if (!entry) return null;
+    pendingFileContexts.delete(wcId);
+    if (Date.now() - entry.timestamp > CONTEXT_TTL_MS) return null;
+    return entry;
+}
+
+export { openPath, revealPath, trashPath, deletePath, renamePath, getAppsForFile };
 
 export default function () {
     ipcMain.handle('fs:get-user-dirs', () => getUserDirs());
@@ -710,4 +814,7 @@ export default function () {
     ipcMain.handle('fs:create-file', (_e, { dir, name }) => createFile(dir, name));
     ipcMain.handle('fs:create-from-template', (_e, { dir, templatePath, name }) =>
         createFromTemplate(dir, templatePath, name));
+    ipcMain.handle('fs:copy', (_e, { paths }) => copyFiles(paths));
+    ipcMain.handle('fs:cut', (_e, { paths }) => cutFiles(paths));
+    ipcMain.handle('fs:paste', (_e, { dir }) => pasteFiles(dir));
 }
