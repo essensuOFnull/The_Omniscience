@@ -1,19 +1,62 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import React, {
+    useState, useEffect, useCallback, useMemo, useRef,
+} from 'react';
+import {
+    Box, IconButton, Breadcrumbs, Link, Typography, CircularProgress,
+} from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 import useDirectory from './useDirectory';
 import { useFileIcon } from './useIcons';
+import { useSetting } from '../../settings/useSettings';
 
 /* ------------------------------------------------------------------ */
 /* Параметры кисти                                                     */
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_BRUSH_RADIUS = 55;
-const MIN_BRUSH_RADIUS = 15;
-const WHEEL_SENSITIVITY = 0.15;
-const STORAGE_KEY = 'fileview.brushRadius';
+const MIN_BRUSH_RADIUS     = 15;
+const WHEEL_SENSITIVITY    = 0.15;
+const STORAGE_KEY          = 'fileview.brushRadius';
 const RADIUS_SPRING = { stiffness: 260, damping: 26, mass: 0.5 };
 const AUTOPLAY_VIDEO_LIMIT = 12;
+
+/* ------------------------------------------------------------------ */
+/* Утилиты путей                                                        */
+/* ------------------------------------------------------------------ */
+
+function buildCrumbs(fullPath) {
+    if (!fullPath) return [];
+    const isWin = /^[a-zA-Z]:\\/.test(fullPath);
+
+    if (isWin) {
+        const parts = fullPath.replace(/\\+$/, '').split('\\').filter(Boolean);
+        const crumbs = [];
+        let acc = parts[0] + '\\';
+        crumbs.push({ name: parts[0] + '\\', path: acc });
+        for (let i = 1; i < parts.length; i++) {
+            acc = acc.endsWith('\\') ? acc + parts[i] : acc + '\\' + parts[i];
+            crumbs.push({ name: parts[i], path: acc });
+        }
+        return crumbs;
+    }
+
+    const crumbs = [{ name: '/', path: '/' }];
+    const parts = fullPath.replace(/\/+$/, '').split('/').filter(Boolean);
+    let acc = '';
+    for (const part of parts) {
+        acc = acc + '/' + part;
+        crumbs.push({ name: part, path: acc });
+    }
+    return crumbs;
+}
+
+function isRoot(p) {
+    if (!p) return false;
+    if (p === '/') return true;
+    if (/^[a-zA-Z]:\\?$/.test(p)) return true;
+    return false;
+}
 
 /* ------------------------------------------------------------------ */
 /* Медиа-превью                                                        */
@@ -132,7 +175,7 @@ function FileItem({
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     borderRadius: 1, overflow: 'hidden', position: 'relative',
                     bgcolor: hasMedia ? 'rgba(0,0,0,0.35)' : 'transparent',
-                    pointerEvents:'none',
+                    pointerEvents: 'none',
                 }}
             >
                 {hasMedia ? (
@@ -223,7 +266,14 @@ function FileListRow({
                 transition: 'opacity 0.15s',
             }}
         >
-            <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 0.5, pointerEvents:'none', }}>
+            <Box
+                sx={{
+                    width: 24, height: 24,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden', borderRadius: 0.5,
+                    pointerEvents: 'none',
+                }}
+            >
                 {hasMedia ? (
                     <img
                         src={file.fileUrl}
@@ -253,18 +303,11 @@ function FileListRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* FileView                                                             */
+/* FileViewInner — сердце рабочего стола                               */
 /* ------------------------------------------------------------------ */
 
-export default function FileView({
-    path,
-    layout = 'grid',
-    onOpen,
-    onPathChange,
-    navigateSelf = false,
-    emptyText = 'Папка пуста',
-}) {
-    const [internalPath, setInternalPath] = useState(path);
+function FileViewInner({ basePath }) {
+    const [currentPath, setCurrentPath] = useState(basePath);
     const [selectedIds, setSelectedIds] = useState(() => new Set());
     const [cutPaths, setCutPaths] = useState(() => new Set());
 
@@ -272,6 +315,10 @@ export default function FileView({
     const [brushMode, setBrushMode] = useState(null);
     const [dragOver, setDragOver] = useState(false);
 
+    /* --- Единственная подписка на директорию во всём компоненте --- */
+    const { files, loading, error, reload } = useDirectory(currentPath);
+
+    /* --- Radius --- */
     const initialRadius = (() => {
         try {
             const saved = parseFloat(localStorage.getItem(STORAGE_KEY));
@@ -287,27 +334,29 @@ export default function FileView({
     const brushY = useMotionValue(0);
 
     const brushLeft = useTransform([brushX, radiusSpring], ([x, r]) => x - r);
-    const brushTop = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
+    const brushTop  = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
     const brushSize = useTransform(radiusSpring, (r) => r * 2);
 
+    /* --- Refs --- */
     const containerRef = useRef(null);
     const fileRefs = useRef(new Map());
     const selectedIdsRef = useRef(selectedIds);
     const brushRef = useRef({ mode: null, workingSet: null });
     const lastMousePosRef = useRef(null);
 
-    useEffect(() => { setInternalPath(path); }, [path]);
-
-    const activePath = navigateSelf ? internalPath : path;
-    const { files, loading, error, reload } = useDirectory(activePath);
+    // reload меняет идентичность при каждом ре-рендере — держим в ref,
+    // чтобы подписка на события main не переподключалась.
+    const reloadRef = useRef(reload);
+    useEffect(() => { reloadRef.current = reload; }, [reload]);
 
     useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
+    // Сброс выделения и кисти при смене папки
     useEffect(() => {
         setSelectedIds(new Set());
         setBrushMode(null);
         brushRef.current = { mode: null, workingSet: null };
-    }, [activePath]);
+    }, [currentPath]);
 
     /* -------------------- Вырезанные файлы -------------------- */
 
@@ -320,7 +369,7 @@ export default function FileView({
                 const arr = Array.isArray(res) ? res : (res?.paths || []);
                 setCutPaths(new Set(arr));
             })
-            .catch(() => { });
+            .catch(() => {});
 
         const off = api.on?.('fs:cut-changed', (payload) => {
             const arr = Array.isArray(payload?.paths) ? payload.paths : [];
@@ -329,17 +378,53 @@ export default function FileView({
         return () => { off?.(); };
     }, []);
 
+    /* -------------------- Слушаем main: перезагрузка -------------------- */
+
+    useEffect(() => {
+        const api = window.electron_desktop_API;
+        if (!api?.on) return;
+
+        const offReload = api.on('fs:request-reload', () => {
+            reloadRef.current?.();
+        });
+
+        return () => { offReload?.(); };
+    }, []);
+
+    /* -------------------- Производные -------------------- */
+
     const videoCount = useMemo(
         () => files.filter((f) => f.mediaKind === 'video').length,
         [files],
     );
     const autoPlayVideo = videoCount <= AUTOPLAY_VIDEO_LIMIT;
 
+    const crumbs = useMemo(() => buildCrumbs(currentPath), [currentPath]);
+    const canGoBack = !isRoot(currentPath);
+
     /* -------------------- DOM-рефы -------------------- */
 
     const registerRef = useCallback((id, el) => {
         if (el) fileRefs.current.set(id, el);
         else fileRefs.current.delete(id);
+    }, []);
+
+    /* -------------------- Навигация -------------------- */
+
+    const handleOpenFolder = useCallback((folderPath) => {
+        setCurrentPath(folderPath);
+    }, []);
+
+    const handleBack = useCallback(() => {
+        setCurrentPath((prev) => {
+            if (isRoot(prev)) return prev;
+            const parent = prev.replace(/[\\/][^\\/]+[\\/]?$/, '') || '/';
+            return parent || '/';
+        });
+    }, []);
+
+    const handleNavigateTo = useCallback((targetPath) => {
+        setCurrentPath(targetPath);
     }, []);
 
     /* -------------------- Выделение кликом -------------------- */
@@ -361,21 +446,15 @@ export default function FileView({
     /* -------------------- Открытие -------------------- */
 
     const handleOpen = useCallback(async (file) => {
-        if (onOpen) { onOpen(file); return; }
         const api = window.electron_desktop_API;
         if (file.isDir) {
-            if (navigateSelf) {
-                setInternalPath(file.id);
-                onPathChange?.(file.id);
-            } else {
-                onPathChange?.(file.id);
-            }
+            handleOpenFolder(file.id);
             return;
         }
         await api.openPath(file.id);
-    }, [onOpen, navigateSelf, onPathChange]);
+    }, [handleOpenFolder]);
 
-    /* -------------------- ПКМ / drag -------------------- */
+    /* -------------------- ПКМ / drag-out -------------------- */
 
     const handleItemContextRequest = useCallback((file) => {
         const api = window.electron_desktop_API;
@@ -405,11 +484,11 @@ export default function FileView({
         if (selected.size > 0) {
             api.setContextPaths({ kind: 'files', paths: [...selected] });
         } else {
-            api.setContextPaths({ kind: 'background', paths: [activePath] });
+            api.setContextPaths({ kind: 'background', paths: [currentPath] });
         }
-    }, [activePath]);
+    }, [currentPath]);
 
-    /* -------------------- Drop-in -------------------- */
+    /* -------------------- Drag-in -------------------- */
 
     const handleDrop = useCallback(async (e) => {
         e.preventDefault();
@@ -421,18 +500,20 @@ export default function FileView({
 
         const srcPaths = new Set();
 
+        // 1. Внешние источники (Dolphin, Nautilus, Telegram) — через File API
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             for (const f of Array.from(e.dataTransfer.files)) {
                 try {
                     const p = api.getPathForFile ? api.getPathForFile(f) : (f.path || '');
                     if (p && typeof p === 'string') srcPaths.add(p);
-                } catch (_) { }
+                } catch (_) {}
             }
         }
 
+        // 2. Внутренние источники (наши окна) — через text/uri-list
         if (srcPaths.size === 0) {
             let uriList = '';
-            try { uriList = e.dataTransfer.getData('text/uri-list') || ''; } catch (_) { }
+            try { uriList = e.dataTransfer.getData('text/uri-list') || ''; } catch (_) {}
             if (uriList) {
                 for (const line of uriList.split(/\r?\n/)) {
                     const s = line.trim();
@@ -440,7 +521,7 @@ export default function FileView({
                     try {
                         const u = new URL(s);
                         srcPaths.add(decodeURIComponent(u.pathname));
-                    } catch (_) { }
+                    } catch (_) {}
                 }
             }
         }
@@ -448,9 +529,9 @@ export default function FileView({
         if (srcPaths.size === 0) return;
 
         const isMove = !e.ctrlKey;
-        const res = await api.dropPaths([...srcPaths], activePath, isMove);
+        const res = await api.dropPaths([...srcPaths], currentPath, isMove);
         if (res?.success) reload();
-    }, [activePath, reload]);
+    }, [currentPath, reload]);
 
     /* -------------------- Ctrl+C/X/V/Delete/A -------------------- */
 
@@ -480,7 +561,7 @@ export default function FileView({
                 }
                 if (key === 'v') {
                     e.preventDefault();
-                    api.pasteFiles(activePath).then((res) => {
+                    api.pasteFiles(currentPath).then((res) => {
                         if (res?.success) reload();
                     });
                     return;
@@ -500,11 +581,11 @@ export default function FileView({
                     if (hard) {
                         if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
                         for (const p of paths) {
-                            try { await api.deletePath(p); } catch (_) { }
+                            try { await api.deletePath(p); } catch (_) {}
                         }
                     } else {
                         for (const p of paths) {
-                            try { await api.trashPath(p); } catch (_) { }
+                            try { await api.trashPath(p); } catch (_) {}
                         }
                     }
                     reload();
@@ -515,7 +596,7 @@ export default function FileView({
 
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [activePath, files, reload]);
+    }, [currentPath, files, reload]);
 
     /* -------------------- Трекер мыши -------------------- */
 
@@ -541,8 +622,8 @@ export default function FileView({
             }
         };
         const onKeyDown = (e) => applyShift(e);
-        const onKeyUp = (e) => applyShift(e);
-        const onBlur = () => {
+        const onKeyUp   = (e) => applyShift(e);
+        const onBlur    = () => {
             setShiftHeld(false);
             setBrushMode(null);
             brushRef.current = { mode: null, workingSet: null };
@@ -569,7 +650,7 @@ export default function FileView({
             const delta = -e.deltaY * WHEEL_SENSITIVITY;
             const next = Math.max(MIN_BRUSH_RADIUS, radiusTarget.get() + delta);
             radiusTarget.set(next);
-            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) { }
+            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) {}
         };
         document.addEventListener('wheel', onWheel, { passive: false });
         return () => document.removeEventListener('wheel', onWheel);
@@ -595,7 +676,7 @@ export default function FileView({
                 if (!el) return;
                 const rect = el.getBoundingClientRect();
                 const closestX = Math.max(rect.left, Math.min(x, rect.right));
-                const closestY = Math.max(rect.top, Math.min(y, rect.bottom));
+                const closestY = Math.max(rect.top,  Math.min(y, rect.bottom));
                 const dx = x - closestX;
                 const dy = y - closestY;
                 if (dx * dx + dy * dy <= r2) {
@@ -668,13 +749,12 @@ export default function FileView({
         };
     }, [shiftHeld, radiusSpring, brushX, brushY]);
 
-    /* -------------------- Стили -------------------- */
+    /* -------------------- Стили сетки -------------------- */
 
     const containerStyle = useMemo(() => ({
-        display: layout === 'list' ? 'flex' : 'grid',
-        flexDirection: layout === 'list' ? 'column' : undefined,
-        gridTemplateColumns: layout === 'grid' ? 'repeat(auto-fill, 90px)' : undefined,
-        gap: layout === 'grid' ? 0.5 : 0,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, 90px)',
+        gap: 0.5,
         p: 1,
         alignContent: 'flex-start',
         width: '100%', height: '100%',
@@ -683,73 +763,131 @@ export default function FileView({
         position: 'relative',
         userSelect: 'none',
         cursor: shiftHeld ? 'none' : 'default',
-    }), [layout, shiftHeld]);
+        outline: 'none',
+    }), [shiftHeld]);
+
+    /* -------------------- Рендер -------------------- */
 
     return (
         <Box
-            ref={containerRef}
-            tabIndex={-1}
-            onMouseDown={(e) => {
-                if (e.button === 0) containerRef.current?.focus?.();
-                handleContainerMouseDown(e);
-            }}
-            onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
-                if (!dragOver) setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-                const related = e.relatedTarget;
-                if (related && e.currentTarget.contains(related)) return;
-                setDragOver(false);
-            }}
-            onDrop={handleDrop}
             sx={{
-                ...containerStyle,
-                outline: 'none',
-                boxShadow: dragOver
-                    ? 'inset 0 0 0 2px rgba(168,85,247,0.65)'
-                    : 'none',
-                transition: 'box-shadow 0.15s',
+                position: 'absolute', inset: 0, zIndex: 0,
+                display: 'flex', flexDirection: 'column',
                 pointerEvents: 'auto',
             }}
         >
-            {loading && files.length === 0 && (
-                <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 5 }}>
-                    <CircularProgress size={18} sx={{ color: '#a855f7' }} />
-                </Box>
-            )}
-            {error === 'permission_denied' && (
-                <Typography sx={{ color: '#f55', p: 2 }}>Нет доступа к папке</Typography>
-            )}
-            {error && error !== 'permission_denied' && (
-                <Typography sx={{ color: '#f55', p: 2 }}>Ошибка: {error}</Typography>
-            )}
-            {!loading && !error && files.length === 0 && (
-                <Typography sx={{ color: 'rgba(255,255,255,0.4)', p: 2, fontSize: 13 }}>
-                    {emptyText}
-                </Typography>
-            )}
+            {/* ----- Панель навигации ----- */}
+            <Box
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.75,
+                    mb: 1,
+                    bgcolor: 'rgba(0,0,0,0.6)',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    maxWidth: '100%',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                }}
+            >
+                <IconButton
+                    size="small"
+                    onClick={handleBack}
+                    disabled={!canGoBack}
+                    sx={{ color: canGoBack ? '#fff' : 'rgba(255,255,255,0.3)' }}
+                >
+                    <ArrowBackIcon fontSize="small" />
+                </IconButton>
 
-            {layout === 'list'
-                ? files.map((file) => (
-                    <FileListRow
-                        key={file.id} file={file}
-                        selected={selectedIds.has(file.id)}
-                        cut={cutPaths.has(file.id)}
-                        onSelect={handleSelect} onOpen={handleOpen}
-                        onContextRequest={handleItemContextRequest}
-                        onDragRequest={handleItemDragRequest}
-                        registerRef={registerRef}
-                    />
-                ))
-                : files.map((file) => (
+                <Breadcrumbs
+                    maxItems={6}
+                    separator="/"
+                    sx={{
+                        color: '#aaa',
+                        flex: 1,
+                        minWidth: 0,
+                        '& .MuiBreadcrumbs-separator': { color: 'rgba(255,255,255,0.3)' },
+                        '& .MuiBreadcrumbs-ol': { flexWrap: 'nowrap' },
+                    }}
+                >
+                    {crumbs.map((c, i) => {
+                        const last = i === crumbs.length - 1;
+                        return (
+                            <Link
+                                key={c.path}
+                                component="button"
+                                underline="hover"
+                                onClick={() => handleNavigateTo(c.path)}
+                                sx={{
+                                    color: last ? '#fff' : '#aaa',
+                                    fontSize: 13,
+                                    fontFamily: 'monospace',
+                                    whiteSpace: 'nowrap',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                {c.name}
+                            </Link>
+                        );
+                    })}
+                </Breadcrumbs>
+            </Box>
+
+            {/* ----- Сетка файлов (принимает drop извне и отдаёт drag наружу) ----- */}
+            <Box
+                ref={containerRef}
+                tabIndex={-1}
+                onMouseDown={(e) => {
+                    if (e.button === 0) containerRef.current?.focus?.();
+                    handleContainerMouseDown(e);
+                }}
+                onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                    if (!dragOver) setDragOver(true);
+                }}
+                onDragLeave={(e) => {
+                    const related = e.relatedTarget;
+                    if (related && e.currentTarget.contains(related)) return;
+                    setDragOver(false);
+                }}
+                onDrop={handleDrop}
+                sx={{
+                    ...containerStyle,
+                    boxShadow: dragOver
+                        ? 'inset 0 0 0 2px rgba(168,85,247,0.65)'
+                        : 'none',
+                    transition: 'box-shadow 0.15s',
+                }}
+            >
+                {loading && files.length === 0 && (
+                    <Box sx={{ position: 'absolute', top: 16, right: 16, zIndex: 5 }}>
+                        <CircularProgress size={18} sx={{ color: '#a855f7' }} />
+                    </Box>
+                )}
+                {error === 'permission_denied' && (
+                    <Typography sx={{ color: '#f55', p: 2 }}>Нет доступа к папке</Typography>
+                )}
+                {error && error !== 'permission_denied' && (
+                    <Typography sx={{ color: '#f55', p: 2 }}>Ошибка: {error}</Typography>
+                )}
+                {!loading && !error && files.length === 0 && (
+                    <Typography sx={{ color: 'rgba(255,255,255,0.4)', p: 2, fontSize: 13 }}>
+                        Папка пуста
+                    </Typography>
+                )}
+
+                {files.map((file) => (
                     <FileItem
-                        key={file.id} file={file}
+                        key={file.id}
+                        file={file}
                         selected={selectedIds.has(file.id)}
                         cut={cutPaths.has(file.id)}
-                        onSelect={handleSelect} onOpen={handleOpen}
+                        onSelect={handleSelect}
+                        onOpen={handleOpen}
                         onContextRequest={handleItemContextRequest}
                         onDragRequest={handleItemDragRequest}
                         registerRef={registerRef}
@@ -757,32 +895,62 @@ export default function FileView({
                     />
                 ))}
 
-            {shiftHeld && (
-                <motion.div
-                    className="ignore_The_Omniscience_Theme_recursive"
-                    style={{
-                        position: 'fixed',
-                        left: brushLeft, top: brushTop,
-                        width: brushSize, height: brushSize,
-                        borderRadius: '50%', boxSizing: 'border-box',
-                        border: '2px solid',
-                        borderColor:
-                            brushMode === 'add' ? 'rgba(80, 230, 130, 0.95)'
-                                : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.95)'
-                                    : 'rgba(190, 190, 230, 0.55)',
-                        background:
-                            brushMode === 'add' ? 'rgba(80, 230, 130, 0.18)'
-                                : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.18)'
-                                    : 'transparent',
-                        boxShadow: brushMode
-                            ? `0 0 16px ${brushMode === 'add' ? 'rgba(80,230,130,0.55)' : 'rgba(255,90,90,0.55)'}, inset 0 0 12px ${brushMode === 'add' ? 'rgba(80,230,130,0.25)' : 'rgba(255,90,90,0.25)'}`
-                            : '0 0 8px rgba(190,190,230,0.2)',
-                        pointerEvents: 'none',
-                        zIndex: 9999,
-                        transition: 'background 0.12s, border-color 0.12s, box-shadow 0.12s',
-                    }}
-                />
-            )}
+                {shiftHeld && (
+                    <motion.div
+                        className="ignore_The_Omniscience_Theme_recursive"
+                        style={{
+                            position: 'fixed',
+                            left: brushLeft, top: brushTop,
+                            width: brushSize, height: brushSize,
+                            borderRadius: '50%', boxSizing: 'border-box',
+                            border: '2px solid',
+                            borderColor:
+                                brushMode === 'add' ? 'rgba(80, 230, 130, 0.95)'
+                                    : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.95)'
+                                        : 'rgba(190, 190, 230, 0.55)',
+                            background:
+                                brushMode === 'add' ? 'rgba(80, 230, 130, 0.18)'
+                                    : brushMode === 'remove' ? 'rgba(255, 90, 90, 0.18)'
+                                        : 'transparent',
+                            boxShadow: brushMode
+                                ? `0 0 16px ${brushMode === 'add' ? 'rgba(80,230,130,0.55)' : 'rgba(255,90,90,0.55)'}, inset 0 0 12px ${brushMode === 'add' ? 'rgba(80,230,130,0.25)' : 'rgba(255,90,90,0.25)'}`
+                                : '0 0 8px rgba(190,190,230,0.2)',
+                            pointerEvents: 'none',
+                            zIndex: 9999,
+                            transition: 'background 0.12s, border-color 0.12s, box-shadow 0.12s',
+                        }}
+                    />
+                )}
+            </Box>
         </Box>
     );
+}
+
+/* ------------------------------------------------------------------ */
+/* Экспорт: самодостаточный рабочий стол                               */
+/* ------------------------------------------------------------------ */
+
+export default function FileView() {
+    const enabled = useSetting('desktopFiles.enabled');
+    const configuredPath = useSetting('desktopFiles.path');
+    const [basePath, setBasePath] = useState(null);
+
+    useEffect(() => {
+        if (!enabled) { setBasePath(null); return; }
+        if (configuredPath) { setBasePath(configuredPath); return; }
+
+        const api = window.electron_desktop_API;
+        if (!api?.getUserDirs) return;
+
+        let cancelled = false;
+        api.getUserDirs()
+            .then((dirs) => { if (!cancelled) setBasePath(dirs?.desktop || null); })
+            .catch(() => { if (!cancelled) setBasePath(null); });
+
+        return () => { cancelled = true; };
+    }, [enabled, configuredPath]);
+
+    if (!enabled || !basePath) return null;
+
+    return <FileViewInner key={basePath} basePath={basePath} />;
 }

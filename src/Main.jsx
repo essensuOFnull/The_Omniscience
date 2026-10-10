@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import DesktopFiles from './components/FileView/DesktopFiles';
+import FileView from './components/FileView';
 import FrameHandler from './components/FrameHandler';
 import BackgroundRenderer from './components/BackgroundRenderer';
 import ThemeApplier from './components/ThemeApplier';
@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <React.StrictMode>
       <ThemeProvider theme={darkTheme}>
         <CssBaseline />
-        <DesktopFiles />
+        <FileView />
       </ThemeProvider>
     </React.StrictMode>
   );
