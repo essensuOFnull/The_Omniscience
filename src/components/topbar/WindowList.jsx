@@ -2,9 +2,12 @@ import React from 'react';
 import { Box, Button, Tooltip } from '@mui/material';
 import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
 
-const BORDER_ACTIVE    = '2px solid #a855f7';
-const BORDER_NORMAL    = '1px solid #ffffff';
-const BORDER_MINIMIZED = '1px dashed rgba(255,255,255,0.55)';
+const BORDER_COLOR_ACTIVE = '#a855f7';
+const BORDER_COLOR_NORMAL = '#ffffff';
+const BORDER_COLOR_MINIMIZED = 'rgba(255,255,255,0.55)';
+
+const BORDER_STYLE_NORMAL = '1px solid';
+const BORDER_STYLE_MINIMIZED = '1px dashed';
 
 export default function WindowList({ windows = [], onFocus, onClose }) {
   return (
@@ -22,17 +25,42 @@ export default function WindowList({ windows = [], onFocus, onClose }) {
       }}
     >
       {windows.map((w) => {
-        const isActive    = !!w.focused;
+        const isActive = !!w.focused;
         const isMinimized = !!w.minimized;
 
-        const border = isActive
-          ? BORDER_ACTIVE
-          : isMinimized
-            ? BORDER_MINIMIZED
-            : BORDER_NORMAL;
+        const border = `${isMinimized ? BORDER_STYLE_MINIMIZED : BORDER_STYLE_NORMAL} ${isActive ? BORDER_COLOR_ACTIVE : isMinimized ? BORDER_COLOR_MINIMIZED : BORDER_COLOR_NORMAL}`;
 
         return (
-          <Tooltip key={w.id} title={w.title || w.kind || 'Окно'}>
+          <Tooltip
+            key={w.id}
+            title={w.title || w.kind || 'Окно'}
+            // 1. Всегда позиционировать сверху
+            placement="top"
+            // 2. Отключаем автоматический сдвиг (flip) при прокрутке или нехватке места
+            slotProps={{
+              popper: {
+                modifiers: [
+                  {
+                    name: 'flip',
+                    enabled: false,
+                  },
+                  {
+                    name: 'preventOverflow',
+                    options: {
+                      boundary: 'clippingParents',
+                    },
+                  },
+                ],
+              },
+              // 3. Отключаем перенос строки для текста внутри тултипа
+              tooltip: {
+                sx: {
+                  whiteSpace: 'nowrap',
+                  maxWidth: 'none', // Сбрасываем стандартное ограничение по ширине в MUI
+                },
+              },
+            }}
+          >
             <Button
               size="small"
               onClick={() => onFocus?.(w)}

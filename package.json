@@ -1,6 +1,6 @@
 {
   "name": "The_Omniscience",
-  "version": "11.4.0",
+  "version": "11.4.1",
   "type": "module",
   "main": "index.mjs",
   "scripts": {
