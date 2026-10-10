@@ -1166,6 +1166,68 @@ export async function writeDroppedFiles(files, destDir) {
     return { success: true, results };
 }
 
+/* ================================================================== */
+/* Keyboard capture: ловим Ctrl+C/X/V/A и Delete на уровне main.       */
+/* Desktop-окно может не получать клавиатурный фокус от WM, поэтому    */
+/* keydown не долетает до рендерера. before-input-event же срабатывает  */
+/* независимо от фокуса — берём это на вооружение.                      */
+/* ================================================================== */
+
+const keyboardCaptureEnabled = new Set();  // wcId, для которых перехват включён
+
+function attachKeyboardCapture(wc) {
+    if (wc.__fsKeyboardHooked) return;
+    wc.__fsKeyboardHooked = true;
+
+    wc.on('before-input-event', (event, input) => {
+        // Только для окон, которые явно попросили
+        if (!keyboardCaptureEnabled.has(wc.id)) return;
+        if (input.type !== 'keyDown') return;
+        if (input.isAutoRepeat) return;
+
+        // input.code — физическая клавиша, не зависит от раскладки
+        // (важно для русской клавиатуры, где input.key = 'с' вместо 'c')
+        const code = input.code;
+        const ctrl = input.control || input.meta;
+        const shift = input.shift;
+        const alt = input.alt;
+
+        // --- Delete без модификаторов → в корзину ---
+        if (code === 'Delete' && !ctrl && !alt) {
+            event.preventDefault();
+            try { wc.send('fs:shortcut', { action: 'delete', shift }); } catch (_) { }
+            return;
+        }
+
+        // --- Обрабатываем только Ctrl/Cmd-комбинации ---
+        if (!ctrl || alt) return;
+
+        let action = null;
+        if (code === 'KeyC' && !shift) action = 'copy';
+        else if (code === 'KeyX' && !shift) action = 'cut';
+        else if (code === 'KeyV' && !shift) action = 'paste';
+        else if (code === 'KeyA' && !shift) action = 'selectAll';
+        if (!action) return;
+
+        event.preventDefault();
+        try { wc.send('fs:shortcut', { action, shift }); } catch (_) { }
+    });
+
+    wc.once('destroyed', () => {
+        keyboardCaptureEnabled.delete(wc.id);
+    });
+}
+
+ipcMain.on('fs:enable-keyboard-capture', (event) => {
+    const wc = event.sender;
+    keyboardCaptureEnabled.add(wc.id);
+    attachKeyboardCapture(wc);
+});
+
+ipcMain.on('fs:disable-keyboard-capture', (event) => {
+    keyboardCaptureEnabled.delete(event.sender.id);
+});
+
 /* ------------------------------------------------------------------ */
 /* IPC                                                                  */
 /* ------------------------------------------------------------------ */

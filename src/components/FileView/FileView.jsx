@@ -344,6 +344,12 @@ function FileViewInner({ basePath }) {
     const brushRef = useRef({ mode: null, workingSet: null });
     const lastMousePosRef = useRef(null);
 
+    const filesRef = useRef(files);
+    useEffect(() => { filesRef.current = files; }, [files]);
+
+    const currentPathRef = useRef(currentPath);
+    useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
+
     // reload меняет идентичность при каждом ре-рендере — держим в ref,
     // чтобы подписка на события main не переподключалась.
     const reloadRef = useRef(reload);
@@ -390,6 +396,59 @@ function FileViewInner({ basePath }) {
 
         return () => { offReload?.(); };
     }, []);
+
+    /* -------------------- Keyboard capture через main -------------------- */
+    // Desktop-окно может не получать клавиатурный фокус от WM,
+    // поэтому Ctrl+C/X/V/A и Delete приходят не через keydown, а через
+    // before-input-event в главном процессе. Здесь — только реакция.
+
+    useEffect(() => {
+        const api = window.electron_desktop_API;
+        if (!api) return;
+
+        api.enableKeyboardCapture?.();
+
+        const off = api.on?.('fs:shortcut', (payload) => {
+            if (!payload) return;
+            const { action, shift } = payload;
+            const selected = selectedIdsRef.current;
+
+            if (action === 'copy' && selected.size > 0) {
+                api.copyFiles([...selected]);
+            } else if (action === 'cut' && selected.size > 0) {
+                api.cutFiles([...selected]);
+            } else if (action === 'paste') {
+                const dir = currentPathRef.current;
+                if (!dir) return;
+                api.pasteFiles(dir).then((res) => {
+                    if (res?.success) reloadRef.current?.();
+                });
+            } else if (action === 'selectAll') {
+                setSelectedIds(new Set(filesRef.current.map((f) => f.id)));
+            } else if (action === 'delete' && selected.size > 0) {
+                const paths = [...selected];
+                const hard = !!shift;
+                (async () => {
+                    if (hard) {
+                        if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
+                        for (const p of paths) {
+                            try { await api.deletePath(p); } catch (_) { }
+                        }
+                    } else {
+                        for (const p of paths) {
+                            try { await api.trashPath(p); } catch (_) { }
+                        }
+                    }
+                    reloadRef.current?.();
+                })();
+            }
+        });
+
+        return () => {
+            api.disableKeyboardCapture?.();
+            off?.();
+        };
+    }, []);  // один раз за жизнь компонента
 
     /* -------------------- Производные -------------------- */
 
@@ -560,71 +619,6 @@ function FileViewInner({ basePath }) {
         console.log('[drop] writeDroppedFiles result:', res);
         if (res?.success) reload();
     }, [currentPath, reload]);
-
-    /* -------------------- Ctrl+C/X/V/Delete/A -------------------- */
-
-    useEffect(() => {
-        const onKeyDown = (e) => {
-            const t = e.target;
-            if (t instanceof HTMLElement) {
-                const tag = t.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
-            }
-
-            const api = window.electron_desktop_API;
-            if (!api) return;
-            const selected = selectedIdsRef.current;
-
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                const key = e.key.toLowerCase();
-                if (key === 'c' && selected.size > 0) {
-                    e.preventDefault();
-                    api.copyFiles([...selected]);
-                    return;
-                }
-                if (key === 'x' && selected.size > 0) {
-                    e.preventDefault();
-                    api.cutFiles([...selected]);
-                    return;
-                }
-                if (key === 'v') {
-                    e.preventDefault();
-                    api.pasteFiles(currentPath).then((res) => {
-                        if (res?.success) reload();
-                    });
-                    return;
-                }
-                if (key === 'a') {
-                    e.preventDefault();
-                    setSelectedIds(new Set(files.map((f) => f.id)));
-                    return;
-                }
-            }
-
-            if (e.key === 'Delete' && selected.size > 0) {
-                e.preventDefault();
-                const paths = [...selected];
-                const hard = e.shiftKey;
-                const run = async () => {
-                    if (hard) {
-                        if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
-                        for (const p of paths) {
-                            try { await api.deletePath(p); } catch (_) { }
-                        }
-                    } else {
-                        for (const p of paths) {
-                            try { await api.trashPath(p); } catch (_) { }
-                        }
-                    }
-                    reload();
-                };
-                run();
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [currentPath, files, reload]);
 
     /* -------------------- Трекер мыши -------------------- */
 

@@ -86,6 +86,8 @@
 				},
 				writeDroppedFiles: (files, destDir) =>
 					ipcRenderer.invoke('fs:write-dropped-files', { files, destDir }),
+				enableKeyboardCapture: () => ipcRenderer.send('fs:enable-keyboard-capture'),
+				disableKeyboardCapture: () => ipcRenderer.send('fs:disable-keyboard-capture'),
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);
