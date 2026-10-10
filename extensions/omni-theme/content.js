@@ -6,6 +6,11 @@
 
   /* ================================================================== */
   /*  НАСТРОЙКИ                                                          */
+  /*                                                                     */
+  /*  Этот файл работает в MAIN-мире (world: "MAIN") и не имеет         */
+  /*  доступа к chrome.* API. Настройки читаются синхронно из           */
+  /*  localStorage, куда их кладёт bridge.js. Обновления прилетают      */
+  /*  через CustomEvent '__omni_settings_updated__'.                    */
   /* ================================================================== */
 
   const DEFAULTS = {
@@ -17,29 +22,26 @@
     textBrightness: 255,
   };
 
+  const SETTINGS_KEY = '__omni_settings__';
+
   let settings = { ...DEFAULTS };
   let started = false;
-  let baseStyleEl = null;
   let mutationObserver = null;
 
-  /* ================================================================== */
-  /*  @property                                                          */
-  /* ================================================================== */
-
-  function injectBaseStyles() {
-    if (baseStyleEl) return;
-    baseStyleEl = document.createElement('style');
-    baseStyleEl.id = '__omni_theme_base__';
-    baseStyleEl.textContent = `
-      @property --TheOmniscience-max-r          { syntax: '<number>'; inherits: true; initial-value: 255; }
-      @property --TheOmniscience-max-g          { syntax: '<number>'; inherits: true; initial-value: 255; }
-      @property --TheOmniscience-max-b          { syntax: '<number>'; inherits: true; initial-value: 255; }
-      @property --TheOmniscience-target-alpha   { syntax: '<number>'; inherits: true; initial-value: 1;   }
-      @property --TheOmniscience-text-brightness{ syntax: '<number>'; inherits: true; initial-value: 255; }
-    `;
-    const parent = document.head || document.documentElement;
-    if (parent) parent.appendChild(baseStyleEl);
+  function readSettingsSync() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
+    }
   }
+
+  /* ================================================================== */
+  /*  УСТАНОВКА ЗНАЧЕНИЙ ПЕРЕМЕННЫХ НА :root                             */
+  /* ================================================================== */
 
   function applyVariables() {
     const root = document.documentElement;
@@ -144,11 +146,11 @@
   const lastWritten = new WeakMap();
 
   /* Состояние отложенной переобработки на элемент.                       */
-  /*   { running, dirty, trans, pending }                                */
+  /*   { running, dirty, trans }                                         */
   /*                                                                     */
   /*   running — идёт ли сейчас двухкадровый swap;                       */
   /*   dirty   — пришло ли новое изменение, пока swap шёл;               */
-  /*   trans   — сохранённый inline-transition для восстановления;       */
+  /*   trans   — сохранённый inline-transition для восстановления.       */
   const pendingReprocess = new WeakMap();
 
   /* ================================================================== */
@@ -362,7 +364,7 @@
   }
 
   /* ================================================================== */
-  /*  СТАРТ                                                              */
+  /*  СТАРТ ОБРАБОТКИ                                                    */
   /* ================================================================== */
 
   function startProcessing() {
@@ -391,10 +393,14 @@
       attributeFilter: ['style', 'class'],
     });
 
+    // :hover / :focus-visible / :active и им подобные не порождают
+    // DOM-мутаций — подписываемся напрямую.
     const onStateChange = (e) => {
       const t = e.target;
       if (!t || t.nodeType !== 1) return;
       scheduleReprocess(t);
+      // Ховер/фокус часто влияет и на ближайших предков
+      // (MUI любит `:hover .MuiXxx-root`, `.MuiXxx-root:hover .child` и т.п.).
       let p = t.parentElement, i = 0;
       while (p && i < 3) { scheduleReprocess(p); p = p.parentElement; i++; }
     };
@@ -407,12 +413,15 @@
     document.addEventListener('focusout',    onStateChange, true);
   }
 
+  /* ================================================================== */
+  /*  ЗАПУСК                                                             */
+  /* ================================================================== */
+
   function start() {
     if (started) return;
     if (!document.documentElement) return;
     started = true;
 
-    injectBaseStyles();
     applyVariables();
 
     if (document.readyState === 'loading') {
@@ -423,34 +432,40 @@
   }
 
   /* ================================================================== */
-  /*  ХРАНИЛИЩЕ                                                          */
+  /*  СИНХРОННЫЙ BOOT                                                    */
+  /*  К моменту первого paint'а тема уже применена: настройки читаются   */
+  /*  синхронно из localStorage (их туда положил bridge.js), никаких     */
+  /*  async-hop'ов.                                                      */
   /* ================================================================== */
 
-  try {
-    chrome.storage.local.get(DEFAULTS, (s) => {
-      settings = { ...DEFAULTS, ...s };
-      if (settings.enabled === false) return;
-      start();
-    });
+  function boot() {
+    const stored = readSettingsSync();
+    settings = Object.assign({}, DEFAULTS, stored || {});
 
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'local') return;
-      chrome.storage.local.get(DEFAULTS, (s) => {
-        settings = { ...DEFAULTS, ...s };
-        if (settings.enabled === false) return;
-        if (!started) start();
-        else applyVariables();
-      });
-    });
-  } catch (_) {
+    if (settings.enabled === false) return;
     start();
   }
 
-  if (!document.documentElement) {
+  /* Подписки на обновления от bridge.js. CustomEvent долетает из        */
+  /* ISOLATED-мира в MAIN через общий DOM window.                        */
+  window.addEventListener('__omni_settings_updated__', (e) => {
+    const next = e && e.detail;
+    if (!next) return;
+    settings = Object.assign({}, DEFAULTS, next);
+    if (settings.enabled === false) return;
+    if (!started) start();
+    else applyVariables();
+  });
+
+  /* documentElement уже есть при document_start в 99.9% случаев.        */
+  /* На всякий случай — короткий fallback на его появление.              */
+  if (document.documentElement) {
+    boot();
+  } else {
     const obs = new MutationObserver(() => {
       if (document.documentElement) {
         obs.disconnect();
-        start();
+        boot();
       }
     });
     obs.observe(document, { childList: true, subtree: true });

@@ -1,0 +1,5 @@
+@property --TheOmniscience-max-r           { syntax: '<number>'; inherits: true; initial-value: 255; }
+@property --TheOmniscience-max-g           { syntax: '<number>'; inherits: true; initial-value: 255; }
+@property --TheOmniscience-max-b           { syntax: '<number>'; inherits: true; initial-value: 255; }
+@property --TheOmniscience-target-alpha    { syntax: '<number>'; inherits: true; initial-value: 1;   }
+@property --TheOmniscience-text-brightness { syntax: '<number>'; inherits: true; initial-value: 255; }
