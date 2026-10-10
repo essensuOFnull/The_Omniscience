@@ -20,11 +20,10 @@
   let settings = { ...DEFAULTS };
   let started = false;
   let baseStyleEl = null;
+  let mutationObserver = null;
 
   /* ================================================================== */
-  /*  ВСТАВКА @property                                                  */
-  /*  Регистрируем кастомные свойства, чтобы var(--...) работали         */
-  /*  в цветовых функциях с calc().                                      */
+  /*  @property                                                          */
   /* ================================================================== */
 
   function injectBaseStyles() {
@@ -42,10 +41,6 @@
     if (parent) parent.appendChild(baseStyleEl);
   }
 
-  /* ================================================================== */
-  /*  УСТАНОВКА ЗНАЧЕНИЙ ПЕРЕМЕННЫХ НА :root                             */
-  /* ================================================================== */
-
   function applyVariables() {
     const root = document.documentElement;
     if (!root) return;
@@ -58,7 +53,6 @@
 
   /* ================================================================== */
   /*  ЯДРО ФИЛЬТРА                                                        */
-  /*  (без изменений из css_filter_core.js)                              */
   /* ================================================================== */
 
   function parseColorToRGB(color) {
@@ -141,17 +135,73 @@
       + ' / alpha)';
   }
 
-  let processed = new WeakSet();
-  let textProcessed = new WeakSet();
+  /* ================================================================== */
+  /*  СОСТОЯНИЕ                                                          */
+  /* ================================================================== */
+
+  const processed = new WeakSet();
+  const textProcessed = new WeakSet();
+  const lastWritten = new WeakMap();
+
+  /* Состояние отложенной переобработки на элемент.                       */
+  /*   { running, dirty, trans, pending }                                */
+  /*                                                                     */
+  /*   running — идёт ли сейчас двухкадровый swap;                       */
+  /*   dirty   — пришло ли новое изменение, пока swap шёл;               */
+  /*   trans   — сохранённый inline-transition для восстановления;       */
+  const pendingReprocess = new WeakMap();
+
+  /* ================================================================== */
+  /*  ЧТЕНИЕ "СЫРЫХ" ЦВЕТОВ                                              */
+  /* ================================================================== */
+
+  function removeOurInlineOverrides(el) {
+    const bg = el.style.getPropertyValue('background-color');
+    if (bg && bg.indexOf('--TheOmniscience') !== -1) el.style.removeProperty('background-color');
+    const bi = el.style.getPropertyValue('background-image');
+    if (bi && bi.indexOf('--TheOmniscience') !== -1) el.style.removeProperty('background-image');
+    const c = el.style.getPropertyValue('color');
+    if (c && c.indexOf('--TheOmniscience') !== -1) el.style.removeProperty('color');
+  }
+
+  function readComputedColors(el) {
+    void el.offsetWidth;
+    const cs = getComputedStyle(el);
+    return {
+      bgColor: cs.backgroundColor,
+      bgImage: cs.backgroundImage,
+      color:   cs.color,
+    };
+  }
+
+  function recordWrite(el) {
+    lastWritten.set(el, {
+      bg: el.style.getPropertyValue('background-color'),
+      bi: el.style.getPropertyValue('background-image'),
+      c:  el.style.getPropertyValue('color'),
+    });
+  }
+
+  function isOurOwnStyleMutation(el) {
+    const last = lastWritten.get(el);
+    if (!last) return false;
+    return last.bg === el.style.getPropertyValue('background-color')
+        && last.bi === el.style.getPropertyValue('background-image')
+        && last.c  === el.style.getPropertyValue('color');
+  }
+
+  /* ================================================================== */
+  /*  ОБРАБОТКА                                                          */
+  /* ================================================================== */
 
   function processElement(el) {
     if (!el || processed.has(el)) return;
     if (isIgnored(el)) return;
     processed.add(el);
 
-    const computed = getComputedStyle(el);
-    const bgImage = computed.backgroundImage;
-    const bgColor = computed.backgroundColor;
+    const cs = readComputedColors(el);
+    const bgImage = cs.bgImage;
+    const bgColor = cs.bgColor;
     const hasGradient = bgImage && bgImage !== 'none' && bgImage.includes('-gradient(');
 
     if (hasGradient) {
@@ -188,15 +238,17 @@
       }
     }
 
-    processTextColor(el);
+    processTextColor(el, cs.color);
+    recordWrite(el);
   }
 
-  function processTextColor(el) {
+  function processTextColor(el, myColorHint) {
     if (!el || textProcessed.has(el)) return;
     if (isIgnored(el)) return;
+
     const parent = el.parentElement;
     const parentColor = parent ? getComputedStyle(parent).color : null;
-    const myColor = getComputedStyle(el).color;
+    const myColor = myColorHint || getComputedStyle(el).color;
 
     if (myColor === 'rgba(0, 0, 0, 0)' || myColor === 'transparent') {
       textProcessed.add(el);
@@ -218,21 +270,105 @@
     }
   }
 
-  function reprocessElement(el) {
-    processed.delete(el);
-    textProcessed.delete(el);
+  /* ================================================================== */
+  /*  ПЕРЕОБРАБОТКА                                                      */
+  /*                                                                     */
+  /*  Двухфазный swap с защитой от потери событий:                        */
+  /*                                                                     */
+  /*    Кадр N:                                                          */
+  /*      • transition: none !important;                                 */
+  /*      • снять свои inline-оверрайды;                                 */
+  /*      • пересобрать фильтр;                                          */
+  /*                                                                     */
+  /*    Кадр N+1 (проверочный):                                          */
+  /*      • если во время N прилетело ещё изменение (dirty) —             */
+  /*        возвращаемся к кадру N и повторяем (transition по-прежнему    */
+  /*        выключен);                                                   */
+  /*      • если новых изменений нет — восстанавливаем transition.        */
+  /*                                                                     */
+  /*  Благодаря этому даже быстрая серия hover/click/ripple не теряется:  */
+  /*  элемент "дозревает" до спокойного состояния, и только потом         */
+  /*  транзишены возвращаются.                                           */
+  /* ================================================================== */
+
+  function scheduleReprocess(el) {
     if (isIgnored(el)) return;
-    processElement(el);
+
+    let state = pendingReprocess.get(el);
+
+    if (state && state.running) {
+      // Идёт swap — не теряем изменение, помечаем на доп.проход.
+      state.dirty = true;
+      return;
+    }
+
+    if (!state) {
+      state = { running: false, dirty: false, trans: null };
+      pendingReprocess.set(el, state);
+    } else {
+      state.dirty = false;
+    }
+
+    // Запоминаем исходный inline-transition один раз — чтобы восстановить
+    // ровно то, что было.
+    if (state.trans === null) {
+      state.trans = {
+        v: el.style.getPropertyValue('transition'),
+        p: el.style.getPropertyPriority('transition'),
+      };
+    }
+
+    state.running = true;
+    runPass(el, state);
+  }
+
+  function runPass(el, state) {
+    requestAnimationFrame(() => {
+      if (!el.isConnected) {
+        pendingReprocess.delete(el);
+        return;
+      }
+
+      el.style.setProperty('transition', 'none', 'important');
+      removeOurInlineOverrides(el);
+      processed.delete(el);
+      textProcessed.delete(el);
+      processElement(el);
+
+      // Проверочный кадр — «перестраховка на 1 кадр».
+      requestAnimationFrame(() => {
+        if (!el.isConnected) {
+          pendingReprocess.delete(el);
+          return;
+        }
+
+        if (state.dirty) {
+          // Пока мы работали, состояние снова поменялось —
+          // повторяем цикл, transition всё ещё выключен.
+          state.dirty = false;
+          runPass(el, state);
+          return;
+        }
+
+        // Состояние устоялось — возвращаем transition как было.
+        if (state.trans.v) el.style.setProperty('transition', state.trans.v, state.trans.p);
+        else el.style.removeProperty('transition');
+
+        state.running = false;
+        state.trans = null;
+        pendingReprocess.delete(el);
+      });
+    });
   }
 
   /* ================================================================== */
-  /*  СТАРТ ОБРАБОТКИ                                                    */
+  /*  СТАРТ                                                              */
   /* ================================================================== */
 
   function startProcessing() {
     document.querySelectorAll('*').forEach(processElement);
 
-    new MutationObserver((mutations) => {
+    mutationObserver = new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.type === 'childList') {
           m.addedNodes.forEach((node) => {
@@ -242,20 +378,34 @@
             }
           });
         } else if (m.type === 'attributes' && m.target.nodeType === 1) {
-          reprocessElement(m.target);
+          if (m.attributeName === 'style' && isOurOwnStyleMutation(m.target)) continue;
+          scheduleReprocess(m.target);
         }
       }
-    }).observe(document.documentElement, {
+    });
+
+    mutationObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
       attributeFilter: ['style', 'class'],
     });
-  }
 
-  /* ================================================================== */
-  /*  ГЛАВНЫЙ ЗАПУСК                                                     */
-  /* ================================================================== */
+    const onStateChange = (e) => {
+      const t = e.target;
+      if (!t || t.nodeType !== 1) return;
+      scheduleReprocess(t);
+      let p = t.parentElement, i = 0;
+      while (p && i < 3) { scheduleReprocess(p); p = p.parentElement; i++; }
+    };
+
+    document.addEventListener('pointerover', onStateChange, true);
+    document.addEventListener('pointerout',  onStateChange, true);
+    document.addEventListener('pointerdown', onStateChange, true);
+    document.addEventListener('pointerup',   onStateChange, true);
+    document.addEventListener('focusin',     onStateChange, true);
+    document.addEventListener('focusout',    onStateChange, true);
+  }
 
   function start() {
     if (started) return;
@@ -273,7 +423,7 @@
   }
 
   /* ================================================================== */
-  /*  ЧТЕНИЕ НАСТРОЕК                                                    */
+  /*  ХРАНИЛИЩЕ                                                          */
   /* ================================================================== */
 
   try {
@@ -290,15 +440,12 @@
         if (settings.enabled === false) return;
         if (!started) start();
         else applyVariables();
-        // Значения переменных на :root меняются → CSS сам пересчитает
-        // все уже установленные inline-выражения.
       });
     });
   } catch (_) {
     start();
   }
 
-  /* Если documentElement ещё нет — ждём его появления */
   if (!document.documentElement) {
     const obs = new MutationObserver(() => {
       if (document.documentElement) {
