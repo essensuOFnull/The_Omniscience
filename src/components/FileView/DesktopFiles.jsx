@@ -98,7 +98,7 @@ function DesktopFilesInner({ basePath }) {
   const canGoBack = !isRoot(currentPath);
 
   return (
-    <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+    <Box sx={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'auto' }}>
       {/* Панель навигации */}
       <Box
         sx={{
@@ -168,7 +168,7 @@ function DesktopFilesInner({ basePath }) {
       </Box>
 
       {/* Контент */}
-      <Box sx={{ pointerEvents: 'none', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <FileView
           path={currentPath}
           layout="grid"

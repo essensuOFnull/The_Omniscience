@@ -1,6 +1,6 @@
 import electronPkg from 'electron';
-const { ipcMain, app } = electronPkg;
-import { readdir, stat, rename as fsRename, unlink, readFile, rm, mkdir, writeFile, copyFile } from 'fs/promises';
+const { ipcMain, app, nativeImage } = electronPkg;
+import { readdir, stat, rename as fsRename, unlink, readFile, rm, mkdir, writeFile, copyFile, access } from 'fs/promises';
 import { constants as fsConstants } from 'fs';
 import { watch } from 'fs';
 import { exec } from 'child_process';
@@ -156,6 +156,27 @@ async function getFileInfo(filePath) {
 
 async function openPath(filePath) {
     try {
+        const ext = path.extname(filePath).toLowerCase();
+        
+        // 1. Если это ярлык .desktop — запускаем его через gio launch
+        if (ext === '.desktop') {
+            await execAsync(`gio launch "${filePath.replace(/"/g, '\\"')}"`);
+            return { success: true };
+        }
+
+        // 2. Если это исполняемый файл (скрипт, бинарник) — запускаем его
+        try {
+            const stats = await stat(filePath);
+            const isExecutable = (stats.mode & 0o111) !== 0;
+            if (isExecutable && !stats.isDirectory()) {
+                await execAsync(`"${filePath.replace(/"/g, '\\"')}"`);
+                return { success: true };
+            }
+        } catch (e) {
+            // Игнорируем ошибки доступа, идем дальше
+        }
+
+        // 3. Стандартное открытие для всех остальных файлов
         await execAsync(`xdg-open "${filePath.replace(/"/g, '\\"')}"`);
         return { success: true };
     } catch (err) {
@@ -207,11 +228,204 @@ async function renamePath(oldPath, newName) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Иконки через Electron                                                */
+/* Иконки через Electron + парсинг .desktop                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Ищет все файлы иконки с указанным именем во всех стандартных
+ * директориях Linux. Возвращает массив путей, отсортированный
+ * по убыванию «качества» (высокое разрешение → низкое).
+ */
+async function findIconCandidates(iconName) {
+    if (!iconName) return [];
+
+    // Абсолютный путь из .desktop — используем напрямую
+    if (path.isAbsolute(iconName)) {
+        try {
+            await access(iconName);
+            return [iconName];
+        } catch (_) {
+            console.warn('[icon] absolute path not found:', iconName);
+            return [];
+        }
+    }
+
+    const home = os.homedir();
+    const allDirs = [
+        // XDG / стандартные
+        path.join(home, '.local/share/icons'),
+        path.join(home, '.icons'),
+        path.join(home, '.local/share/pixmaps'),
+        '/usr/share/icons',
+        '/usr/local/share/icons',
+        '/usr/share/pixmaps',
+        // Flatpak
+        path.join(home, '.local/share/flatpak/exports/share/icons'),
+        '/var/lib/flatpak/exports/share/icons',
+        // Steam (нативный)
+        path.join(home, '.steam/steam'),
+        path.join(home, '.steam/root'),
+        path.join(home, '.local/share/Steam'),
+        // Steam (Flatpak)
+        path.join(home, '.var/app/com.valvesoftware.Steam/.local/share/icons'),
+        path.join(home, '.var/app/com.valvesoftware.Steam/.steam'),
+        // Snap
+        '/var/lib/snapd/desktop/icons',
+    ];
+
+    // 👇 Оставляем только те директории, что реально существуют —
+    // иначе find падает с exit code 1, и execAsync бросает исключение
+    const existingDirs = [];
+    for (const d of allDirs) {
+        try {
+            await access(d);
+            existingDirs.push(d);
+        } catch (_) { /* нет такой директории — пропускаем */ }
+    }
+
+    if (existingDirs.length === 0) {
+        console.warn('[icon] no icon directories exist on this system');
+        return [];
+    }
+
+    const escaped = iconName.replace(/"/g, '\\"');
+    const dirsArg = existingDirs.map((d) => `"${d}"`).join(' ');
+    // || true — страховка на случай неожиданного exit code
+    const cmd = `find ${dirsArg} -type f \\( -name "${escaped}.png" -o -name "${escaped}.svg" \\) 2>/dev/null || true`;
+
+    let candidates = [];
+    try {
+        const { stdout } = await execAsync(cmd);
+        candidates = stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+    } catch (err) {
+        // Иногда find успевает что-то напечатать в stdout до падения — заберём это
+        const out = err.stdout || '';
+        candidates = out.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (candidates.length === 0) {
+            console.warn('[icon] find failed for', iconName, err.message);
+            return [];
+        }
+    }
+
+    if (candidates.length === 0) {
+        console.warn('[icon] not found:', iconName);
+        return [];
+    }
+
+    // Дедупликация
+    candidates = [...new Set(candidates)];
+
+    // Оценка и сортировка по качеству
+    const scored = candidates
+        .map((p) => ({ path: p, score: scoreIconCandidate(p) }))
+        .sort((a, b) => b.score - a.score);
+
+    console.log(`[icon] "${iconName}": ${candidates.length} matches, best =`, scored[0]?.path);
+    if (scored.length > 1) {
+        console.log('[icon]   backups:', scored.slice(1, 4).map((s) => s.path));
+    }
+
+    return scored.map((s) => s.path);
+}
+
+/**
+ * Оценка иконки: чем больше разрешение — тем выше.
+ * SVG (вектор) — считаем эквивалентом ~256px.
+ * PNG чуть предпочтительнее SVG (надёжнее декодируется nativeImage).
+ */
+function scoreIconCandidate(p) {
+    const lower = p.toLowerCase();
+    let size = 0;
+
+    if (lower.includes('/scalable/') || lower.endsWith('.svg')) {
+        // Вектор — эквивалент хорошего растрового размера для нашего UI (48px отображение)
+        size = 256;
+    } else {
+        // Ищем NNNxNNN в пути (папка темы) или в имени файла
+        const matches = p.match(/(\d+)x(\d+)/g);
+        if (matches) {
+            for (const m of matches) {
+                const [w, h] = m.split('x').map(Number);
+                size = Math.max(size, Math.min(w, h));
+            }
+        }
+    }
+
+    // Если размер не определён (например, /usr/share/pixmaps/foo.png) — считаем средним
+    if (size === 0) size = 48;
+
+    // Не даём гигантским иконкам (1024x1024) преимущества — только память жрут
+    size = Math.min(size, 512);
+
+    // Множители — чтобы бонус не «перебивал» размер, а лишь уточнял при равенстве
+    let multiplier = 1;
+    if (lower.endsWith('.png')) multiplier *= 1.05;     // PNG немного надёжнее для nativeImage
+    if (lower.includes('/apps/')) multiplier *= 1.05;   // иконки приложений, а не mimetypes/devices
+
+    return size * multiplier;
+}
+
+/**
+ * Достаёт имя иконки из .desktop-файла.
+ */
+async function readDesktopIconName(desktopPath) {
+    try {
+        const content = await readFile(desktopPath, 'utf8');
+        let inDesktopEntry = false;
+
+        for (const rawLine of content.split('\n')) {
+            const line = rawLine.replace(/\r$/, '').trim();
+            if (line === '[Desktop Entry]') { inDesktopEntry = true; continue; }
+            if (line.startsWith('[') && line.endsWith(']')) { inDesktopEntry = false; continue; }
+            if (!inDesktopEntry) continue;
+
+            const m = line.match(/^Icon=(.+)$/);
+            if (m) return m[1].trim();
+        }
+        console.warn('[icon] no Icon= in', desktopPath);
+        return null;
+    } catch (err) {
+        console.warn('[icon] failed to read desktop file:', err.message);
+        return null;
+    }
+}
 
 async function getFileIcon(filePath) {
     try {
+        // Особый случай — ярлыки .desktop
+        if (filePath.endsWith('.desktop')) {
+            const iconName = await readDesktopIconName(filePath);
+
+            if (iconName) {
+                const candidates = await findIconCandidates(iconName);
+
+                // Пробуем по порядку: если лучший (например SVG) не декодируется,
+                // берём следующий — например, тот же размер в PNG
+                for (const iconPath of candidates) {
+                    try {
+                        const icon = nativeImage.createFromPath(iconPath);
+                        if (!icon.isEmpty()) {
+                            return { success: true, dataUrl: icon.toDataURL() };
+                        }
+                        console.warn('[icon] nativeImage empty for', iconPath);
+                    } catch (e) {
+                        console.warn('[icon] nativeImage threw for', iconPath, e.message);
+                    }
+                }
+            }
+
+            // Fallback — стандартный путь через Electron
+            try {
+                const icon = await app.getFileIcon(filePath, { size: 'large' });
+                if (icon && !icon.isEmpty()) {
+                    return { success: true, dataUrl: icon.toDataURL() };
+                }
+            } catch (_) {}
+
+            return { success: false };
+        }
+
+        // Все остальные файлы — стандартный путь
         const icon = await app.getFileIcon(filePath, { size: 'large' });
         if (!icon || icon.isEmpty()) return { success: false };
         return { success: true, dataUrl: icon.toDataURL() };
