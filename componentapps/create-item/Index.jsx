@@ -52,7 +52,6 @@ function App() {
 
   return (
     <Box
-      className="ignore_The_Omniscience_Theme_recursive"
       sx={{
         width: '100vw', height: '100vh',
         bgcolor: 'rgba(20,20,26,0.97)',
