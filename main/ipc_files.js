@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { ipcMain, app, nativeImage } = electronPkg;
+const { ipcMain, app } = electronPkg;
 import {
     readdir, stat, rename as fsRename, unlink, readFile, rm,
     mkdir, writeFile, copyFile, access, open,
@@ -8,14 +8,29 @@ import { constants as fsConstants } from 'fs';
 import { watch } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { pathToFileURL } from 'url';
 import path from 'path';
 import os from 'os';
 
 const execAsync = promisify(exec);
-
-// Отдаём управление event loop — нужно, чтобы параллельные IPC-запросы
-// не блокировали друг друга и ответы уходили «порциями», а не залпом.
 const yieldToEventLoop = () => new Promise((r) => setImmediate(r));
+
+/* ------------------------------------------------------------------ */
+/* file:// URL                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Обёртка над pathToFileURL. Корректно кодирует пробелы, юникод,
+ * спецсимволы. Возвращает строку вида file:///home/user/фото.jpg.
+ */
+function toFileUrl(filePath) {
+    if (!filePath) return null;
+    try {
+        return pathToFileURL(filePath).href;
+    } catch (_) {
+        return null;
+    }
+}
 
 // dirPath → { watcher, refCount }
 const watchers = new Map();
@@ -83,6 +98,33 @@ async function getUserDirs() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Категории медиафайлов                                                */
+/* ------------------------------------------------------------------ */
+
+const IMAGE_EXT = new Set([
+    'png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'bmp', 'svg',
+    'avif', 'ico', 'tiff', 'tif', 'apng', 'pjpeg', 'pjp', 'heic', 'heif',
+]);
+const VIDEO_EXT = new Set([
+    'mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v', 'ogv', 'flv',
+    'wmv', 'mpg', 'mpeg', '3gp', '3g2', 'ts', 'm2ts', 'mts',
+]);
+const AUDIO_EXT = new Set([
+    'mp3', 'wav', 'ogg', 'oga', 'flac', 'm4a', 'aac',
+    'opus', 'wma', 'aiff', 'alac',
+]);
+
+function detectMediaKind(name) {
+    const dot = name.lastIndexOf('.');
+    if (dot < 0) return null;
+    const ext = name.slice(dot + 1).toLowerCase();
+    if (IMAGE_EXT.has(ext)) return 'image';
+    if (VIDEO_EXT.has(ext)) return 'video';
+    if (AUDIO_EXT.has(ext)) return 'audio';
+    return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Чтение директории                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -95,9 +137,14 @@ async function readDir(dirPath) {
             try {
                 const stats = await stat(fullPath);
                 files.push({
-                    id: fullPath, name: entry.name,
-                    isDir: stats.isDirectory(), isSymlink: stats.isSymbolicLink(),
-                    size: stats.size, mtime: stats.mtime.toISOString(),
+                    id: fullPath,
+                    fileUrl: toFileUrl(fullPath),      // ← готовый file:// URL
+                    name: entry.name,
+                    isDir: stats.isDirectory(),
+                    isSymlink: stats.isSymbolicLink(),
+                    size: stats.size,
+                    mtime: stats.mtime.toISOString(),
+                    mediaKind: detectMediaKind(entry.name),
                 });
             } catch (_) { /* пропускаем */ }
         }
@@ -122,10 +169,13 @@ async function getFileInfo(filePath) {
         return {
             success: true,
             info: {
-                path: filePath, size: stats.size,
+                path: filePath,
+                fileUrl: toFileUrl(filePath),
+                size: stats.size,
                 mtime: stats.mtime.toISOString(),
                 birthtime: stats.birthtime.toISOString(),
-                isDir: stats.isDirectory(), isFile: stats.isFile(),
+                isDir: stats.isDirectory(),
+                isFile: stats.isFile(),
                 isSymlink: stats.isSymbolicLink(),
                 mode: '0' + (stats.mode & parseInt('777', 8)).toString(8),
                 uid: stats.uid, gid: stats.gid,
@@ -191,19 +241,13 @@ async function renamePath(oldPath, newName) {
 }
 
 /* ================================================================== */
-/* ИКОНКИ — freedesktop lookup + максимальный размер + async           */
+/* ИКОНКИ — freedesktop lookup, возвращаем file:// URL                 */
 /* ================================================================== */
 
-// Кэш: имя темы → Promise<{ bases, directories, inherits } | null>
-// ВАЖНО: храним именно Promise, чтобы 20 параллельных запросов
-// не запускали 20 сборок индекса параллельно.
-const themeIndexCache = new Map();
-// Кэш: путь к .desktop → dataUrl | null
-const iconLookupCache = new Map();
-// Кэш: имя иконки → dataUrl | null (разделяется между .desktop-файлами)
-const iconByNameCache = new Map();
+const themeIndexCache = new Map();       // theme → Promise<{bases,dirs,inherits}|null>
+const iconLookupCache = new Map();       // desktopPath → fileUrl | null
+const iconByNameCache = new Map();       // iconName    → fileUrl | null
 
-// Кэш текущей темы. Тоже Promise, а не значение.
 let themePromise = null;
 let themeTimestamp = 0;
 const THEME_CACHE_TTL_MS = 30_000;
@@ -239,36 +283,23 @@ const WELL_KNOWN_SIZES = [
     '16x16', '22x22', '24x24', '32x32', '48x48', '64x64',
     '96x96', '128x128', '256x256', '512x512', 'scalable',
 ];
-
-// Приоритет размеров при поиске: сначала самые большие.
 const SIZE_PRIORITY = [
     '512x512', '256x256', 'scalable', '128x128', '96x96',
     '64x64', '48x48', '32x32', '24x24', '22x22', '16x16',
 ];
 
-/**
- * Определяет текущую тему иконок. Возвращает Promise<string>.
- * 20 параллельных вызовов получают ОДИН и тот же Promise,
- * а внутри — максимум один subprocess gsettings.
- */
 function getCurrentIconTheme() {
     const now = Date.now();
-    if (themePromise && (now - themeTimestamp) < THEME_CACHE_TTL_MS) {
-        return themePromise;
-    }
+    if (themePromise && (now - themeTimestamp) < THEME_CACHE_TTL_MS) return themePromise;
     themeTimestamp = now;
 
     themePromise = (async () => {
         let theme = null;
-
         try {
-            const { stdout } = await execAsync(
-                'gsettings get org.gnome.desktop.interface icon-theme'
-            );
+            const { stdout } = await execAsync('gsettings get org.gnome.desktop.interface icon-theme');
             theme = stdout.trim().replace(/^'|'$/g, '') || null;
             if (theme) console.log('[icon] theme via gsettings:', theme);
         } catch (_) {}
-
         if (!theme) {
             try {
                 const kdeglobalsPath = path.join(os.homedir(), '.config', 'kdeglobals');
@@ -286,61 +317,40 @@ function getCurrentIconTheme() {
                 if (theme) console.log('[icon] theme via kdeglobals:', theme);
             } catch (_) {}
         }
-
-        if (!theme) {
-            theme = 'hicolor';
-            console.log('[icon] theme fallback: hicolor');
-        }
+        if (!theme) { theme = 'hicolor'; console.log('[icon] theme fallback: hicolor'); }
         return theme;
-    })().catch((err) => {
-        themePromise = null;   // сбрасываем, чтобы следующая попытка прошла
-        throw err;
-    });
+    })().catch((err) => { themePromise = null; throw err; });
 
     return themePromise;
 }
 
-/**
- * Публичная функция: возвращает Promise индекса темы.
- * Promise кэшируется — 20 параллельных запросов разделяют одну работу.
- */
 function readThemeIndex(themeName) {
     if (themeIndexCache.has(themeName)) return themeIndexCache.get(themeName);
     const promise = computeThemeIndex(themeName).catch((err) => {
-        themeIndexCache.delete(themeName);
-        throw err;
+        themeIndexCache.delete(themeName); throw err;
     });
     themeIndexCache.set(themeName, promise);
     return promise;
 }
 
-/**
- * Собственно сборка индекса темы: обход всех баз, чтение index.theme,
- * параллельная проверка well-known поддиректорий.
- */
 async function computeThemeIndex(themeName) {
     const bases = [];
     let directories = [];
     let inherits = '';
 
-    // Проверяем существование баз параллельно
     const baseChecks = await Promise.all(
         getIconBaseDirs().map(async (baseDir) => {
             const base = path.join(baseDir, themeName);
-            try {
-                const s = await stat(base);
-                return s.isDirectory() ? base : null;
-            } catch (_) { return null; }
+            try { const s = await stat(base); return s.isDirectory() ? base : null; }
+            catch (_) { return null; }
         })
     );
     for (const b of baseChecks) if (b) bases.push(b);
-
     if (bases.length === 0) {
         console.warn('[icon] no theme directory found for:', themeName);
         return null;
     }
 
-    // Параллельно читаем index.theme во всех базах
     const indexReads = await Promise.all(
         bases.map(async (base) => {
             const indexFile = path.join(base, 'index.theme');
@@ -355,8 +365,7 @@ async function computeThemeIndex(themeName) {
                     if (line.startsWith('[') && line.endsWith(']')) { inIconTheme = false; continue; }
                     if (!inIconTheme) continue;
                     if (line.startsWith('Directories=')) {
-                        const ds = line.slice('Directories='.length)
-                            .split(',').map((s) => s.trim()).filter(Boolean);
+                        const ds = line.slice('Directories='.length).split(',').map((s) => s.trim()).filter(Boolean);
                         for (const d of ds) if (!localDirs.includes(d)) localDirs.push(d);
                     } else if (line.startsWith('Inherits=') && !localInherits) {
                         localInherits = line.slice('Inherits='.length).trim();
@@ -374,7 +383,6 @@ async function computeThemeIndex(themeName) {
         if (!inherits && r.inherits) inherits = r.inherits;
     }
 
-    // Параллельная проверка well-known поддиректорий
     const probes = [];
     for (const base of bases) {
         for (const size of WELL_KNOWN_SIZES) {
@@ -395,37 +403,10 @@ async function computeThemeIndex(themeName) {
     }
 
     const result = { bases, directories, inherits };
-    console.log(
-        '[icon] theme index:', themeName,
-        '| bases:', bases.length,
-        '| dirs:', directories.length,
-        '| inherits:', inherits || '(none)'
-    );
+    console.log('[icon] theme index:', themeName, '| bases:', bases.length, '| dirs:', directories.length, '| inherits:', inherits || '(none)');
     return result;
 }
 
-/**
- * Достаёт размеры PNG из IHDR-заголовка (первые 24 байта).
- */
-async function getPngDimensions(filePath) {
-    try {
-        const fh = await open(filePath, 'r');
-        try {
-            const buf = Buffer.alloc(24);
-            await fh.read(buf, 0, 24, 0);
-            if (buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4E || buf[3] !== 0x47) return null;
-            return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
-        } finally { await fh.close(); }
-    } catch (_) { return null; }
-}
-
-/**
- * Ищет лучшую иконку с именем iconName.
- *
- * Ключевая оптимизация: идём по SIZE_PRIORITY от больших к меньшим
- * и ВОЗВРАЩАЕМСЯ сразу, как только нашли попадание в текущей
- * категории. Не ждём пока проверятся остальные размеры.
- */
 async function findBestIconInTheme(iconName, themeName) {
     const visited = new Set();
     const queue = [themeName];
@@ -461,7 +442,6 @@ async function findBestIconInTheme(iconName, themeName) {
         }
         if (checks.length === 0) continue;
 
-        // Проверяем ТОЛЬКО текущий размер — параллельно
         const results = await Promise.all(
             checks.map(async (c) => {
                 try { await access(c); return c; } catch (_) { return null; }
@@ -473,24 +453,18 @@ async function findBestIconInTheme(iconName, themeName) {
             return hit;
         }
     }
-
     return null;
 }
 
-/**
- * Ищет иконки Steam-игр в Steam-специфичных директориях.
- */
 async function findIconInSteamDirs(iconName) {
     const m = iconName.match(/^steam_icon_(\d+)$/);
     if (!m) return null;
     const appId = m[1];
-
     const filenames = [`${iconName}.png`, `${appId}.png`, `${iconName}.jpg`, `${appId}.jpg`];
     const checks = [];
     for (const dir of getSteamIconDirs()) {
         for (const name of filenames) checks.push(path.join(dir, name));
     }
-
     const results = await Promise.all(
         checks.map(async (c) => {
             try { await access(c); return c; } catch (_) { return null; }
@@ -518,54 +492,28 @@ async function readDesktopIconName(desktopPath) {
     }
 }
 
-async function tryElectronIcon(filePath) {
-    try {
-        const icon = await app.getFileIcon(filePath, { size: 'large' });
-        if (icon && !icon.isEmpty()) return icon.toDataURL();
-    } catch (_) {}
-    return null;
-}
-
 /**
- * Превращает путь к иконке в dataUrl, с обрезкой размера до 128×128.
- * Обрезка критична для производительности: decode/encode 512×512
- * в 4–16 раз дороже, чем 128×128, а на 48px отображении разницы нет.
+ * Получает иконку файла. Возвращает { success, fileUrl }.
+ * fileUrl — либо file:// URL иконки из темы, либо data URL из Electron-fallback.
  */
-function iconPathToDataUrl(iconPath) {
-    const icon = nativeImage.createFromPath(iconPath);
-    if (icon.isEmpty()) return null;
-    const size = icon.getSize();
-    let finalIcon = icon;
-    if (size.width > 128 || size.height > 128) {
-        finalIcon = icon.resize({ width: 128, quality: 'good' });
-    }
-    return finalIcon.toDataURL();
-}
-
 async function getFileIcon(filePath) {
     try {
         if (filePath.endsWith('.desktop')) {
-            // 1. Кэш по конкретному пути
             if (iconLookupCache.has(filePath)) {
                 const cached = iconLookupCache.get(filePath);
-                return cached ? { success: true, dataUrl: cached } : { success: false };
+                return cached ? { success: true, fileUrl: cached } : { success: false };
             }
 
-            // 2. Читаем имя иконки
             const iconName = await readDesktopIconName(filePath);
 
             if (iconName) {
-                // 3. Кэш по имени иконки — общий для всех .desktop,
-                //    ссылающихся на одну иконку
                 if (iconByNameCache.has(iconName)) {
                     const cached = iconByNameCache.get(iconName);
                     if (cached) {
                         iconLookupCache.set(filePath, cached);
-                        return { success: true, dataUrl: cached };
+                        return { success: true, fileUrl: cached };
                     }
                 } else {
-                    // Уступаем event loop — это позволит другим
-                    // параллельным запросам продвинуться
                     await yieldToEventLoop();
 
                     const themeName = await getCurrentIconTheme();
@@ -577,41 +525,41 @@ async function getFileIcon(filePath) {
                     }
 
                     if (iconPath) {
-                        // Ещё раз уступаем event loop перед sync-операцией
-                        await yieldToEventLoop();
-                        try {
-                            const dataUrl = iconPathToDataUrl(iconPath);
-                            if (dataUrl) {
-                                iconByNameCache.set(iconName, dataUrl);
-                                iconLookupCache.set(filePath, dataUrl);
-                                return { success: true, dataUrl };
-                            }
-                            console.warn('[icon] nativeImage empty for', iconPath);
-                        } catch (e) {
-                            console.warn('[icon] nativeImage threw for', iconPath, e.message);
+                        const fileUrl = toFileUrl(iconPath);
+                        if (fileUrl) {
+                            iconByNameCache.set(iconName, fileUrl);
+                            iconLookupCache.set(filePath, fileUrl);
+                            return { success: true, fileUrl };
                         }
-                    } else {
-                        console.warn('[icon] not found in theme:', iconName);
                     }
-
+                    console.warn('[icon] not found in theme:', iconName);
                     iconByNameCache.set(iconName, null);
                 }
             }
 
-            // Fallback — стандартный Electron-метод
+            // Fallback — Electron. Возвращаем dataUrl (единственный вариант
+            // из NativeImage, но это редкий путь).
             await yieldToEventLoop();
-            const fallback = await tryElectronIcon(filePath);
-            if (fallback) {
-                iconLookupCache.set(filePath, fallback);
-                return { success: true, dataUrl: fallback };
-            }
+            try {
+                const icon = await app.getFileIcon(filePath, { size: 'large' });
+                if (icon && !icon.isEmpty()) {
+                    const dataUrl = icon.toDataURL();
+                    iconLookupCache.set(filePath, dataUrl);
+                    return { success: true, fileUrl: dataUrl };
+                }
+            } catch (_) {}
             iconLookupCache.set(filePath, null);
             return { success: false };
         }
 
-        // Обычные файлы
-        const dataUrl = await tryElectronIcon(filePath);
-        return dataUrl ? { success: true, dataUrl } : { success: false };
+        // Обычные файлы — Electron вернёт NativeImage, отдаём как dataUrl
+        try {
+            const icon = await app.getFileIcon(filePath, { size: 'large' });
+            if (icon && !icon.isEmpty()) {
+                return { success: true, fileUrl: icon.toDataURL() };
+            }
+        } catch (_) {}
+        return { success: false };
     } catch (err) {
         console.error('[icon] getFileIcon error:', err);
         return { success: false, error: err.message };
@@ -619,7 +567,7 @@ async function getFileIcon(filePath) {
 }
 
 /* ------------------------------------------------------------------ */
-/* MIME-тип и приложения для файла                                     */
+/* MIME-тип и приложения                                                */
 /* ------------------------------------------------------------------ */
 
 async function getMimeType(filePath) {
@@ -659,7 +607,6 @@ async function getAppsForFile(filePath) {
     try {
         const mime = await getMimeType(filePath);
         if (!mime) return { success: true, apps: [], mime: null };
-
         const { stdout } = await execAsync(`gio mime ${mime}`);
         const ids = new Set();
         let inSection = false;
@@ -672,7 +619,6 @@ async function getAppsForFile(filePath) {
             if (line.includes(':') && !line.endsWith('.desktop')) { inSection = false; continue; }
             if (inSection && line.endsWith('.desktop')) ids.add(line);
         }
-
         const apps = [];
         for (const id of ids) {
             const entry = await readDesktopEntry(id);
@@ -738,7 +684,7 @@ export async function createFromTemplate(dir, templatePath, name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Регистрация IPC                                                      */
+/* IPC                                                                  */
 /* ------------------------------------------------------------------ */
 
 export default function () {
