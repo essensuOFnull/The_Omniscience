@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, IconButton, Breadcrumbs, Link } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AddIcon from '@mui/icons-material/Add';
 import FileView from './FileView';
-import CreateMenu from './CreateMenu';
 import useDirectory from './useDirectory';
 import { useSetting } from '../../settings/useSettings';
 
@@ -45,21 +43,27 @@ function isRoot(p) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Обёртка DesktopFiles                                                 */
+/* Обёртка: определяет базовый путь                                     */
 /* ------------------------------------------------------------------ */
 
 export default function DesktopFiles() {
   const enabled = useSetting('desktopFiles.enabled');
   const configuredPath = useSetting('desktopFiles.path');
-
   const [basePath, setBasePath] = useState(null);
 
   useEffect(() => {
     if (!enabled) { setBasePath(null); return; }
     if (configuredPath) { setBasePath(configuredPath); return; }
+
     const api = window.electron_desktop_API;
-    api.getUserDirs().then((dirs) => setBasePath(dirs?.desktop || null))
-      .catch(() => setBasePath(null));
+    if (!api?.getUserDirs) return;
+
+    let cancelled = false;
+    api.getUserDirs()
+      .then((dirs) => { if (!cancelled) setBasePath(dirs?.desktop || null); })
+      .catch(() => { if (!cancelled) setBasePath(null); });
+
+    return () => { cancelled = true; };
   }, [enabled, configuredPath]);
 
   if (!enabled || !basePath) return null;
@@ -73,49 +77,29 @@ export default function DesktopFiles() {
 
 function DesktopFilesInner({ basePath }) {
   const [currentPath, setCurrentPath] = useState(basePath);
-  const [createMenu, setCreateMenu] = useState({ open: false, x: 0, y: 0 });
 
   const { reload } = useDirectory(currentPath);
 
-  /* ---------- Слушаем запросы из нативного контекстного меню ---------- */
+  // reload меняет идентичность при каждом ре-рендере useDirectory,
+  // поэтому в слушателях всегда читаем через ref — подписка остаётся одна.
+  const reloadRef = useRef(reload);
+  useEffect(() => { reloadRef.current = reload; }, [reload]);
+
+  /* ---------- Подписка на запросы из main ---------- */
 
   useEffect(() => {
     const api = window.electron_desktop_API;
     if (!api?.on) return;
 
-    // Создать файл/папку из нативного меню (ПКМ на пустом месте)
-    const offCreate = api.on('fs:request-create', (payload) => {
-      if (!payload || typeof payload.dir !== 'string') return;
-      const kind = payload.kind === 'folder' ? 'folder' : 'file';
-      const defaultName = kind === 'folder' ? 'Новая папка' : 'Новый файл.txt';
-      const name = window.prompt(
-        kind === 'folder' ? 'Имя новой папки:' : 'Имя нового файла:',
-        defaultName,
-      );
-      if (!name || !name.trim()) return;
-      const trimmed = name.trim();
-      const promise = kind === 'folder'
-        ? api.createFolder(payload.dir, trimmed)
-        : api.createFile(payload.dir, trimmed);
-      promise.then((res) => {
-        if (!res?.success) {
-          window.alert(`Не удалось создать: ${res?.error || 'unknown'}`);
-        } else {
-          reload();
-        }
-      });
-    });
-
-    // Перезагрузка после операций из меню
+    // Перезагрузка после операций из нативного меню (удаление, вставка и т.п.).
     const offReload = api.on('fs:request-reload', () => {
-      reload();
+      reloadRef.current?.();
     });
 
     return () => {
-      offCreate?.();
       offReload?.();
     };
-  }, [reload]);
+  }, []);
 
   /* ---------- Навигация ---------- */
 
@@ -124,19 +108,18 @@ function DesktopFilesInner({ basePath }) {
   }, []);
 
   const handleBack = useCallback(() => {
-    if (isRoot(currentPath)) return;
-    const parent = currentPath.replace(/[\\/][^\\/]+[\\/]?$/, '') || '/';
-    setCurrentPath(parent || '/');
-  }, [currentPath]);
-
-  const handleOpenCreateMenu = useCallback((e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setCreateMenu({ open: true, x: r.left, y: r.bottom + 4 });
+    setCurrentPath((prev) => {
+      if (isRoot(prev)) return prev;
+      const parent = prev.replace(/[\\/][^\\/]+[\\/]?$/, '') || '/';
+      return parent || '/';
+    });
   }, []);
 
-  const handleCloseCreateMenu = useCallback(() => {
-    setCreateMenu((m) => ({ ...m, open: false }));
+  const handleNavigateTo = useCallback((targetPath) => {
+    setCurrentPath(targetPath);
   }, []);
+
+  /* ---------- Производные ---------- */
 
   const crumbs = buildCrumbs(currentPath);
   const canGoBack = !isRoot(currentPath);
@@ -144,15 +127,19 @@ function DesktopFilesInner({ basePath }) {
   return (
     <Box
       sx={{
-        position: 'absolute', inset: 0, zIndex: 0,
-        pointerEvents: 'none',
-        display: 'flex', flexDirection: 'column',
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        // pointerEvents: 'auto' наследуют все дочерние элементы.
+        // Без этого клики уходят в фон окна и FileView не ловит мышь.
+        pointerEvents: 'auto',
       }}
     >
-      {/* Панель навигации */}
+      {/* ----- Панель навигации ----- */}
       <Box
         sx={{
-          pointerEvents: 'auto',
           display: 'flex',
           alignItems: 'center',
           gap: 1,
@@ -175,15 +162,6 @@ function DesktopFilesInner({ basePath }) {
           <ArrowBackIcon fontSize="small" />
         </IconButton>
 
-        <IconButton
-          size="small"
-          onClick={handleOpenCreateMenu}
-          sx={{ color: '#fff' }}
-          title="Создать файл или папку"
-        >
-          <AddIcon fontSize="small" />
-        </IconButton>
-
         <Breadcrumbs
           maxItems={6}
           separator="/"
@@ -202,7 +180,7 @@ function DesktopFilesInner({ basePath }) {
                 key={c.path}
                 component="button"
                 underline="hover"
-                onClick={() => setCurrentPath(c.path)}
+                onClick={() => handleNavigateTo(c.path)}
                 sx={{
                   color: last ? '#fff' : '#aaa',
                   fontSize: 13,
@@ -218,7 +196,7 @@ function DesktopFilesInner({ basePath }) {
         </Breadcrumbs>
       </Box>
 
-      {/* Контент — FileView растягивается на всё оставшееся место */}
+      {/* ----- Контент ----- */}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>
         <FileView
           path={currentPath}
@@ -227,14 +205,6 @@ function DesktopFilesInner({ basePath }) {
           emptyText="Папка пуста"
         />
       </Box>
-
-      {/* CreateMenu для клика по кнопке "+" */}
-      <CreateMenu
-        open={createMenu.open}
-        anchorPosition={{ x: createMenu.x, y: createMenu.y }}
-        dir={currentPath}
-        onClose={handleCloseCreateMenu}
-      />
     </Box>
   );
 }

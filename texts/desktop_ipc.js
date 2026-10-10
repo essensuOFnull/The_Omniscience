@@ -71,6 +71,19 @@
 				copyFiles: (paths) => ipcRenderer.invoke('fs:copy', { paths }),
 				cutFiles: (paths) => ipcRenderer.invoke('fs:cut', { paths }),
 				pasteFiles: (dir) => ipcRenderer.invoke('fs:paste', { dir }),
+				getCutPaths: () => ipcRenderer.invoke('fs:get-cut'),
+				clearCut: () => ipcRenderer.invoke('fs:clear-cut'),
+				startDrag: (paths) => ipcRenderer.send('fs:start-drag', { paths }),
+				dropPaths: (srcPaths, destDir, isMove) =>
+					ipcRenderer.invoke('fs:drop-paths', { srcPaths, destDir, isMove }),
+
+				// Для drag-in из внешних приложений (Electron 32+ требует webUtils)
+				getPathForFile: (file) => {
+					try {
+						if (webUtils?.getPathForFile) return webUtils.getPathForFile(file);
+					} catch (_) { }
+					return file?.path || null;
+				},
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);

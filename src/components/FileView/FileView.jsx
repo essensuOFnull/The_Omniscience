@@ -13,11 +13,10 @@ const MIN_BRUSH_RADIUS = 15;
 const WHEEL_SENSITIVITY = 0.15;
 const STORAGE_KEY = 'fileview.brushRadius';
 const RADIUS_SPRING = { stiffness: 260, damping: 26, mass: 0.5 };
-
 const AUTOPLAY_VIDEO_LIMIT = 12;
 
 /* ------------------------------------------------------------------ */
-/* Превью медиафайла                                                    */
+/* Медиа-превью                                                        */
 /* ------------------------------------------------------------------ */
 
 function MediaThumb({ file, autoPlayVideo }) {
@@ -35,11 +34,8 @@ function MediaThumb({ file, autoPlayVideo }) {
                 draggable={false}
                 onError={() => setFailed(true)}
                 style={{
-                    width: '100%', height: '100%',
-                    objectFit: 'contain',
-                    borderRadius: 4,
-                    pointerEvents: 'none',
-                    userSelect: 'none',
+                    width: '100%', height: '100%', objectFit: 'contain',
+                    borderRadius: 4, userSelect: 'none',
                 }}
             />
         );
@@ -50,18 +46,12 @@ function MediaThumb({ file, autoPlayVideo }) {
             <video
                 src={file.fileUrl}
                 autoPlay={autoPlayVideo}
-                muted
-                loop
-                playsInline
-                preload="metadata"
+                muted loop playsInline preload="metadata"
                 draggable={false}
                 onError={() => setFailed(true)}
                 style={{
-                    width: '100%', height: '100%',
-                    objectFit: 'cover',
-                    borderRadius: 4,
-                    pointerEvents: 'none',
-                    background: '#000',
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    borderRadius: 4, background: '#000',
                 }}
             />
         );
@@ -71,12 +61,12 @@ function MediaThumb({ file, autoPlayVideo }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Одна иконка файла                                                    */
+/* FileItem                                                             */
 /* ------------------------------------------------------------------ */
 
 function FileItem({
-    file, selected, onSelect, onOpen, onContextRequest,
-    registerRef, autoPlayVideo,
+    file, selected, cut, onSelect, onOpen, onContextRequest,
+    onDragRequest, registerRef, autoPlayVideo,
 }) {
     const iconUrl = useFileIcon(file.id);
     const [iconFailed, setIconFailed] = useState(false);
@@ -97,16 +87,17 @@ function FileItem({
         onOpen(file);
     };
     const handleMouseDown = (e) => {
-        // ПКМ — сообщаем наверх о контексте. НЕ меняем выделение.
         if (e.button !== 2) return;
         if (e.shiftKey) return;
         e.stopPropagation();
         onContextRequest(file);
     };
-    const handleContextMenu = (e) => {
-        // НЕ preventDefault — пусть Electron покажет нативное меню.
-        // Просто не даём событию всплыть до контейнера.
+    const handleContextMenu = (e) => { e.stopPropagation(); };
+
+    const handleDragStart = (e) => {
+        e.preventDefault();
         e.stopPropagation();
+        onDragRequest(file);
     };
 
     const hasMedia = file.mediaKind && !mediaFailed;
@@ -115,17 +106,20 @@ function FileItem({
         <Box
             ref={setRef}
             data-file-item=""
+            draggable
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={handleMouseDown}
             onContextMenu={handleContextMenu}
+            onDragStart={handleDragStart}
             sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 gap: 0.5, p: 1, borderRadius: 1,
                 cursor: 'pointer', userSelect: 'none',
+                opacity: cut ? 0.45 : 1,
                 bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
                 border: selected ? '1px solid rgba(168,85,247,0.6)' : '1px solid transparent',
-                transition: 'background 0.1s',
+                transition: 'background 0.1s, opacity 0.15s',
                 '&:hover': {
                     bgcolor: selected ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.05)',
                 },
@@ -138,6 +132,7 @@ function FileItem({
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     borderRadius: 1, overflow: 'hidden', position: 'relative',
                     bgcolor: hasMedia ? 'rgba(0,0,0,0.35)' : 'transparent',
+                    pointerEvents:'none',
                 }}
             >
                 {hasMedia ? (
@@ -145,8 +140,7 @@ function FileItem({
                 ) : iconUrl && !iconFailed ? (
                     <img
                         src={iconUrl}
-                        width="48"
-                        height="48"
+                        width="48" height="48"
                         alt=""
                         draggable={false}
                         onError={() => setIconFailed(true)}
@@ -173,6 +167,92 @@ function FileItem({
 }
 
 /* ------------------------------------------------------------------ */
+/* FileListRow                                                          */
+/* ------------------------------------------------------------------ */
+
+function FileListRow({
+    file, selected, cut, onSelect, onOpen, onContextRequest,
+    onDragRequest, registerRef,
+}) {
+    const iconUrl = useFileIcon(file.id);
+    const [iconFailed, setIconFailed] = useState(false);
+    const [mediaFailed, setMediaFailed] = useState(false);
+
+    useEffect(() => { setIconFailed(false); setMediaFailed(false); }, [file.id]);
+
+    const setRef = useCallback((el) => { registerRef(file.id, el); }, [file.id, registerRef]);
+
+    const hasMedia = file.mediaKind === 'image' && !mediaFailed;
+
+    const handleClick = (e) => {
+        e.stopPropagation();
+        if (e.shiftKey) return;
+        onSelect(file.id, e);
+    };
+    const handleMouseDown = (e) => {
+        if (e.button !== 2) return;
+        if (e.shiftKey) return;
+        e.stopPropagation();
+        onContextRequest(file);
+    };
+    const handleDragStart = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDragRequest(file);
+    };
+
+    return (
+        <Box
+            ref={setRef}
+            data-file-item=""
+            draggable
+            onClick={handleClick}
+            onDoubleClick={(e) => { e.stopPropagation(); if (!e.shiftKey) onOpen(file); }}
+            onMouseDown={handleMouseDown}
+            onContextMenu={(e) => e.stopPropagation()}
+            onDragStart={handleDragStart}
+            sx={{
+                display: 'flex', alignItems: 'center', gap: 1,
+                px: 1, py: 0.5,
+                cursor: 'pointer', userSelect: 'none', borderRadius: 0.5,
+                opacity: cut ? 0.45 : 1,
+                bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
+                '&:hover': {
+                    bgcolor: selected ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.05)',
+                },
+                transition: 'opacity 0.15s',
+            }}
+        >
+            <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 0.5, pointerEvents:'none', }}>
+                {hasMedia ? (
+                    <img
+                        src={file.fileUrl}
+                        alt=""
+                        draggable={false}
+                        onError={() => setMediaFailed(true)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                ) : iconUrl && !iconFailed ? (
+                    <img
+                        src={iconUrl}
+                        width="20" height="20"
+                        alt=""
+                        draggable={false}
+                        onError={() => setIconFailed(true)}
+                        style={{ objectFit: 'contain' }}
+                    />
+                ) : (
+                    <span style={{ fontSize: 16 }}>{file.isDir ? '📁' : '📄'}</span>
+                )}
+            </Box>
+            <Typography sx={{ color: '#fff', fontSize: 13 }} noWrap>
+                {file.name}
+            </Typography>
+        </Box>
+    );
+}
+
+/* ------------------------------------------------------------------ */
 /* FileView                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -186,9 +266,11 @@ export default function FileView({
 }) {
     const [internalPath, setInternalPath] = useState(path);
     const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [cutPaths, setCutPaths] = useState(() => new Set());
 
     const [shiftHeld, setShiftHeld] = useState(false);
     const [brushMode, setBrushMode] = useState(null);
+    const [dragOver, setDragOver] = useState(false);
 
     const initialRadius = (() => {
         try {
@@ -227,20 +309,40 @@ export default function FileView({
         brushRef.current = { mode: null, workingSet: null };
     }, [activePath]);
 
+    /* -------------------- Вырезанные файлы -------------------- */
+
+    useEffect(() => {
+        const api = window.electron_desktop_API;
+        if (!api) return;
+
+        api.getCutPaths?.()
+            .then((res) => {
+                const arr = Array.isArray(res) ? res : (res?.paths || []);
+                setCutPaths(new Set(arr));
+            })
+            .catch(() => { });
+
+        const off = api.on?.('fs:cut-changed', (payload) => {
+            const arr = Array.isArray(payload?.paths) ? payload.paths : [];
+            setCutPaths(new Set(arr));
+        });
+        return () => { off?.(); };
+    }, []);
+
     const videoCount = useMemo(
         () => files.filter((f) => f.mediaKind === 'video').length,
         [files],
     );
     const autoPlayVideo = videoCount <= AUTOPLAY_VIDEO_LIMIT;
 
-    /* -------------------- Регистрация DOM-рефов -------------------- */
+    /* -------------------- DOM-рефы -------------------- */
 
     const registerRef = useCallback((id, el) => {
         if (el) fileRefs.current.set(id, el);
         else fileRefs.current.delete(id);
     }, []);
 
-    /* -------------------- Обычное выделение кликом -------------------- */
+    /* -------------------- Выделение кликом -------------------- */
 
     const handleSelect = useCallback((id, e) => {
         if (e && e.shiftKey) return;
@@ -273,10 +375,8 @@ export default function FileView({
         await api.openPath(file.id);
     }, [onOpen, navigateSelf, onPathChange]);
 
-    /* -------------------- ПКМ: отправка контекста в main -------------------- */
+    /* -------------------- ПКМ / drag -------------------- */
 
-    // Клик ПКМ по конкретному файлу. Не меняем выделение:
-    // если файл уже выделен — шлём все выделенные, иначе только он.
     const handleItemContextRequest = useCallback((file) => {
         const api = window.electron_desktop_API;
         if (!api?.setContextPaths) return;
@@ -285,8 +385,14 @@ export default function FileView({
         api.setContextPaths({ kind: 'files', paths });
     }, []);
 
-    // ПКМ по пустому месту. Если что-то выделено — шлём выделенные,
-    // иначе — «рабочий стол».
+    const handleItemDragRequest = useCallback((file) => {
+        const api = window.electron_desktop_API;
+        if (!api?.startDrag) return;
+        const selected = selectedIdsRef.current;
+        const paths = selected.has(file.id) ? [...selected] : [file.id];
+        api.startDrag(paths);
+    }, []);
+
     const handleContainerMouseDown = useCallback((e) => {
         if (e.button !== 2) return;
         if (e.shiftKey) return;
@@ -302,6 +408,114 @@ export default function FileView({
             api.setContextPaths({ kind: 'background', paths: [activePath] });
         }
     }, [activePath]);
+
+    /* -------------------- Drop-in -------------------- */
+
+    const handleDrop = useCallback(async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOver(false);
+
+        const api = window.electron_desktop_API;
+        if (!api?.dropPaths) return;
+
+        const srcPaths = new Set();
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            for (const f of Array.from(e.dataTransfer.files)) {
+                try {
+                    const p = api.getPathForFile ? api.getPathForFile(f) : (f.path || '');
+                    if (p && typeof p === 'string') srcPaths.add(p);
+                } catch (_) { }
+            }
+        }
+
+        if (srcPaths.size === 0) {
+            let uriList = '';
+            try { uriList = e.dataTransfer.getData('text/uri-list') || ''; } catch (_) { }
+            if (uriList) {
+                for (const line of uriList.split(/\r?\n/)) {
+                    const s = line.trim();
+                    if (!s.startsWith('file://')) continue;
+                    try {
+                        const u = new URL(s);
+                        srcPaths.add(decodeURIComponent(u.pathname));
+                    } catch (_) { }
+                }
+            }
+        }
+
+        if (srcPaths.size === 0) return;
+
+        const isMove = !e.ctrlKey;
+        const res = await api.dropPaths([...srcPaths], activePath, isMove);
+        if (res?.success) reload();
+    }, [activePath, reload]);
+
+    /* -------------------- Ctrl+C/X/V/Delete/A -------------------- */
+
+    useEffect(() => {
+        const onKeyDown = (e) => {
+            const t = e.target;
+            if (t instanceof HTMLElement) {
+                const tag = t.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
+            }
+
+            const api = window.electron_desktop_API;
+            if (!api) return;
+            const selected = selectedIdsRef.current;
+
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+                const key = e.key.toLowerCase();
+                if (key === 'c' && selected.size > 0) {
+                    e.preventDefault();
+                    api.copyFiles([...selected]);
+                    return;
+                }
+                if (key === 'x' && selected.size > 0) {
+                    e.preventDefault();
+                    api.cutFiles([...selected]);
+                    return;
+                }
+                if (key === 'v') {
+                    e.preventDefault();
+                    api.pasteFiles(activePath).then((res) => {
+                        if (res?.success) reload();
+                    });
+                    return;
+                }
+                if (key === 'a') {
+                    e.preventDefault();
+                    setSelectedIds(new Set(files.map((f) => f.id)));
+                    return;
+                }
+            }
+
+            if (e.key === 'Delete' && selected.size > 0) {
+                e.preventDefault();
+                const paths = [...selected];
+                const hard = e.shiftKey;
+                const run = async () => {
+                    if (hard) {
+                        if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
+                        for (const p of paths) {
+                            try { await api.deletePath(p); } catch (_) { }
+                        }
+                    } else {
+                        for (const p of paths) {
+                            try { await api.trashPath(p); } catch (_) { }
+                        }
+                    }
+                    reload();
+                };
+                run();
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activePath, files, reload]);
 
     /* -------------------- Трекер мыши -------------------- */
 
@@ -454,76 +668,7 @@ export default function FileView({
         };
     }, [shiftHeld, radiusSpring, brushX, brushY]);
 
-    /* -------------------- Ctrl+C / Ctrl+X / Ctrl+V / Delete -------------------- */
-
-    useEffect(() => {
-        const onKeyDown = (e) => {
-            // Игнорируем, если фокус в поле ввода / contenteditable
-            const t = e.target;
-            if (t instanceof HTMLElement) {
-                const tag = t.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
-            }
-
-            const api = window.electron_desktop_API;
-            if (!api) return;
-            const selected = selectedIdsRef.current;
-
-            // Ctrl/Cmd + ...
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-                const key = e.key.toLowerCase();
-
-                if (key === 'c' && selected.size > 0) {
-                    e.preventDefault();
-                    api.copyFiles([...selected]);
-                    return;
-                }
-                if (key === 'x' && selected.size > 0) {
-                    e.preventDefault();
-                    api.cutFiles([...selected]);
-                    return;
-                }
-                if (key === 'v') {
-                    e.preventDefault();
-                    api.pasteFiles(activePath).then((res) => {
-                        if (res?.success) reload();
-                    });
-                    return;
-                }
-                if (key === 'a') {
-                    e.preventDefault();
-                    setSelectedIds(new Set(files.map((f) => f.id)));
-                    return;
-                }
-            }
-
-            // Delete / Shift+Delete
-            if (e.key === 'Delete' && selected.size > 0) {
-                e.preventDefault();
-                const paths = [...selected];
-                const hard = e.shiftKey;
-                const run = async () => {
-                    if (hard) {
-                        if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
-                        for (const p of paths) {
-                            try { await api.deletePath(p); } catch (_) { }
-                        }
-                    } else {
-                        for (const p of paths) {
-                            try { await api.trashPath(p); } catch (_) { }
-                        }
-                    }
-                    reload();
-                };
-                run();
-            }
-        };
-
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [activePath, files, reload]);
-
-    /* -------------------- Стили контейнера -------------------- */
+    /* -------------------- Стили -------------------- */
 
     const containerStyle = useMemo(() => ({
         display: layout === 'list' ? 'flex' : 'grid',
@@ -537,26 +682,37 @@ export default function FileView({
         overflowY: 'auto', overflowX: 'hidden',
         position: 'relative',
         userSelect: 'none',
-        pointerEvents: 'auto',
         cursor: shiftHeld ? 'none' : 'default',
     }), [layout, shiftHeld]);
 
     return (
         <Box
             ref={containerRef}
-            tabIndex={-1}                              // ← фокусируемо программно
+            tabIndex={-1}
             onMouseDown={(e) => {
-                // При любом клике внутри FileView забираем фокус ввода на контейнер,
-                // чтобы работали Ctrl+C/X/V/Delete. ПКМ не трогаем — она для контекста.
-                if (e.button === 0) {
-                    containerRef.current?.focus?.();
-                }
+                if (e.button === 0) containerRef.current?.focus?.();
                 handleContainerMouseDown(e);
             }}
-            onContextMenu={(e) => e.preventDefault()}
+            onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                if (!dragOver) setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+                const related = e.relatedTarget;
+                if (related && e.currentTarget.contains(related)) return;
+                setDragOver(false);
+            }}
+            onDrop={handleDrop}
             sx={{
                 ...containerStyle,
-                outline: 'none',                       // ← убрать дефолтную рамку фокуса
+                outline: 'none',
+                boxShadow: dragOver
+                    ? 'inset 0 0 0 2px rgba(168,85,247,0.65)'
+                    : 'none',
+                transition: 'box-shadow 0.15s',
+                pointerEvents: 'auto',
             }}
         >
             {loading && files.length === 0 && (
@@ -581,8 +737,10 @@ export default function FileView({
                     <FileListRow
                         key={file.id} file={file}
                         selected={selectedIds.has(file.id)}
+                        cut={cutPaths.has(file.id)}
                         onSelect={handleSelect} onOpen={handleOpen}
                         onContextRequest={handleItemContextRequest}
+                        onDragRequest={handleItemDragRequest}
                         registerRef={registerRef}
                     />
                 ))
@@ -590,8 +748,10 @@ export default function FileView({
                     <FileItem
                         key={file.id} file={file}
                         selected={selectedIds.has(file.id)}
+                        cut={cutPaths.has(file.id)}
                         onSelect={handleSelect} onOpen={handleOpen}
                         onContextRequest={handleItemContextRequest}
+                        onDragRequest={handleItemDragRequest}
                         registerRef={registerRef}
                         autoPlayVideo={autoPlayVideo}
                     />
@@ -623,83 +783,6 @@ export default function FileView({
                     }}
                 />
             )}
-        </Box>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/* Ряд для list-режима                                                  */
-/* ------------------------------------------------------------------ */
-
-function FileListRow({
-    file, selected, onSelect, onOpen, onContextRequest, registerRef,
-}) {
-    const iconUrl = useFileIcon(file.id);
-    const [iconFailed, setIconFailed] = useState(false);
-    const [mediaFailed, setMediaFailed] = useState(false);
-
-    useEffect(() => { setIconFailed(false); setMediaFailed(false); }, [file.id]);
-
-    const setRef = useCallback((el) => { registerRef(file.id, el); }, [file.id, registerRef]);
-
-    const hasMedia = file.mediaKind === 'image' && !mediaFailed;
-
-    const handleClick = (e) => {
-        e.stopPropagation();
-        if (e.shiftKey) return;
-        onSelect(file.id, e);
-    };
-
-    const handleMouseDown = (e) => {
-        if (e.button !== 2) return;
-        if (e.shiftKey) return;
-        e.stopPropagation();
-        onContextRequest(file);
-    };
-
-    return (
-        <Box
-            ref={setRef}
-            data-file-item=""
-            onClick={handleClick}
-            onDoubleClick={(e) => { e.stopPropagation(); if (!e.shiftKey) onOpen(file); }}
-            onMouseDown={handleMouseDown}
-            onContextMenu={(e) => e.stopPropagation()}
-            sx={{
-                display: 'flex', alignItems: 'center', gap: 1,
-                px: 1, py: 0.5,
-                cursor: 'pointer', userSelect: 'none', borderRadius: 0.5,
-                bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
-                '&:hover': {
-                    bgcolor: selected ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.05)',
-                },
-            }}
-        >
-            <Box sx={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRadius: 0.5 }}>
-                {hasMedia ? (
-                    <img
-                        src={file.fileUrl}
-                        alt=""
-                        draggable={false}
-                        onError={() => setMediaFailed(true)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
-                    />
-                ) : iconUrl && !iconFailed ? (
-                    <img
-                        src={iconUrl}
-                        width="20" height="20"
-                        alt=""
-                        draggable={false}
-                        onError={() => setIconFailed(true)}
-                        style={{ objectFit: 'contain' }}
-                    />
-                ) : (
-                    <span style={{ fontSize: 16 }}>{file.isDir ? '📁' : '📄'}</span>
-                )}
-            </Box>
-            <Typography sx={{ color: '#fff', fontSize: 13 }} noWrap>
-                {file.name}
-            </Typography>
         </Box>
     );
 }

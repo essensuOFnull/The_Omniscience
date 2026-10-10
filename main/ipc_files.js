@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { ipcMain, app } = electronPkg;
+const { ipcMain, app, nativeImage, clipboard, webContents, ClipboardItem } = electronPkg;
 import {
     readdir, stat, rename as fsRename, unlink, readFile, rm,
     mkdir, writeFile, copyFile, access, open, cp,
@@ -8,10 +8,9 @@ import { constants as fsConstants } from 'fs';
 import { watch } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { pathToFileURL, fileURLToPath } from 'url';
 import path from 'path';
 import os from 'os';
-import { clipboard } from 'electron';
-import { pathToFileURL, fileURLToPath } from 'url';
 
 const execAsync = promisify(exec);
 const yieldToEventLoop = () => new Promise((r) => setImmediate(r));
@@ -20,17 +19,9 @@ const yieldToEventLoop = () => new Promise((r) => setImmediate(r));
 /* file:// URL                                                          */
 /* ------------------------------------------------------------------ */
 
-/**
- * Обёртка над pathToFileURL. Корректно кодирует пробелы, юникод,
- * спецсимволы. Возвращает строку вида file:///home/user/фото.jpg.
- */
 function toFileUrl(filePath) {
     if (!filePath) return null;
-    try {
-        return pathToFileURL(filePath).href;
-    } catch (_) {
-        return null;
-    }
+    try { return pathToFileURL(filePath).href; } catch (_) { return null; }
 }
 
 // dirPath → { watcher, refCount }
@@ -67,7 +58,7 @@ function stopWatch(dirPath) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Пользовательские директории (~/.config/user-dirs.dirs)              */
+/* Пользовательские директории                                          */
 /* ------------------------------------------------------------------ */
 
 async function getUserDirs() {
@@ -90,8 +81,7 @@ async function getUserDirs() {
             const match = line.match(/^XDG_(\w+)_DIR="(.+)"\s*$/);
             if (!match) continue;
             const key = match[1].toLowerCase();
-            let value = match[2].replace(/^\$HOME/, home);
-            value = value.replace(/\$HOME/g, home);
+            let value = match[2].replace(/^\$HOME/, home).replace(/\$HOME/g, home);
             dirs[key] = value;
         }
         return dirs;
@@ -99,7 +89,7 @@ async function getUserDirs() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Категории медиафайлов                                                */
+/* Медиа-категории                                                      */
 /* ------------------------------------------------------------------ */
 
 const IMAGE_EXT = new Set([
@@ -139,7 +129,7 @@ async function readDir(dirPath) {
                 const stats = await stat(fullPath);
                 files.push({
                     id: fullPath,
-                    fileUrl: toFileUrl(fullPath),      // ← готовый file:// URL
+                    fileUrl: toFileUrl(fullPath),
                     name: entry.name,
                     isDir: stats.isDirectory(),
                     isSymlink: stats.isSymbolicLink(),
@@ -170,13 +160,11 @@ async function getFileInfo(filePath) {
         return {
             success: true,
             info: {
-                path: filePath,
-                fileUrl: toFileUrl(filePath),
+                path: filePath, fileUrl: toFileUrl(filePath),
                 size: stats.size,
                 mtime: stats.mtime.toISOString(),
                 birthtime: stats.birthtime.toISOString(),
-                isDir: stats.isDirectory(),
-                isFile: stats.isFile(),
+                isDir: stats.isDirectory(), isFile: stats.isFile(),
                 isSymlink: stats.isSymbolicLink(),
                 mode: '0' + (stats.mode & parseInt('777', 8)).toString(8),
                 uid: stats.uid, gid: stats.gid,
@@ -189,7 +177,7 @@ async function getFileInfo(filePath) {
 /* Открытие через систему                                              */
 /* ------------------------------------------------------------------ */
 
-async function openPath(filePath) {
+export async function openPath(filePath) {
     try {
         const ext = path.extname(filePath).toLowerCase();
         if (ext === '.desktop') {
@@ -209,7 +197,7 @@ async function openPath(filePath) {
     } catch (err) { return { success: false, error: err.message }; }
 }
 
-async function revealPath(filePath) {
+export async function revealPath(filePath) {
     return openPath(path.dirname(filePath));
 }
 
@@ -217,21 +205,21 @@ async function revealPath(filePath) {
 /* Операции с файлами                                                   */
 /* ------------------------------------------------------------------ */
 
-async function trashPath(filePath) {
+export async function trashPath(filePath) {
     try {
         await execAsync(`gio trash "${filePath.replace(/"/g, '\\"')}"`);
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
 }
 
-async function deletePath(filePath) {
+export async function deletePath(filePath) {
     try {
         await rm(filePath, { recursive: true, force: true });
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
 }
 
-async function renamePath(oldPath, newName) {
+export async function renamePath(oldPath, newName) {
     try {
         if (!newName || newName.includes('/')) return { success: false, error: 'invalid_name' };
         const dir = path.dirname(oldPath);
@@ -241,57 +229,123 @@ async function renamePath(oldPath, newName) {
     } catch (err) { return { success: false, error: err.message }; }
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 /* Буфер обмена: copy / cut / paste                                    */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 
-let cutPaths = null;
+// Накопительный список вырезанных путей.
+let cutPaths = [];
+
+function broadcastCutChanged() {
+    try {
+        for (const wc of webContents.getAllWebContents()) {
+            try { wc.send('fs:cut-changed', { paths: [...cutPaths] }); } catch (_) { }
+        }
+    } catch (_) { }
+}
+
+/**
+ * Пишем пути в clipboard так, чтобы понимали и файловые менеджеры
+ * (text/uri-list), и обычные текстовые поля (text/plain).
+ */
+function writeFileUrisToClipboard(paths) {
+    const uris = paths.map((p) => pathToFileURL(p).href);
+    const uriList = uris.join('\r\n') + '\r\n';
+    const plain = paths.join('\n');
+
+    // Electron 32+ использует класс ClipboardItem, а не plain-object.
+    try {
+        if (typeof ClipboardItem === 'function') {
+            clipboard.write([
+                new ClipboardItem({
+                    'text/uri-list': uriList,
+                    'text/plain': plain,
+                }),
+            ]);
+            return true;
+        }
+    } catch (err) {
+        console.warn('[clipboard] ClipboardItem write failed:', err.message);
+    }
+
+    // Fallback для старых Electron / экзотики: пишем как plain-text.
+    // Dolphin/Telegram всё равно распознают file:// URL в тексте.
+    try {
+        clipboard.writeText(uriList);
+        return true;
+    } catch (_) { return false; }
+}
 
 export async function copyFiles(paths) {
     if (!Array.isArray(paths) || paths.length === 0) {
         return { success: false, error: 'no_paths' };
     }
-    try {
-        clipboard.writeText(paths.map((p) => pathToFileURL(p).href).join('\n'));
-        cutPaths = null;
-        return { success: true, count: paths.length };
-    } catch (err) {
-        return { success: false, error: err.message };
+    if (!writeFileUrisToClipboard(paths)) {
+        return { success: false, error: 'clipboard_write_failed' };
     }
+    cutPaths = [];
+    broadcastCutChanged();
+    return { success: true, count: paths.length };
 }
 
 export async function cutFiles(paths) {
     if (!Array.isArray(paths) || paths.length === 0) {
         return { success: false, error: 'no_paths' };
     }
-    try {
-        clipboard.writeText(paths.map((p) => pathToFileURL(p).href).join('\n'));
-        cutPaths = [...paths];
-        return { success: true, count: paths.length };
-    } catch (err) {
-        return { success: false, error: err.message };
+    if (!writeFileUrisToClipboard(paths)) {
+        return { success: false, error: 'clipboard_write_failed' };
     }
+    // Накопление без дубликатов
+    const set = new Set(cutPaths);
+    for (const p of paths) set.add(p);
+    cutPaths = [...set];
+    broadcastCutChanged();
+    return { success: true, count: cutPaths.length };
+}
+
+export function clearCut() {
+    cutPaths = [];
+    broadcastCutChanged();
+    return { success: true };
+}
+
+export function getCutPaths() {
+    return [...cutPaths];
+}
+
+function readClipboardPaths() {
+    let text = '';
+    try {
+        const raw = clipboard.readText();
+        if (typeof raw === 'string') text = raw;
+        else if (raw != null) text = String(raw);
+    } catch (_) { return []; }
+
+    if (!text) return [];
+    const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+
+    const uris = lines.filter((s) => s.startsWith('file://'));
+    if (uris.length > 0) {
+        return uris
+            .map((u) => { try { return fileURLToPath(u); } catch { return null; } })
+            .filter(Boolean);
+    }
+
+    const abs = lines.filter((s) => path.isAbsolute(s));
+    if (abs.length === lines.length && lines.length > 0) return abs;
+
+    return [];
 }
 
 export async function pasteFiles(destDir) {
     if (!destDir) return { success: false, error: 'no_dest' };
 
-    let text;
-    try { text = clipboard.readText(); } catch (_) { return { success: false, error: 'clipboard' }; }
-    if (!text) return { success: false, error: 'empty' };
+    const srcPaths = readClipboardPaths();
+    if (srcPaths.length === 0) return { success: false, error: 'empty_clipboard' };
 
-    const urls = text.split('\n').map((s) => s.trim()).filter(Boolean);
-    const srcPaths = urls
-        .filter((u) => u.startsWith('file://'))
-        .map((u) => { try { return fileURLToPath(u); } catch { return null; } })
-        .filter(Boolean);
-
-    if (srcPaths.length === 0) return { success: false, error: 'no_files' };
-
-    const isCut = cutPaths
+    const isCut = cutPaths.length > 0
         && cutPaths.length === srcPaths.length
         && cutPaths.every((p) => srcPaths.includes(p));
-    cutPaths = null;
 
     const results = [];
     for (const src of srcPaths) {
@@ -300,11 +354,10 @@ export async function pasteFiles(destDir) {
             if (isCut) {
                 await fsRename(src, dest);
             } else {
-                // Пытаемся как файл; если это папка — cp с recursive.
                 try {
                     await copyFile(src, dest);
                 } catch (err) {
-                    if (err.code === 'EISDIR' || err.code === 'EPERM') {
+                    if (err.code === 'EISDIR' || err.code === 'EPERM' || err.code === 'EACCES') {
                         await cp(src, dest, { recursive: true });
                     } else {
                         throw err;
@@ -316,15 +369,190 @@ export async function pasteFiles(destDir) {
             results.push({ src, dest, ok: false, error: err.message });
         }
     }
+
+    if (isCut) {
+        cutPaths = [];
+        broadcastCutChanged();
+    }
     return { success: true, results };
 }
+
 /* ================================================================== */
-/* ИКОНКИ — freedesktop lookup, возвращаем file:// URL                 */
+/* Drag & Drop                                                         */
 /* ================================================================== */
 
-const themeIndexCache = new Map();       // theme → Promise<{bases,dirs,inherits}|null>
-const iconLookupCache = new Map();       // desktopPath → fileUrl | null
-const iconByNameCache = new Map();       // iconName    → fileUrl | null
+// Синтетическая иконка-заглушка (крайний случай).
+function makeSolidDragIcon(size = 64) {
+    try {
+        const buffer = Buffer.alloc(size * size * 4);
+        for (let i = 0; i < size * size; i++) {
+            buffer[i * 4 + 0] = 0xf7;   // B
+            buffer[i * 4 + 1] = 0x55;   // G
+            buffer[i * 4 + 2] = 0xa8;   // R
+            buffer[i * 4 + 3] = 0xff;   // A
+        }
+        return nativeImage.createFromBitmap(buffer, { width: size, height: size });
+    } catch (err) {
+        console.warn('[fs:start-drag] placeholder failed:', err.message);
+        return null;
+    }
+}
+
+let cachedFallbackDragIcon = null;
+function getFallbackDragIcon() {
+    if (cachedFallbackDragIcon && !cachedFallbackDragIcon.isEmpty()) {
+        return cachedFallbackDragIcon;
+    }
+    try {
+        if (global.paths?.icon) {
+            const img = nativeImage.createFromPath(global.paths.icon);
+            if (!img.isEmpty()) {
+                cachedFallbackDragIcon = img.resize({ width: 64, height: 64 });
+                return cachedFallbackDragIcon;
+            }
+        }
+    } catch (_) { }
+    cachedFallbackDragIcon = makeSolidDragIcon(64);
+    return cachedFallbackDragIcon;
+}
+
+// Кэш drag-иконок: ключ — расширение файла (.png, .mp4, dir)
+// или 'desktop:<path>' для ярлыков (там иконка уникальна для каждого).
+const dragIconCache = new Map();
+
+function dragIconCacheKey(filePath, isDir) {
+    if (isDir) return 'dir';
+    const dot = filePath.lastIndexOf('.');
+    const ext = dot >= 0 ? filePath.slice(dot + 1).toLowerCase() : '';
+    // Для .desktop кэшируем по полному пути — у каждого ярлыка своя иконка.
+    if (ext === 'desktop') return `desktop:${filePath}`;
+    return `ext:${ext || 'none'}`;
+}
+
+async function resizeIfNeeded(img) {
+    if (!img || img.isEmpty()) return null;
+    try {
+        const { width, height } = img.getSize();
+        if (width > 64 || height > 64) {
+            return img.resize({ width: 64, height: 64 });
+        }
+        return img;
+    } catch (_) {
+        return img;
+    }
+}
+
+/**
+ * Возвращает NativeImage для drag-курсора. Порядок приоритетов:
+ *   1) Картинка — сам файл.
+ *   2) .desktop — иконка приложения из темы (freedesktop lookup).
+ *   3) Всё остальное — app.getFileIcon (MIME-иконка от Chromium).
+ *   4) Fallback — синтетический квадрат.
+ *
+ * Результат кэшируется по расширению (или по полному пути для .desktop).
+ */
+async function getDragIconForPath(filePath, isDir) {
+    if (!filePath) return getFallbackDragIcon();
+
+    const cacheKey = dragIconCacheKey(filePath, isDir);
+    if (dragIconCache.has(cacheKey)) {
+        const cached = dragIconCache.get(cacheKey);
+        if (cached && !cached.isEmpty()) return cached;
+    }
+
+    // 1. Картинка — берём сам файл.
+    try {
+        const direct = await resizeIfNeeded(nativeImage.createFromPath(filePath));
+        if (direct) {
+            dragIconCache.set(cacheKey, direct);
+            return direct;
+        }
+    } catch (_) { }
+
+    // 2. .desktop — наша система иконок.
+    if (filePath.endsWith('.desktop')) {
+        try {
+            const iconName = await readDesktopIconName(filePath);
+            if (iconName) {
+                const themeName = await getCurrentIconTheme();
+                let iconPath = await findBestIconInTheme(iconName, themeName);
+                if (!iconPath) iconPath = await findIconInSteamDirs(iconName);
+                if (iconPath) {
+                    const img = await resizeIfNeeded(nativeImage.createFromPath(iconPath));
+                    if (img) {
+                        dragIconCache.set(cacheKey, img);
+                        return img;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[drag-icon] desktop lookup failed:', err.message);
+        }
+    }
+
+    // 3. Системная иконка Chromium по MIME-типу — работает для всего.
+    try {
+        const size = isDir ? 'large' : 'normal';
+        const img = await app.getFileIcon(filePath, { size });
+        const resized = await resizeIfNeeded(img);
+        if (resized) {
+            dragIconCache.set(cacheKey, resized);
+            return resized;
+        }
+    } catch (err) {
+        console.warn('[drag-icon] app.getFileIcon failed:', err.message);
+    }
+
+    // 4. Fallback.
+    return getFallbackDragIcon();
+}
+
+/**
+ * Инициирует нативный drag. Async, потому что иконку получаем
+ * асинхронно (app.getFileIcon + freedesktop lookup для .desktop).
+ */
+export async function startNativeDrag(event, paths) {
+    if (!Array.isArray(paths) || paths.length === 0) return;
+    if (!event?.sender) return;
+
+    try {
+        // Проверяем, папка ли это — влияет на выбор размера иконки.
+        let isDir = false;
+        try {
+            const s = await stat(paths[0]);
+            isDir = s.isDirectory();
+        } catch (_) { }
+
+        // Иконка для drag-курсора. Никогда не null — гарантировано fallback'ом.
+        let icon = null;
+        try {
+            icon = await getDragIconForPath(paths[0], isDir);
+        } catch (err) {
+            console.warn('[fs:start-drag] icon resolution error:', err.message);
+        }
+        if (!icon || icon.isEmpty()) icon = getFallbackDragIcon();
+        if (!icon || icon.isEmpty()) {
+            console.warn('[fs:start-drag] no icon available, aborting');
+            return;
+        }
+
+        const payload = { icon };
+        if (paths.length === 1) payload.file = paths[0];
+        else payload.files = paths;   // Linux-only множественный drag
+
+        event.sender.startDrag(payload);
+    } catch (err) {
+        console.error('[fs:start-drag]', err);
+    }
+}
+
+/* ================================================================== */
+/* Иконки — freedesktop lookup                                          */
+/* ================================================================== */
+
+const themeIndexCache = new Map();
+const iconLookupCache = new Map();
+const iconByNameCache = new Map();
 
 let themePromise = null;
 let themeTimestamp = 0;
@@ -570,10 +798,6 @@ async function readDesktopIconName(desktopPath) {
     }
 }
 
-/**
- * Получает иконку файла. Возвращает { success, fileUrl }.
- * fileUrl — либо file:// URL иконки из темы, либо data URL из Electron-fallback.
- */
 async function getFileIcon(filePath) {
     try {
         if (filePath.endsWith('.desktop')) {
@@ -593,15 +817,12 @@ async function getFileIcon(filePath) {
                     }
                 } else {
                     await yieldToEventLoop();
-
                     const themeName = await getCurrentIconTheme();
                     let iconPath = await findBestIconInTheme(iconName, themeName);
-
                     if (!iconPath) {
                         iconPath = await findIconInSteamDirs(iconName);
                         if (iconPath) console.log('[icon] found in Steam dir:', iconPath);
                     }
-
                     if (iconPath) {
                         const fileUrl = toFileUrl(iconPath);
                         if (fileUrl) {
@@ -615,8 +836,6 @@ async function getFileIcon(filePath) {
                 }
             }
 
-            // Fallback — Electron. Возвращаем dataUrl (единственный вариант
-            // из NativeImage, но это редкий путь).
             await yieldToEventLoop();
             try {
                 const icon = await app.getFileIcon(filePath, { size: 'large' });
@@ -630,7 +849,6 @@ async function getFileIcon(filePath) {
             return { success: false };
         }
 
-        // Обычные файлы — Electron вернёт NativeImage, отдаём как dataUrl
         try {
             const icon = await app.getFileIcon(filePath, { size: 'large' });
             if (icon && !icon.isEmpty()) {
@@ -644,9 +862,9 @@ async function getFileIcon(filePath) {
     }
 }
 
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 /* MIME-тип и приложения                                                */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
 
 async function getMimeType(filePath) {
     try {
@@ -762,14 +980,14 @@ export async function createFromTemplate(dir, templatePath, name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Контекст для нативного меню: рендер сообщает нам, куда кликнули     */
+/* Pending-контекст для нативного меню                                  */
 /* ------------------------------------------------------------------ */
 
-const pendingFileContexts = new Map();  // wcId → { kind, paths, timestamp }
+const pendingFileContexts = new Map();
 const CONTEXT_TTL_MS = 800;
 
 ipcMain.on('fs:context-paths', (event, payload) => {
-    if (!payload) return;
+    if (!payload || typeof payload !== 'object') return;
     pendingFileContexts.set(event.sender.id, {
         kind: payload.kind || 'files',
         paths: Array.isArray(payload.paths) ? payload.paths : [],
@@ -777,10 +995,6 @@ ipcMain.on('fs:context-paths', (event, payload) => {
     });
 });
 
-/**
- * Забирает (и удаляет) pending-контекст для указанного webContents.
- * Если прошло больше 800 мс — считаем устаревшим.
- */
 export function consumePendingFileContext(wcId) {
     const entry = pendingFileContexts.get(wcId);
     if (!entry) return null;
@@ -789,7 +1003,50 @@ export function consumePendingFileContext(wcId) {
     return entry;
 }
 
-export { openPath, revealPath, trashPath, deletePath, renamePath, getAppsForFile };
+/* ================================================================== */
+/* Drop из внешнего источника                                          */
+/* ================================================================== */
+
+export async function dropPaths(srcPaths, destDir, isMove) {
+    if (!Array.isArray(srcPaths) || srcPaths.length === 0) {
+        return { success: false, error: 'no_src' };
+    }
+    if (!destDir) return { success: false, error: 'no_dest' };
+
+    const results = [];
+    for (const src of srcPaths) {
+        if (path.dirname(src) === destDir) {
+            results.push({ src, ok: false, error: 'same_dir' });
+            continue;
+        }
+        const dest = path.join(destDir, path.basename(src));
+        try {
+            if (isMove) {
+                try {
+                    await fsRename(src, dest);
+                } catch (err) {
+                    if (err.code === 'EXDEV') {
+                        // Кросс-девайс — копируем и удаляем
+                        await cp(src, dest, { recursive: true });
+                        await rm(src, { recursive: true, force: true });
+                    } else {
+                        throw err;
+                    }
+                }
+            } else {
+                await cp(src, dest, { recursive: true });
+            }
+            results.push({ src, dest, ok: true });
+        } catch (err) {
+            results.push({ src, dest, ok: false, error: err.message });
+        }
+    }
+    return { success: true, results };
+}
+
+/* ------------------------------------------------------------------ */
+/* IPC                                                                  */
+/* ------------------------------------------------------------------ */
 
 export default function () {
     ipcMain.handle('fs:get-user-dirs', () => getUserDirs());
@@ -803,6 +1060,16 @@ export default function () {
     ipcMain.handle('fs:delete', (_e, { path: p }) => deletePath(p));
     ipcMain.handle('fs:rename', (_e, { path: p, newName }) => renamePath(p, newName));
 
+    ipcMain.handle('fs:copy', (_e, { paths }) => copyFiles(paths));
+    ipcMain.handle('fs:cut', (_e, { paths }) => cutFiles(paths));
+    ipcMain.handle('fs:paste', (_e, { dir }) => pasteFiles(dir));
+    ipcMain.handle('fs:get-cut', () => getCutPaths());
+    ipcMain.handle('fs:clear-cut', () => clearCut());
+
+    ipcMain.on('fs:start-drag', (event, { paths }) => startNativeDrag(event, paths));
+    ipcMain.handle('fs:drop-paths', (_e, { srcPaths, destDir, isMove }) =>
+        dropPaths(srcPaths, destDir, isMove));
+
     ipcMain.handle('fs:get-apps-for-file', (_e, { path: p }) => getAppsForFile(p));
     ipcMain.handle('fs:open-with', (_e, { path: p, desktopId }) => openWith(p, desktopId));
 
@@ -814,7 +1081,4 @@ export default function () {
     ipcMain.handle('fs:create-file', (_e, { dir, name }) => createFile(dir, name));
     ipcMain.handle('fs:create-from-template', (_e, { dir, templatePath, name }) =>
         createFromTemplate(dir, templatePath, name));
-    ipcMain.handle('fs:copy', (_e, { paths }) => copyFiles(paths));
-    ipcMain.handle('fs:cut', (_e, { paths }) => cutFiles(paths));
-    ipcMain.handle('fs:paste', (_e, { dir }) => pasteFiles(dir));
 }
