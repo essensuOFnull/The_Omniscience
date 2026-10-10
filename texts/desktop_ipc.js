@@ -84,6 +84,8 @@
 					} catch (_) { }
 					return file?.path || null;
 				},
+				writeDroppedFiles: (files, destDir) =>
+					ipcRenderer.invoke('fs:write-dropped-files', { files, destDir }),
 			});
 		} catch (err) {
 			console.error('[preload] contextBridge failed:', err);

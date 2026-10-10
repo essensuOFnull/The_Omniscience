@@ -71,7 +71,7 @@ function buildFilesBlock(wc, ctx) {
   const items = [];
   items.push({ type: 'separator' });
 
-  /* --- ПКМ на пустом месте --- */
+  /* ============ ПКМ на пустом месте рабочего стола ============ */
   if (kind === 'background') {
     const dir = paths[0];
     items.push({ label: 'Рабочий стол', enabled: false });
@@ -124,23 +124,29 @@ function buildFilesBlock(wc, ctx) {
       label: 'Обновить',
       click: () => wc.send('fs:request-reload', { dir }),
     });
+    items.push({
+      label: 'Показать в файловом менеджере',
+      click: () => fsRevealPath(dir),
+    });
     return items;
   }
 
-  /* --- ПКМ по файлам --- */
+  /* ============ ПКМ по файлам ============ */
   const n = paths.length;
   const onlyOne = n === 1;
+  const firstDir = path.dirname(paths[0]);
 
   items.push({
     label: onlyOne ? 'Файл' : `Выделено файлов: ${n}`,
     enabled: false,
   });
 
+  /* --- Открытие --- */
   items.push({
     label: onlyOne ? 'Открыть' : `Открыть все (${n})`,
     click: async () => {
       for (const p of paths) {
-        try { await fsOpenPath(p); } catch (_) { }
+        try { await fsOpenPath(p); } catch (_) {}
       }
     },
   });
@@ -158,6 +164,7 @@ function buildFilesBlock(wc, ctx) {
 
   items.push({ type: 'separator' });
 
+  /* --- Работа с именами и путями --- */
   items.push({
     label: 'Переименовать',
     enabled: onlyOne,
@@ -186,6 +193,7 @@ function buildFilesBlock(wc, ctx) {
 
   items.push({ type: 'separator' });
 
+  /* --- Буфер обмена --- */
   items.push({
     label: 'Копировать',
     click: () => fsCopyFiles(paths),
@@ -194,6 +202,13 @@ function buildFilesBlock(wc, ctx) {
     label: 'Вырезать',
     click: () => fsCutFiles(paths),
   });
+  items.push({
+    label: 'Вставить',
+    click: async () => {
+      const res = await fsPasteFiles(firstDir);
+      if (res?.success) wc.send('fs:request-reload', { dir: firstDir });
+    },
+  });
 
   const cut = getCutPaths();
   if (cut.length > 0) {
@@ -201,20 +216,21 @@ function buildFilesBlock(wc, ctx) {
       label: `Отменить вырезание (${cut.length})`,
       click: () => {
         clearCut();
-        wc.send('fs:request-reload', { dir: path.dirname(paths[0]) });
+        wc.send('fs:request-reload', { dir: firstDir });
       },
     });
   }
 
   items.push({ type: 'separator' });
 
+  /* --- Удаление --- */
   items.push({
     label: onlyOne ? 'Удалить в корзину' : `Удалить ${n} в корзину`,
     click: async () => {
       for (const p of paths) {
-        try { await fsTrashPath(p); } catch (_) { }
+        try { await fsTrashPath(p); } catch (_) {}
       }
-      wc.send('fs:request-reload', { dir: path.dirname(paths[0]) });
+      wc.send('fs:request-reload', { dir: firstDir });
     },
   });
 
@@ -233,9 +249,9 @@ function buildFilesBlock(wc, ctx) {
       });
       if (response !== 1) return;
       for (const p of paths) {
-        try { await fsDeletePath(p); } catch (_) { }
+        try { await fsDeletePath(p); } catch (_) {}
       }
-      wc.send('fs:request-reload', { dir: path.dirname(paths[0]) });
+      wc.send('fs:request-reload', { dir: firstDir });
     },
   });
 

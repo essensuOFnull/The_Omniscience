@@ -15,9 +15,9 @@ import { useSetting } from '../../settings/useSettings';
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_BRUSH_RADIUS = 55;
-const MIN_BRUSH_RADIUS     = 15;
-const WHEEL_SENSITIVITY    = 0.15;
-const STORAGE_KEY          = 'fileview.brushRadius';
+const MIN_BRUSH_RADIUS = 15;
+const WHEEL_SENSITIVITY = 0.15;
+const STORAGE_KEY = 'fileview.brushRadius';
 const RADIUS_SPRING = { stiffness: 260, damping: 26, mass: 0.5 };
 const AUTOPLAY_VIDEO_LIMIT = 12;
 
@@ -78,7 +78,7 @@ function MediaThumb({ file, autoPlayVideo }) {
                 onError={() => setFailed(true)}
                 style={{
                     width: '100%', height: '100%', objectFit: 'contain',
-                    borderRadius: 4, userSelect: 'none',
+                    borderRadius: 0, userSelect: 'none',
                 }}
             />
         );
@@ -94,7 +94,7 @@ function MediaThumb({ file, autoPlayVideo }) {
                 onError={() => setFailed(true)}
                 style={{
                     width: '100%', height: '100%', objectFit: 'cover',
-                    borderRadius: 4, background: '#000',
+                    borderRadius: 0, background: '#000',
                 }}
             />
         );
@@ -157,7 +157,7 @@ function FileItem({
             onDragStart={handleDragStart}
             sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
-                gap: 0.5, p: 1, borderRadius: 1,
+                gap: 0.5, p: 1, borderRadius: 0,
                 cursor: 'pointer', userSelect: 'none',
                 opacity: cut ? 0.45 : 1,
                 bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
@@ -173,7 +173,7 @@ function FileItem({
                 sx={{
                     width: '100%', height: 56,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    borderRadius: 1, overflow: 'hidden', position: 'relative',
+                    borderRadius: 0, overflow: 'hidden', position: 'relative',
                     bgcolor: hasMedia ? 'rgba(0,0,0,0.35)' : 'transparent',
                     pointerEvents: 'none',
                 }}
@@ -257,7 +257,7 @@ function FileListRow({
             sx={{
                 display: 'flex', alignItems: 'center', gap: 1,
                 px: 1, py: 0.5,
-                cursor: 'pointer', userSelect: 'none', borderRadius: 0.5,
+                cursor: 'pointer', userSelect: 'none', borderRadius: 0,
                 opacity: cut ? 0.45 : 1,
                 bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
                 '&:hover': {
@@ -270,7 +270,7 @@ function FileListRow({
                 sx={{
                     width: 24, height: 24,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    overflow: 'hidden', borderRadius: 0.5,
+                    overflow: 'hidden', borderRadius: 0,
                     pointerEvents: 'none',
                 }}
             >
@@ -334,7 +334,7 @@ function FileViewInner({ basePath }) {
     const brushY = useMotionValue(0);
 
     const brushLeft = useTransform([brushX, radiusSpring], ([x, r]) => x - r);
-    const brushTop  = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
+    const brushTop = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
     const brushSize = useTransform(radiusSpring, (r) => r * 2);
 
     /* --- Refs --- */
@@ -369,7 +369,7 @@ function FileViewInner({ basePath }) {
                 const arr = Array.isArray(res) ? res : (res?.paths || []);
                 setCutPaths(new Set(arr));
             })
-            .catch(() => {});
+            .catch(() => { });
 
         const off = api.on?.('fs:cut-changed', (payload) => {
             const arr = Array.isArray(payload?.paths) ? payload.paths : [];
@@ -496,40 +496,68 @@ function FileViewInner({ basePath }) {
         setDragOver(false);
 
         const api = window.electron_desktop_API;
-        if (!api?.dropPaths) return;
+        if (!api) { console.warn('[drop] no api'); return; }
 
-        const srcPaths = new Set();
+        const dt = e.dataTransfer;
+        console.log('[drop] ===== DROP =====');
+        console.log('[drop] effectAllowed:', dt.effectAllowed);
+        console.log('[drop] types:', Array.from(dt.types || []));
+        console.log('[drop] items.length:', dt.items?.length ?? 0);
+        console.log('[drop] files.length:', dt.files?.length ?? 0);
 
-        // 1. Внешние источники (Dolphin, Nautilus, Telegram) — через File API
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            for (const f of Array.from(e.dataTransfer.files)) {
-                try {
-                    const p = api.getPathForFile ? api.getPathForFile(f) : (f.path || '');
-                    if (p && typeof p === 'string') srcPaths.add(p);
-                } catch (_) {}
+        const items = dt.items;
+        if (!items || items.length === 0) {
+            console.warn('[drop] no items — aborting');
+            return;
+        }
+
+        // КРИТИЧНО: getAsFileSystemHandle вызывается СИНХРОННО для всех items.
+        // DataTransferItemList инвалидируется после первого await — если ждать
+        // внутри цикла, второй вызов молча вернёт null.
+        const handlePromises = [];
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            console.log(`[drop] item[${i}]: kind=${it.kind}, type=${it.type}, hasFSA=${typeof it.getAsFileSystemHandle === 'function'}`);
+            if (it.kind !== 'file') continue;
+            if (typeof it.getAsFileSystemHandle !== 'function') continue;
+            try {
+                handlePromises.push(it.getAsFileSystemHandle());
+            } catch (err) {
+                console.error(`[drop] item[${i}] sync FSA call threw:`, err);
             }
         }
 
-        // 2. Внутренние источники (наши окна) — через text/uri-list
-        if (srcPaths.size === 0) {
-            let uriList = '';
-            try { uriList = e.dataTransfer.getData('text/uri-list') || ''; } catch (_) {}
-            if (uriList) {
-                for (const line of uriList.split(/\r?\n/)) {
-                    const s = line.trim();
-                    if (!s.startsWith('file://')) continue;
-                    try {
-                        const u = new URL(s);
-                        srcPaths.add(decodeURIComponent(u.pathname));
-                    } catch (_) {}
+        console.log('[drop] handle promises created:', handlePromises.length);
+
+        const inlineFiles = [];
+        for (let i = 0; i < handlePromises.length; i++) {
+            try {
+                const handle = await handlePromises[i];
+                console.log(`[drop] handle[${i}]:`, handle ? handle.kind : 'null');
+                if (!handle || handle.kind !== 'file') continue;
+
+                const file = await handle.getFile();
+                console.log(`[drop] file[${i}]: name="${file.name}", size=${file.size}, type="${file.type}"`);
+
+                const buf = await file.arrayBuffer();
+                console.log(`[drop] buffer[${i}]: ${buf.byteLength} bytes`);
+
+                if (buf.byteLength > 0) {
+                    inlineFiles.push({ name: file.name || '', data: new Uint8Array(buf) });
                 }
+            } catch (err) {
+                console.error(`[drop] handle[${i}] failed:`, err);
             }
         }
 
-        if (srcPaths.size === 0) return;
+        console.log('[drop] collected inline files:', inlineFiles.length);
+        if (inlineFiles.length === 0) {
+            console.warn('[drop] nothing to write — aborting');
+            return;
+        }
 
-        const isMove = !e.ctrlKey;
-        const res = await api.dropPaths([...srcPaths], currentPath, isMove);
+        const res = await api.writeDroppedFiles(inlineFiles, currentPath);
+        console.log('[drop] writeDroppedFiles result:', res);
         if (res?.success) reload();
     }, [currentPath, reload]);
 
@@ -581,11 +609,11 @@ function FileViewInner({ basePath }) {
                     if (hard) {
                         if (!window.confirm(`Удалить безвозвратно ${paths.length} объект(ов)?`)) return;
                         for (const p of paths) {
-                            try { await api.deletePath(p); } catch (_) {}
+                            try { await api.deletePath(p); } catch (_) { }
                         }
                     } else {
                         for (const p of paths) {
-                            try { await api.trashPath(p); } catch (_) {}
+                            try { await api.trashPath(p); } catch (_) { }
                         }
                     }
                     reload();
@@ -622,8 +650,8 @@ function FileViewInner({ basePath }) {
             }
         };
         const onKeyDown = (e) => applyShift(e);
-        const onKeyUp   = (e) => applyShift(e);
-        const onBlur    = () => {
+        const onKeyUp = (e) => applyShift(e);
+        const onBlur = () => {
             setShiftHeld(false);
             setBrushMode(null);
             brushRef.current = { mode: null, workingSet: null };
@@ -650,7 +678,7 @@ function FileViewInner({ basePath }) {
             const delta = -e.deltaY * WHEEL_SENSITIVITY;
             const next = Math.max(MIN_BRUSH_RADIUS, radiusTarget.get() + delta);
             radiusTarget.set(next);
-            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) {}
+            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) { }
         };
         document.addEventListener('wheel', onWheel, { passive: false });
         return () => document.removeEventListener('wheel', onWheel);
@@ -676,7 +704,7 @@ function FileViewInner({ basePath }) {
                 if (!el) return;
                 const rect = el.getBoundingClientRect();
                 const closestX = Math.max(rect.left, Math.min(x, rect.right));
-                const closestY = Math.max(rect.top,  Math.min(y, rect.bottom));
+                const closestY = Math.max(rect.top, Math.min(y, rect.bottom));
                 const dx = x - closestX;
                 const dy = y - closestY;
                 if (dx * dx + dy * dy <= r2) {
@@ -843,10 +871,13 @@ function FileViewInner({ basePath }) {
                     if (e.button === 0) containerRef.current?.focus?.();
                     handleContainerMouseDown(e);
                 }}
-                onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragOver(true);
+                }}
                 onDragOver={(e) => {
                     e.preventDefault();
-                    e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
+                    e.dataTransfer.dropEffect = 'copy';
                     if (!dragOver) setDragOver(true);
                 }}
                 onDragLeave={(e) => {

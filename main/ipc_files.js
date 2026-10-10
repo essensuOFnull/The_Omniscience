@@ -198,6 +198,15 @@ export async function openPath(filePath) {
 }
 
 export async function revealPath(filePath) {
+    // Разное поведение для папки и файла:
+    //   папка  → открыть саму папку
+    //   файл   → открыть родительскую (чтобы файл был виден в списке)
+    try {
+        const s = await stat(filePath);
+        if (s.isDirectory()) {
+            return openPath(filePath);
+        }
+    } catch (_) { /* файл не существует — падаем в fallback ниже */ }
     return openPath(path.dirname(filePath));
 }
 
@@ -233,6 +242,36 @@ export async function renamePath(oldPath, newName) {
 /* Буфер обмена: copy / cut / paste                                    */
 /* ================================================================== */
 
+/* ------------------------------------------------------------------ */
+/* Clipboard-обёртки: Electron 44+ сделал API async,                   */
+/* но мы хотим работать и в старой, и в новой версии.                   */
+/* ------------------------------------------------------------------ */
+
+async function clipboardReadText() {
+    const r = clipboard.readText();
+    return (r && typeof r.then === 'function') ? await r : r;
+}
+
+async function clipboardRead(format) {
+    const r = clipboard.read(format);
+    return (r && typeof r.then === 'function') ? await r : r;
+}
+
+async function clipboardAvailableFormats() {
+    const r = clipboard.availableFormats();
+    return (r && typeof r.then === 'function') ? await r : r;
+}
+
+async function clipboardWrite(data) {
+    const r = clipboard.write(data);
+    if (r && typeof r.then === 'function') await r;
+}
+
+async function clipboardWriteText(text) {
+    const r = clipboard.writeText(text);
+    if (r && typeof r.then === 'function') await r;
+}
+
 // Накопительный список вырезанных путей.
 let cutPaths = [];
 
@@ -248,7 +287,7 @@ function broadcastCutChanged() {
  * Пишем пути в clipboard так, чтобы понимали и файловые менеджеры
  * (text/uri-list), и обычные текстовые поля (text/plain).
  */
-function writeFileUrisToClipboard(paths) {
+async function writeFileUrisToClipboard(paths) {
     const uris = paths.map((p) => pathToFileURL(p).href);
     const uriList = uris.join('\r\n') + '\r\n';
     const plain = paths.join('\n');
@@ -256,7 +295,7 @@ function writeFileUrisToClipboard(paths) {
     // Electron 32+ использует класс ClipboardItem, а не plain-object.
     try {
         if (typeof ClipboardItem === 'function') {
-            clipboard.write([
+            await clipboardWrite([
                 new ClipboardItem({
                     'text/uri-list': uriList,
                     'text/plain': plain,
@@ -271,7 +310,7 @@ function writeFileUrisToClipboard(paths) {
     // Fallback для старых Electron / экзотики: пишем как plain-text.
     // Dolphin/Telegram всё равно распознают file:// URL в тексте.
     try {
-        clipboard.writeText(uriList);
+        await clipboardWriteText(uriList);
         return true;
     } catch (_) { return false; }
 }
@@ -280,7 +319,7 @@ export async function copyFiles(paths) {
     if (!Array.isArray(paths) || paths.length === 0) {
         return { success: false, error: 'no_paths' };
     }
-    if (!writeFileUrisToClipboard(paths)) {
+    if (!await writeFileUrisToClipboard(paths)) {
         return { success: false, error: 'clipboard_write_failed' };
     }
     cutPaths = [];
@@ -292,7 +331,7 @@ export async function cutFiles(paths) {
     if (!Array.isArray(paths) || paths.length === 0) {
         return { success: false, error: 'no_paths' };
     }
-    if (!writeFileUrisToClipboard(paths)) {
+    if (!await writeFileUrisToClipboard(paths)) {
         return { success: false, error: 'clipboard_write_failed' };
     }
     // Накопление без дубликатов
@@ -313,34 +352,64 @@ export function getCutPaths() {
     return [...cutPaths];
 }
 
-function readClipboardPaths() {
+async function readClipboardPaths() {
+    // Что вообще лежит в буфере — сразу увидим
+    let formats = [];
+    try { formats = await clipboardAvailableFormats(); } catch (_) { }
+    console.log('[paste] available formats:', formats);
+
     let text = '';
+
+    // 1. Явно читаем text/uri-list — стандартный MIME для файлов
     try {
-        const raw = clipboard.readText();
-        if (typeof raw === 'string') text = raw;
-        else if (raw != null) text = String(raw);
-    } catch (_) { return []; }
-
-    if (!text) return [];
-    const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-
-    const uris = lines.filter((s) => s.startsWith('file://'));
-    if (uris.length > 0) {
-        return uris
-            .map((u) => { try { return fileURLToPath(u); } catch { return null; } })
-            .filter(Boolean);
+        const uriList = await clipboardRead('text/uri-list');
+        console.log('[paste] read("text/uri-list") =', JSON.stringify(uriList).slice(0, 300));
+        if (typeof uriList === 'string' && uriList.trim()) text = uriList;
+    } catch (err) {
+        console.log('[paste] read("text/uri-list") failed:', err.message);
     }
 
-    const abs = lines.filter((s) => path.isAbsolute(s));
-    if (abs.length === lines.length && lines.length > 0) return abs;
+    // 2. Fallback — text/plain
+    if (!text) {
+        try {
+            const raw = await clipboardReadText();
+            console.log('[paste] readText() =', JSON.stringify(raw).slice(0, 300));
+            if (typeof raw === 'string') text = raw;
+            else if (raw != null) text = String(raw);
+        } catch (_) { return []; }
+    }
 
+    console.log('[paste] text to parse:', JSON.stringify(text).slice(0, 500));
+    if (!text) return [];
+
+    const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    console.log('[paste] lines:', lines);
+
+    // file:// URL
+    const uris = lines.filter((s) => s.startsWith('file://'));
+    if (uris.length > 0) {
+        const paths = uris
+            .map((u) => { try { return fileURLToPath(u); } catch { return null; } })
+            .filter(Boolean);
+        console.log('[paste] parsed from uris:', paths);
+        return paths;
+    }
+
+    // Абсолютные пути (наш fallback при записи plain-text)
+    const abs = lines.filter((s) => path.isAbsolute(s));
+    if (abs.length === lines.length && lines.length > 0) {
+        console.log('[paste] parsed from abs:', abs);
+        return abs;
+    }
+
+    console.log('[paste] nothing parsed');
     return [];
 }
 
 export async function pasteFiles(destDir) {
     if (!destDir) return { success: false, error: 'no_dest' };
 
-    const srcPaths = readClipboardPaths();
+    const srcPaths = await readClipboardPaths();
     if (srcPaths.length === 0) return { success: false, error: 'empty_clipboard' };
 
     const isCut = cutPaths.length > 0
@@ -1044,6 +1113,59 @@ export async function dropPaths(srcPaths, destDir, isMove) {
     return { success: true, results };
 }
 
+/* ================================================================== */
+/* Запись dropped-файлов без пути на диске (Telegram, браузеры)        */
+/* ================================================================== */
+
+export async function writeDroppedFiles(files, destDir) {
+    if (!Array.isArray(files) || files.length === 0) {
+        return { success: false, error: 'no_files' };
+    }
+    if (!destDir) return { success: false, error: 'no_dest' };
+
+    const results = [];
+    for (const f of files) {
+        try {
+            // Имя: берём из File, при пустоте — UUID-фоллбэк
+            let name = (f.name || '').trim();
+            if (!name) {
+                const uuid = (globalThis.crypto?.randomUUID?.()
+                    || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+                name = `dropped-${uuid}.bin`;
+            }
+            // Санитайз имени от разделителей пути и опасных символов
+            name = name.replace(/[\/\\<>:"|?*\x00-\x1f]/g, '_');
+
+            // Уникализация при коллизии
+            let dest = path.join(destDir, name);
+            let counter = 1;
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                try {
+                    await access(dest);
+                } catch (_) {
+                    break;   // файла нет — можно писать
+                }
+                const ext = path.extname(name);
+                const base = path.basename(name, ext);
+                dest = path.join(destDir, `${base} (${counter})${ext}`);
+                counter++;
+            }
+
+            // Нормализуем data в Buffer
+            const data = f.data instanceof Uint8Array
+                ? Buffer.from(f.data)
+                : Buffer.from(f.data || []);
+
+            await writeFile(dest, data);
+            results.push({ dest, ok: true });
+        } catch (err) {
+            results.push({ ok: false, error: err.message });
+        }
+    }
+    return { success: true, results };
+}
+
 /* ------------------------------------------------------------------ */
 /* IPC                                                                  */
 /* ------------------------------------------------------------------ */
@@ -1081,4 +1203,6 @@ export default function () {
     ipcMain.handle('fs:create-file', (_e, { dir, name }) => createFile(dir, name));
     ipcMain.handle('fs:create-from-template', (_e, { dir, templatePath, name }) =>
         createFromTemplate(dir, templatePath, name));
+    ipcMain.handle('fs:write-dropped-files', (_e, { files, destDir }) =>
+        writeDroppedFiles(files, destDir));
 }
