@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Omni Theme",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Глобальная тема The Omniscience через CSS-цветовую арифметику",
   "permissions": ["storage"],
   "action": {

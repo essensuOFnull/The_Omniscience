@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8" />
   <title>Omni Theme</title>
@@ -13,12 +14,18 @@
       background: #1a001a;
       color: #fff;
     }
+
     h3 {
       margin: 0 0 12px;
       font-size: 14px;
       color: #a855f7;
     }
-    label { display: block; margin-bottom: 10px; }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+    }
+
     .label-row {
       display: flex;
       justify-content: space-between;
@@ -27,7 +34,12 @@
       color: #ccc;
       font-size: 12px;
     }
-    input[type="range"] { width: 100%; accent-color: #a855f7; }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: #a855f7;
+    }
+
     input[type="number"] {
       width: 60px;
       background: #2a002a;
@@ -37,6 +49,7 @@
       border-radius: 3px;
       font-size: 12px;
     }
+
     .toggle {
       display: flex;
       align-items: center;
@@ -45,7 +58,11 @@
       padding-bottom: 10px;
       border-bottom: 1px solid #50005099;
     }
-    .toggle input { accent-color: #a855f7; }
+
+    .toggle input {
+      accent-color: #a855f7;
+    }
+
     .hint {
       margin-top: 10px;
       padding-top: 10px;
@@ -54,8 +71,31 @@
       font-size: 11px;
       line-height: 1.4;
     }
+
+    input[type="color"] {
+      width: 100%;
+      height: 30px;
+      padding: 2px;
+      border: 1px solid #50005099;
+      border-radius: 3px;
+      background: #2a002a;
+      cursor: pointer;
+    }
+
+    input[type="text"] {
+      width: 80px;
+      background: #2a002a;
+      border: 1px solid #50005099;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      text-transform: lowercase;
+    }
   </style>
 </head>
+
 <body>
   <h3>🎨 Omni Theme</h3>
 
@@ -104,6 +144,22 @@
     <input type="range" id="textBrightness" min="0" max="255" />
   </label>
 
+  <label>
+    <div class="label-row">
+      <span>Blur Shadow</span>
+      <input type="number" id="blurShadow-num" min="0" max="30" step="0.5" />
+    </div>
+    <input type="range" id="blurShadow" min="0" max="30" step="0.5" />
+  </label>
+
+  <label>
+    <div class="label-row">
+      <span>Shadow Color</span>
+      <input type="text" id="shadowColor-hex" maxlength="7" spellcheck="false" />
+    </div>
+    <input type="color" id="shadowColor" />
+  </label>
+
   <div class="hint">
     Настройки применяются мгновенно во всех открытых вкладках.
     Отключение темы действует после перезагрузки страницы.
@@ -111,4 +167,5 @@
 
   <script src="popup.js"></script>
 </body>
+
 </html>

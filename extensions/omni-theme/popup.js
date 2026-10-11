@@ -1,7 +1,3 @@
-/* ------------------------------------------------------------------ */
-/* Дефолты и поля                                                      */
-/* ------------------------------------------------------------------ */
-
 const DEFAULTS = {
   enabled: true,
   maxR: 128,
@@ -9,11 +5,12 @@ const DEFAULTS = {
   maxB: 128,
   targetAlpha: 0.25,
   textBrightness: 255,
+  blurShadow: 8,
+  shadowColor: '#ff00ff',
 };
 
-const FIELDS = ['maxR', 'maxG', 'maxB', 'targetAlpha', 'textBrightness'];
+const FIELDS = ['maxR', 'maxG', 'maxB', 'targetAlpha', 'textBrightness', 'blurShadow'];
 
-// Соответствие наших полей и путей в state Omniscience
 const FIELD_TO_OMNI_PATH = {
   enabled: 'themeEnabled',
   maxR: 'themeColors.maxR',
@@ -21,11 +18,16 @@ const FIELD_TO_OMNI_PATH = {
   maxB: 'themeColors.maxB',
   targetAlpha: 'themeColors.targetAlpha',
   textBrightness: 'themeColors.textBrightness',
+  blurShadow: 'themeColors.blurShadow',
+  shadowColor: 'themeColors.shadowColor',
 };
 
-/* ------------------------------------------------------------------ */
-/* UI                                                                  */
-/* ------------------------------------------------------------------ */
+function normalizeHex(v) {
+  if (typeof v !== 'string') return null;
+  let s = v.trim().toLowerCase();
+  if (s && s[0] !== '#') s = '#' + s;
+  return /^#[a-f0-9]{6}$/.test(s) ? s : null;
+}
 
 function applySettings(s) {
   const enabledEl = document.getElementById('enabled');
@@ -37,11 +39,13 @@ function applySettings(s) {
     if (slider) slider.value = s[f];
     if (num) num.value = s[f];
   }
-}
 
-/* ------------------------------------------------------------------ */
-/* Chrome storage                                                      */
-/* ------------------------------------------------------------------ */
+  const color = normalizeHex(s.shadowColor) || DEFAULTS.shadowColor;
+  const colorPicker = document.getElementById('shadowColor');
+  const colorHex = document.getElementById('shadowColor-hex');
+  if (colorPicker) colorPicker.value = color;
+  if (colorHex) colorHex.value = color;
+}
 
 function readFromChromeStorage() {
   return new Promise((resolve) => {
@@ -50,12 +54,8 @@ function readFromChromeStorage() {
       const timer = setTimeout(() => resolve(null), 300);
       chrome.storage.local.get(DEFAULTS, (s) => {
         clearTimeout(timer);
-        // В настоящем Chrome s — всегда объект. В нашем Electron — undefined.
-        if (s && typeof s === 'object') {
-          resolve(s);
-        } else {
-          resolve(null);
-        }
+        if (s && typeof s === 'object') resolve(s);
+        else resolve(null);
       });
     } catch (_) {
       resolve(null);
@@ -65,15 +65,9 @@ function readFromChromeStorage() {
 
 function writeToChromeStorage(patch) {
   try {
-    if (chrome?.storage?.local?.set) {
-      chrome.storage.local.set(patch);
-    }
+    if (chrome?.storage?.local?.set) chrome.storage.local.set(patch);
   } catch (_) {}
 }
-
-/* ------------------------------------------------------------------ */
-/* Omniscience bridge                                                  */
-/* ------------------------------------------------------------------ */
 
 function hasOmniBridge() {
   return typeof window !== 'undefined'
@@ -86,7 +80,6 @@ function readFromOmni() {
     const viewApi = window.electron_view_API;
     if (!viewApi?.subscribe || !viewApi?.onStateUpdate) return resolve(null);
 
-    // Обратное сопоставление path → field
     const pathToField = {};
     for (const [field, path] of Object.entries(FIELD_TO_OMNI_PATH)) {
       pathToField['settings.' + path] = field;
@@ -125,19 +118,13 @@ function writeToOmni(field, value) {
   viewApi.dispatch('updateSetting', { path, value });
 }
 
-/* ------------------------------------------------------------------ */
-/* Универсальные load/save                                             */
-/* ------------------------------------------------------------------ */
-
 async function load() {
-  // 1. Chrome storage — primary (реальный Chrome)
   const fromChrome = await readFromChromeStorage();
   if (fromChrome) {
     applySettings({ ...DEFAULTS, ...fromChrome });
     return;
   }
 
-  // 2. Omni bridge — fallback (наш Electron)
   if (hasOmniBridge()) {
     const fromOmni = await readFromOmni();
     if (fromOmni) {
@@ -146,19 +133,13 @@ async function load() {
     }
   }
 
-  // 3. Совсем ничего — дефолты
   applySettings(DEFAULTS);
 }
 
 function save(field, value) {
-  // Пишем в оба места сразу — какое сработает, то и сработает.
   writeToChromeStorage({ [field]: value });
   writeToOmni(field, value);
 }
-
-/* ------------------------------------------------------------------ */
-/* Events                                                              */
-/* ------------------------------------------------------------------ */
 
 document.getElementById('enabled').addEventListener('change', (e) => {
   save('enabled', e.target.checked);
@@ -182,5 +163,34 @@ for (const f of FIELDS) {
     save(f, v);
   });
 }
+
+/* ---- Shadow Color ---- */
+
+const colorPicker = document.getElementById('shadowColor');
+const colorHex = document.getElementById('shadowColor-hex');
+
+colorPicker?.addEventListener('input', (e) => {
+  const v = normalizeHex(e.target.value);
+  if (!v) return;
+  if (colorHex) colorHex.value = v;
+  save('shadowColor', v);
+});
+
+colorHex?.addEventListener('input', (e) => {
+  const v = normalizeHex(e.target.value);
+  if (!v) return;
+  if (colorPicker) colorPicker.value = v;
+  save('shadowColor', v);
+});
+
+// Если юзер ввёл что-то кривое в hex и ушёл с поля — сбросим к последнему валидному.
+colorHex?.addEventListener('blur', (e) => {
+  const v = normalizeHex(e.target.value);
+  if (!v) {
+    e.target.value = colorPicker?.value || DEFAULTS.shadowColor;
+  } else {
+    e.target.value = v;
+  }
+});
 
 load();

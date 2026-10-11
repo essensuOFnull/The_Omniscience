@@ -6,11 +6,6 @@
 
   /* ================================================================== */
   /*  НАСТРОЙКИ                                                          */
-  /*                                                                     */
-  /*  Этот файл работает в MAIN-мире (world: "MAIN") и не имеет         */
-  /*  доступа к chrome.* API. Настройки читаются синхронно из           */
-  /*  localStorage, куда их кладёт bridge.js. Обновления прилетают      */
-  /*  через CustomEvent '__omni_settings_updated__'.                    */
   /* ================================================================== */
 
   const DEFAULTS = {
@@ -20,6 +15,8 @@
     maxB: 128,
     targetAlpha: 0.25,
     textBrightness: 255,
+    blurShadow: 8,
+    shadowColor: '#ff00ff',
   };
 
   const SETTINGS_KEY = '__omni_settings__';
@@ -40,22 +37,52 @@
   }
 
   /* ================================================================== */
-  /*  УСТАНОВКА ЗНАЧЕНИЙ ПЕРЕМЕННЫХ НА :root                             */
+  /*  HEX → RGB                                                          */
+  /* ================================================================== */
+
+  function hexToRgb(hex) {
+    const m = /^#?([a-fA-F0-9]{6})$/.exec(hex || '');
+    if (!m) return { r: 0, g: 229, b: 255 }; // fallback cyan
+    const n = parseInt(m[1], 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+
+  /* ================================================================== */
+  /*  ПЕРЕМЕННЫЕ НА :root                                                */
+  /*                                                                     */
+  /*  --TheOmniscience-blur-shadow собирается из ДВУХ настроек:           */
+  /*  blurShadow (радиус) и shadowColor (цвет). Меняешь любой слайдер    */
+  /*  в попапе — applyVariables пересобирает строку, все элементы         */
+  /*  мгновенно подхватывают новую через var(...).                        */
   /* ================================================================== */
 
   function applyVariables() {
     const root = document.documentElement;
     if (!root) return;
+
     root.style.setProperty('--TheOmniscience-max-r', String(settings.maxR));
     root.style.setProperty('--TheOmniscience-max-g', String(settings.maxG));
     root.style.setProperty('--TheOmniscience-max-b', String(settings.maxB));
     root.style.setProperty('--TheOmniscience-target-alpha', String(settings.targetAlpha));
     root.style.setProperty('--TheOmniscience-text-brightness', String(settings.textBrightness));
+
+    const b = settings.blurShadow;
+    const { r, g, b: bb } = hexToRgb(settings.shadowColor);
+
+    root.style.setProperty(
+      '--TheOmniscience-blur-shadow',
+      b > 0
+        ? `inset 0 0 ${(b * 2).toFixed(2)}px 0 rgba(${r}, ${g}, ${bb}, 0.35), `
+          + `inset 0 0 ${(b * 4).toFixed(2)}px 0 rgba(${r}, ${g}, ${bb}, 0.15)`
+        : 'none'
+    );
   }
 
   /* ================================================================== */
   /*  ЯДРО ФИЛЬТРА                                                        */
   /* ================================================================== */
+
+  const colorCache = new Map();
 
   function parseColorToRGB(color) {
     const parent = document.documentElement || document.body;
@@ -68,6 +95,13 @@
     temp.remove();
     const m = computed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
     return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 } : null;
+  }
+
+  function parseColorToRGBCached(color) {
+    if (colorCache.has(color)) return colorCache.get(color);
+    const result = parseColorToRGB(color);
+    colorCache.set(color, result);
+    return result;
   }
 
   function colorToString(rgb) {
@@ -108,6 +142,54 @@
     return false;
   }
 
+  function isFragileElement(el, cs) {
+    if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') return true;
+    const bgClip = cs.webkitBackgroundClip || cs.backgroundClip;
+    if (bgClip === 'text') return true;
+    const mbm = cs.mixBlendMode;
+    if (mbm && mbm !== 'normal') return true;
+    return false;
+  }
+
+  /* ================================================================== */
+  /*  ИЗМЕНИТ ЛИ ЧТО-ТО ФИЛЬТР?                                          */
+  /* ================================================================== */
+
+  function wouldFilterChange(rgba) {
+    if (!rgba || rgba.a === 0) return false;
+    const maxR = settings.maxR, maxG = settings.maxG, maxB = settings.maxB;
+    const r = rgba.r, g = rgba.g, b = rgba.b, a = rgba.a;
+
+    const minRr = Math.min(maxR, r);
+    const minGg = Math.min(maxG, g);
+    const minBb = Math.min(maxB, b);
+
+    const newR = Math.min(maxR, minRr + (g - minGg) / 2 + (b - minBb) / 2);
+    const newG = Math.min(maxG, minGg + (r - minRr) / 2 + (b - minBb) / 2);
+    const newB = Math.min(maxB, minBb + (r - minRr) / 2 + (g - minGg) / 2);
+    const newA = settings.targetAlpha;
+
+    return Math.abs(newR - r) > 0.5
+        || Math.abs(newG - g) > 0.5
+        || Math.abs(newB - b) > 0.5
+        || Math.abs(newA - a) > 0.01;
+  }
+
+  function gradientWouldChange(bgImage) {
+    const layers = splitLayers(bgImage);
+    const colorRegex = /(#[0-9a-fA-F]{3,8}\b|(rgb|hsl)a?\([^)]+\))/g;
+    for (const layer of layers) {
+      if (!layer.includes('-gradient(')) continue;
+      const matches = layer.match(colorRegex);
+      if (!matches) continue;
+      for (const m of matches) {
+        const rgb = parseColorToRGBCached(m);
+        if (rgb && wouldFilterChange(rgb)) return true;
+      }
+    }
+    return false;
+  }
+
   function colorExpression(varName) {
     return `rgba(from var(${varName}) `
       + `calc(min(var(--TheOmniscience-max-r), `
@@ -138,19 +220,30 @@
   }
 
   /* ================================================================== */
+  /*  BLUR-SHADOW (теперь в цвете темы)                                  */
+  /* ================================================================== */
+
+  function applyBlurShadow(el, cs) {
+    if (el._TheOmniscienceBlurShadow) return;
+    if (cs.boxShadow && cs.boxShadow !== 'none') return;
+    el.style.setProperty('box-shadow', 'var(--TheOmniscience-blur-shadow)', 'important');
+    el._TheOmniscienceBlurShadow = true;
+  }
+
+  function removeBlurShadow(el) {
+    if (el._TheOmniscienceBlurShadow) {
+      el.style.removeProperty('box-shadow');
+      el._TheOmniscienceBlurShadow = false;
+    }
+  }
+
+  /* ================================================================== */
   /*  СОСТОЯНИЕ                                                          */
   /* ================================================================== */
 
   const processed = new WeakSet();
   const textProcessed = new WeakSet();
   const lastWritten = new WeakMap();
-
-  /* Состояние отложенной переобработки на элемент.                       */
-  /*   { running, dirty, trans }                                         */
-  /*                                                                     */
-  /*   running — идёт ли сейчас двухкадровый swap;                       */
-  /*   dirty   — пришло ли новое изменение, пока swap шёл;               */
-  /*   trans   — сохранённый inline-transition для восстановления.       */
   const pendingReprocess = new WeakMap();
 
   /* ================================================================== */
@@ -164,15 +257,17 @@
     if (bi && bi.indexOf('--TheOmniscience') !== -1) el.style.removeProperty('background-image');
     const c = el.style.getPropertyValue('color');
     if (c && c.indexOf('--TheOmniscience') !== -1) el.style.removeProperty('color');
+    removeBlurShadow(el);
   }
 
   function readComputedColors(el) {
     void el.offsetWidth;
     const cs = getComputedStyle(el);
     return {
-      bgColor: cs.backgroundColor,
-      bgImage: cs.backgroundImage,
-      color:   cs.color,
+      bgColor:   cs.backgroundColor,
+      bgImage:   cs.backgroundImage,
+      color:     cs.color,
+      boxShadow: cs.boxShadow,
     };
   }
 
@@ -181,6 +276,7 @@
       bg: el.style.getPropertyValue('background-color'),
       bi: el.style.getPropertyValue('background-image'),
       c:  el.style.getPropertyValue('color'),
+      bs: el.style.getPropertyValue('box-shadow'),
     });
   }
 
@@ -189,7 +285,8 @@
     if (!last) return false;
     return last.bg === el.style.getPropertyValue('background-color')
         && last.bi === el.style.getPropertyValue('background-image')
-        && last.c  === el.style.getPropertyValue('color');
+        && last.c  === el.style.getPropertyValue('color')
+        && last.bs === el.style.getPropertyValue('box-shadow');
   }
 
   /* ================================================================== */
@@ -202,42 +299,62 @@
     processed.add(el);
 
     const cs = readComputedColors(el);
+
+    if (isFragileElement(el, cs)) {
+      recordWrite(el);
+      return;
+    }
+
     const bgImage = cs.bgImage;
     const bgColor = cs.bgColor;
     const hasGradient = bgImage && bgImage !== 'none' && bgImage.includes('-gradient(');
 
-    if (hasGradient) {
-      const layers = splitLayers(bgImage);
-      const newLayers = [];
-      const gradId = getGradId(el);
-      let colorIdx = 0;
-      const colorRegex = /(#[0-9a-fA-F]{3,8}\b|(rgb|hsl)a?\([^)]+\))/g;
+    let bgModified = false;
+    let modifiedWasGradient = false;
 
-      for (const layer of layers) {
-        if (layer.includes('-gradient(')) {
-          const newLayer = layer.replace(colorRegex, (match) => {
-            const varName = `--TheOmniscience-fg-${gradId}-${colorIdx}`;
-            const parsed = parseColorToRGB(match);
-            if (parsed) {
-              el.style.setProperty(varName, colorToString(parsed));
-            } else {
-              el.style.setProperty(varName, match);
-            }
-            colorIdx++;
-            return colorExpression(varName);
-          });
-          newLayers.push(newLayer);
-        } else {
-          newLayers.push(layer);
+    if (hasGradient) {
+      if (gradientWouldChange(bgImage)) {
+        const layers = splitLayers(bgImage);
+        const newLayers = [];
+        const gradId = getGradId(el);
+        let colorIdx = 0;
+        const colorRegex = /(#[0-9a-fA-F]{3,8}\b|(rgb|hsl)a?\([^)]+\))/g;
+
+        for (const layer of layers) {
+          if (layer.includes('-gradient(')) {
+            const newLayer = layer.replace(colorRegex, (match) => {
+              const varName = `--TheOmniscience-fg-${gradId}-${colorIdx}`;
+              const parsed = parseColorToRGBCached(match);
+              if (parsed) {
+                el.style.setProperty(varName, colorToString(parsed));
+              } else {
+                el.style.setProperty(varName, match);
+              }
+              colorIdx++;
+              return colorExpression(varName);
+            });
+            newLayers.push(newLayer);
+          } else {
+            newLayers.push(layer);
+          }
         }
+        el.style.setProperty('background-image', newLayers.join(', '), 'important');
+        bgModified = true;
+        modifiedWasGradient = true;
       }
-      el.style.setProperty('background-image', newLayers.join(', '), 'important');
     } else if (bgColor && bgColor !== 'transparent' && bgColor !== 'rgba(0, 0, 0, 0)') {
-      const rgb = parseColorToRGB(bgColor);
-      if (rgb && rgb.a > 0) {
+      const rgb = parseColorToRGBCached(bgColor);
+      if (rgb && rgb.a > 0 && wouldFilterChange(rgb)) {
         el.style.setProperty('--TheOmniscience-orig-bg', colorToString(rgb));
         el.style.setProperty('background-color', colorExpression('--TheOmniscience-orig-bg'), 'important');
+        bgModified = true;
       }
+    }
+
+    if (bgModified && !modifiedWasGradient) {
+      applyBlurShadow(el, cs);
+    } else {
+      removeBlurShadow(el);
     }
 
     processTextColor(el, cs.color);
@@ -274,23 +391,6 @@
 
   /* ================================================================== */
   /*  ПЕРЕОБРАБОТКА                                                      */
-  /*                                                                     */
-  /*  Двухфазный swap с защитой от потери событий:                        */
-  /*                                                                     */
-  /*    Кадр N:                                                          */
-  /*      • transition: none !important;                                 */
-  /*      • снять свои inline-оверрайды;                                 */
-  /*      • пересобрать фильтр;                                          */
-  /*                                                                     */
-  /*    Кадр N+1 (проверочный):                                          */
-  /*      • если во время N прилетело ещё изменение (dirty) —             */
-  /*        возвращаемся к кадру N и повторяем (transition по-прежнему    */
-  /*        выключен);                                                   */
-  /*      • если новых изменений нет — восстанавливаем transition.        */
-  /*                                                                     */
-  /*  Благодаря этому даже быстрая серия hover/click/ripple не теряется:  */
-  /*  элемент "дозревает" до спокойного состояния, и только потом         */
-  /*  транзишены возвращаются.                                           */
   /* ================================================================== */
 
   function scheduleReprocess(el) {
@@ -299,7 +399,6 @@
     let state = pendingReprocess.get(el);
 
     if (state && state.running) {
-      // Идёт swap — не теряем изменение, помечаем на доп.проход.
       state.dirty = true;
       return;
     }
@@ -311,8 +410,6 @@
       state.dirty = false;
     }
 
-    // Запоминаем исходный inline-transition один раз — чтобы восстановить
-    // ровно то, что было.
     if (state.trans === null) {
       state.trans = {
         v: el.style.getPropertyValue('transition'),
@@ -337,7 +434,6 @@
       textProcessed.delete(el);
       processElement(el);
 
-      // Проверочный кадр — «перестраховка на 1 кадр».
       requestAnimationFrame(() => {
         if (!el.isConnected) {
           pendingReprocess.delete(el);
@@ -345,14 +441,11 @@
         }
 
         if (state.dirty) {
-          // Пока мы работали, состояние снова поменялось —
-          // повторяем цикл, transition всё ещё выключен.
           state.dirty = false;
           runPass(el, state);
           return;
         }
 
-        // Состояние устоялось — возвращаем transition как было.
         if (state.trans.v) el.style.setProperty('transition', state.trans.v, state.trans.p);
         else el.style.removeProperty('transition');
 
@@ -364,7 +457,7 @@
   }
 
   /* ================================================================== */
-  /*  СТАРТ ОБРАБОТКИ                                                    */
+  /*  СТАРТ                                                              */
   /* ================================================================== */
 
   function startProcessing() {
@@ -393,14 +486,10 @@
       attributeFilter: ['style', 'class'],
     });
 
-    // :hover / :focus-visible / :active и им подобные не порождают
-    // DOM-мутаций — подписываемся напрямую.
     const onStateChange = (e) => {
       const t = e.target;
       if (!t || t.nodeType !== 1) return;
       scheduleReprocess(t);
-      // Ховер/фокус часто влияет и на ближайших предков
-      // (MUI любит `:hover .MuiXxx-root`, `.MuiXxx-root:hover .child` и т.п.).
       let p = t.parentElement, i = 0;
       while (p && i < 3) { scheduleReprocess(p); p = p.parentElement; i++; }
     };
@@ -412,10 +501,6 @@
     document.addEventListener('focusin',     onStateChange, true);
     document.addEventListener('focusout',    onStateChange, true);
   }
-
-  /* ================================================================== */
-  /*  ЗАПУСК                                                             */
-  /* ================================================================== */
 
   function start() {
     if (started) return;
@@ -431,13 +516,6 @@
     }
   }
 
-  /* ================================================================== */
-  /*  СИНХРОННЫЙ BOOT                                                    */
-  /*  К моменту первого paint'а тема уже применена: настройки читаются   */
-  /*  синхронно из localStorage (их туда положил bridge.js), никаких     */
-  /*  async-hop'ов.                                                      */
-  /* ================================================================== */
-
   function boot() {
     const stored = readSettingsSync();
     settings = Object.assign({}, DEFAULTS, stored || {});
@@ -446,8 +524,6 @@
     start();
   }
 
-  /* Подписки на обновления от bridge.js. CustomEvent долетает из        */
-  /* ISOLATED-мира в MAIN через общий DOM window.                        */
   window.addEventListener('__omni_settings_updated__', (e) => {
     const next = e && e.detail;
     if (!next) return;
@@ -457,8 +533,6 @@
     else applyVariables();
   });
 
-  /* documentElement уже есть при document_start в 99.9% случаев.        */
-  /* На всякий случай — короткий fallback на его появление.              */
   if (document.documentElement) {
     boot();
   } else {

@@ -48,7 +48,9 @@ LatencyPolicy=Low
 AllowTearing=true
 
 [Effect-blur]
-Enabled=false
+Enabled=true
+BlurStrength=10
+
 [Effect-shadow]
 Enabled=false
 [Effect-fade]
@@ -57,7 +59,7 @@ Enabled=false
 Enabled=false
 
 [Plugins]
-blurEnabled=false
+blurEnabled=true
 contrastEnabled=false
 kwin4_effect_dimscreenEnabled=false
 kwin4_effect_fadeEnabled=false
@@ -71,6 +73,7 @@ Number=1
 Rows=1
 EOF
 
+# Правила окон для /etc-конфига (используется сессией).
 sudo tee /etc/omniscience/kwinrulesrc > /dev/null << 'EOF'
 [General]
 count=1
@@ -84,9 +87,172 @@ fsplevel=0
 fsplevelrule=2
 EOF
 
+# Продублируем правило noborder в пользовательский конфиг KWin —
+# на случай, если сессия по какой-то причине запускает KWin с
+# ~/.config/kwinrc, а не с /etc/omniscience/kwinrc. Правило матчится
+# по WM_CLASS, чтобы не влиять на посторонние окна.
+mkdir -p "$HOME/.config"
+cat > "$HOME/.config/kwinrulesrc" << 'EOF'
+[General]
+count=1
+rules=1
+
+[1]
+Description=Omniscience no borders
+wmclass=the-omniscience
+wmclassmatch=1
+noborder=true
+noborderrule=2
+fsplevel=0
+fsplevelrule=2
+EOF
+
+# --- Размытие фона для окон Omniscience (X11 + KWin) ---
+#
+# Используем официальный механизм KDE: свойство _KDE_NET_WM_BLUR_BEHIND_REGION.
+# Если оно установлено на окно — KWin штатным эффектом Blur размывает
+# всё, что находится за этим окном. Именно так делают Konsole, Yakuake
+# и другие приложения KDE.
+#
+# Electron это свойство сам не ставит. Мы ставим его через xprop,
+# подписываясь на изменения списка окон (_NET_CLIENT_LIST) — без поллинга,
+# без фоновых циклов, без зависимостей. Работает по X11-событиям.
+#
+echo "📝 Настраиваю размытие фона для окон Omniscience..."
+
+# 1. Проверяем наличие xprop. xwininfo нам НЕ нужен.
+if ! command -v xprop >/dev/null 2>&1; then
+  echo "⚠️  xprop не найден. Установите пакет:"
+  echo "    Debian/Ubuntu: sudo apt install x11-utils"
+  echo "    Arch:          sudo pacman -S xorg-xprop"
+  echo "    Fedora:        sudo dnf install xprop"
+fi
+
+# 2. Helper — встраиваем в /usr/local/bin прямо отсюда.
+sudo tee /usr/local/bin/omniscience-blur > /dev/null << 'HELPER'
+#!/bin/bash
+# omniscience-blur — вешает _KDE_NET_WM_BLUR_BEHIND_REGION на окна
+# The_Omniscience. Работает на X11 через события (xprop -spy),
+# без поллинга и без KWin-скриптов.
+#
+# Логи в /tmp/omniscience-blur.log
+
+set -u
+
+PROP="_KDE_NET_WM_BLUR_BEHIND_REGION"
+
+# Список WM_CLASS-ов окон, которые нужно размывать.
+CLASSES="the-omniscience The_Omniscience Omniscience omniscience"
+
+LOG="/tmp/omniscience-blur.log"
+
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG"; }
+
+have_tools() {
+    command -v xprop >/dev/null 2>&1
+}
+
+set_blur() {
+    local wid="$1"
+    local current
+    current=$(xprop -id "$wid" "$PROP" 2>/dev/null) || return
+    case "$current" in
+        *"not found"*|"")
+            xprop -id "$wid" -f "$PROP" 32c -set "$PROP" 0 2>/dev/null \
+                && log "blur set on $wid"
+            ;;
+    esac
+}
+
+window_matches() {
+    local wid="$1"
+    local wm_class
+    wm_class=$(xprop -id "$wid" WM_CLASS 2>/dev/null) || return 1
+    for cls in $CLASSES; do
+        case "$wm_class" in
+            *"\"$cls\""*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+process_client_list() {
+    local list="$1"
+    local wid
+    for wid in ${list//,/ }; do
+        [ -z "$wid" ] && continue
+        if window_matches "$wid"; then
+            set_blur "$wid"
+        fi
+    done
+}
+
+main() {
+    : > "$LOG"
+    log "start; classes: $CLASSES"
+
+    if ! have_tools; then
+        log "ERROR: xprop missing"
+        exit 1
+    fi
+
+    local initial
+    initial=$(xprop -root _NET_CLIENT_LIST 2>/dev/null | sed 's/.*# //')
+    process_client_list "$initial"
+
+    xprop -root -spy _NET_CLIENT_LIST 2>/dev/null | while IFS= read -r line; do
+        local list
+        list="${line#*# }"
+        process_client_list "$list"
+    done
+}
+
+main
+HELPER
+
+sudo chmod +x /usr/local/bin/omniscience-blur
+
+# 3. Автозапуск helper'а через KDE autostart.
+cat > "$HOME/.config/autostart/omniscience-blur.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Omniscience Blur
+Comment=Размытие фона для окон приложения (X11 + KWin)
+Exec=/usr/local/bin/omniscience-blur
+Icon=preferences-system-windows-effect-blur
+Terminal=false
+X-KDE-autostart-after=kwin_x11
+EOF
+chmod 644 "$HOME/.config/autostart/omniscience-blur.desktop"
+
+# 4. Запускаем helper сейчас.
+if pgrep -f "/usr/local/bin/omniscience-blur" >/dev/null 2>&1; then
+  pkill -f "/usr/local/bin/omniscience-blur" || true
+  sleep 0.3
+fi
+nohup /usr/local/bin/omniscience-blur >/dev/null 2>&1 &
+disown
+
+echo "✅ Размытие настроено. Helper: /usr/local/bin/omniscience-blur"
+echo "   Лог: /tmp/omniscience-blur.log"
+
+# 5. Мягко просим KWin перечитать конфиг.
+#
+#    ВАЖНО: НЕ используем kwin_x11 --replace — он перезапускает KWin
+#    без аргумента --config, из-за чего подхватывается дефолтный
+#    пользовательский kwinrc с decorations, и рамки окон возвращаются.
+#    qdbus reconfigure перечитывает ТЕКУЩИЙ конфиг (тот, с которым KWin
+#    уже запущен) — безопасно и без побочных эффектов.
+if [ -n "${DISPLAY:-}" ]; then
+  echo "🔄 Прошу KWin перечитать конфиг..."
+  (qdbus org.kde.KWin /KWin reconfigure 2>/dev/null) \
+    || (dbus-send --type=method_call --dest=org.kde.KWin \
+           /KWin org.kde.KWin.reconfigure 2>/dev/null) \
+    || echo "⚠️  Не удалось перечитать конфиг KWin — изменения применятся после перезахода в сессию"
+fi
+
 # --- Раскладка через KDE (kxkbrc) ---
 echo "📝 Настраиваю раскладку через kxkbrc..."
-mkdir -p "$HOME/.config"
 cat > "$HOME/.config/kxkbrc" << 'EOF'
 [Layout]
 DisplayNames=
@@ -154,10 +320,6 @@ context.properties = {
 EOF
 
 # --- Автозагрузка KDE ---
-# Обе программы кладём в ~/.config/autostart — их видит и редактирует
-# systemsettings → Автозагрузка и завершение работы.
-# Запускает их наш сессионный скрипт (см. launch_autostart в omniscience-session.sh),
-# потому что без ksmserver стандартный KDE-автозапуск сам не сработает.
 echo "📝 Настраиваю автозагрузку (KDE autostart)..."
 mkdir -p "$HOME/.config/autostart"
 
@@ -182,7 +344,7 @@ if command -v curl >/dev/null 2>&1; then
     || echo "⚠️  Не удалось установить пресеты"
 fi
 
-# --- Сопутствующие скрипты: копируем в /usr/local/bin только если изменились ---
+# --- Сопутствующие скрипты ---
 for pair in \
   "scripts/omniscience-session.sh:/usr/local/bin/omniscience-session" \
   "scripts/install-shortcuts.sh:/usr/local/bin/install-shortcuts" ; do
@@ -201,8 +363,7 @@ for pair in \
   fi
 done
 
-# --- Конфигурация сочетаний клавиш (kglobalacceld) ---
-# Вызывается как часть установки сессии — отдельно запускать не нужно.
+# --- Конфигурация сочетаний клавиш ---
 if [ -x /usr/local/bin/install-shortcuts ]; then
   echo ""
   echo "⌨️  Конфигурирую сочетания клавиш..."
@@ -230,5 +391,10 @@ sudo chmod 644 /usr/share/xsessions/omniscience.desktop
 echo ""
 echo "✅ Готово! Сессия зарегистрирована."
 echo ""
-echo "📋 Лог сессии: /tmp/omniscience-session.log"
+echo "📋 Лог сессии:      /tmp/omniscience-session.log"
+echo "📋 Лог blur-helper: /tmp/omniscience-blur.log"
 echo "   Смотреть:  cat /tmp/omniscience-session.log"
+echo ""
+echo "ℹ️  Если эффект Blur или отсутствие рамок не видны сразу —"
+echo "    выйдите из сессии и зайдите снова. KWin подхватит"
+echo "    /etc/omniscience/kwinrc при следующем старте."
