@@ -1,0 +1,36 @@
+{
+  "name": "gtk-web-bridge",
+  "version": "0.1.0",
+  "description": "Bridge GTK render trees into React + MUI via Electron",
+  "main": "src/main/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "build": "vite build",
+    "start": "electron .",
+    "start:dist": "USE_DIST=1 electron ."
+  },
+  "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/icons-material": "^5.15.20",
+    "@mui/material": "^5.15.20",
+    "electron": "^44.7.1",
+    "node-gtk": "^4.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "vite": "^5.3.1",
+    "wait-on": "^7.2.0"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "scarf": true,
+    "node-gtk": true
+  }
+}
