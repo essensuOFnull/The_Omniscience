@@ -9,6 +9,8 @@ import { registerArkhScheme } from './main/arkh_protocol.js';
 import autoimport from './main/autoimport.js';
 import paths from './main/paths.js';
 
+import initGtkBridge from './gtk-bridge/main.mjs';
+
 // Регистрируем сразу. Тут нет await — управление не уходит,
 // ready ещё не испущен.
 registerArkhScheme();
@@ -27,5 +29,8 @@ registerArkhScheme();
   global.$.app_on_willQuit();
 
   await global.$.app_on_ready();
+
+  await initGtkBridge();
+  
   global.$.log('Приложение полностью запущено');
 })();

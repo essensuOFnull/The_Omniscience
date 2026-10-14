@@ -1,8 +1,9 @@
 // libgtk-hook.so — LD_PRELOAD-хук для перехвата GTK-окон.
-// - Length-prefixed framing: [uint32 LE длина][N байт JSON]
-// - Локаль-независимые числа через g_ascii_formatd
-// - Изображения: icon_name → gicon → paintable (property) → widget render → PNG data-URI
-// - Скрытие оригинального окна через opacity=0 (GTK_HOOK_HIDE=1)
+// Multi-window: каждое GtkWindow трекается отдельно, свой windowId.
+// Отправляет: window-added / frame / geometry / window-removed
+// Geometry берётся напрямую из X11 (XGetWindowAttributes + XTranslateCoordinates).
+// Изображения: icon_name → gicon → paintable → widget render → PNG data-URI
+// Length-prefixed framing: [uint32 LE длина][N байт JSON]
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -18,11 +19,21 @@
 #include <gtk/gtk.h>
 #include <graphene.h>
 
+#ifdef GDK_WINDOWING_X11
+#include <gdk/x11/gdkx.h>
+#include <X11/Xlib.h>
+#endif
+
+/* ---------- forward declarations --------------------------------------- */
+
+static gboolean emit_all_frames(gpointer data);
+
 /* ---------- flags -------------------------------------------------------- */
 
-static int g_debug         = 0;
-static int g_emit_calls    = 0;
-static int g_hide_original = 0;
+static int    g_debug         = 0;
+static int    g_emit_calls    = 0;
+static int    g_hide_original = 0;
+static double g_hide_opacity  = 0.01;
 
 /* ---------- socket ------------------------------------------------------- */
 
@@ -128,7 +139,6 @@ static void on_widget_destroyed(gpointer data, GObject *w) {
     }
 }
 
-// Рендерим произвольный виджет в GdkTexture через GtkWidgetPaintable
 static GdkTexture *render_widget_to_texture(GtkWidget *w, int w_px, int h_px) {
     if (w_px <= 0 || h_px <= 0) return NULL;
 
@@ -160,7 +170,6 @@ static GdkTexture *render_widget_to_texture(GtkWidget *w, int w_px, int h_px) {
     return tex;
 }
 
-// Кэш по (widget, size). Инвалидируется при удалении виджета.
 static const char *widget_uri_cached(GtkWidget *w, int w_px, int h_px) {
     if (!g_widget_uri_cache)
         g_widget_uri_cache = g_hash_table_new(g_direct_hash, g_direct_equal);
@@ -227,8 +236,6 @@ static char *icon_name_from_gicon(GIcon *gicon) {
 
 /* ---------- image-like detection ---------------------------------------- */
 
-// "image-like" = GtkImage ИЛИ любой кастомный виджет с "Image" в имени класса
-// (NautilusImage, NemoImage, CajaImage и т.п.)
 static gboolean widget_is_image_like(GtkWidget *w) {
     if (GTK_IS_IMAGE(w)) return TRUE;
     const char *name = G_OBJECT_TYPE_NAME(w);
@@ -236,7 +243,6 @@ static gboolean widget_is_image_like(GtkWidget *w) {
     return FALSE;
 }
 
-// Достать paintable через property "paintable" (работает для NautilusImage)
 static GdkPaintable *get_paintable_via_property(GtkWidget *w) {
     GObjectClass *klass = G_OBJECT_GET_CLASS(w);
     if (!klass) return NULL;
@@ -252,7 +258,6 @@ static GdkPaintable *get_paintable_via_property(GtkWidget *w) {
     return p;
 }
 
-// Painter → data-URI PNG
 static char *paintable_to_uri(GdkPaintable *p) {
     if (!p || !GDK_IS_TEXTURE(p)) return NULL;
     GBytes *bytes = gdk_texture_save_to_png_bytes(GDK_TEXTURE(p));
@@ -266,22 +271,13 @@ static char *paintable_to_uri(GdkPaintable *p) {
     return uri;
 }
 
-// Универсальный резолвер image-like виджета → строка src для JSON
-// Приоритет: icon_name → gicon → paintable (встроенный) → paintable (property) → рендер
 static char *resolve_image_src(GtkWidget *w, int w_px, int h_px) {
-    if (g_debug)
-        fprintf(stderr, "[hook] resolve_image_src(%s) %dx%d\n",
-                G_OBJECT_TYPE_NAME(w), w_px, h_px);
-
-    // 1. GtkImage со storage type — стандартные случаи
     if (GTK_IS_IMAGE(w)) {
         GtkImageType st = gtk_image_get_storage_type(GTK_IMAGE(w));
-
         if (st == GTK_IMAGE_ICON_NAME) {
             const char *name = gtk_image_get_icon_name(GTK_IMAGE(w));
             if (name) return g_strdup_printf("icon:%s", name);
         }
-
         if (st == GTK_IMAGE_GICON) {
             GIcon *gicon = gtk_image_get_gicon(GTK_IMAGE(w));
             char *nm = icon_name_from_gicon(gicon);
@@ -293,7 +289,6 @@ static char *resolve_image_src(GtkWidget *w, int w_px, int h_px) {
                 return out;
             }
         }
-
         if (st == GTK_IMAGE_PAINTABLE) {
             GdkPaintable *p = gtk_image_get_paintable(GTK_IMAGE(w));
             char *uri = paintable_to_uri(p);
@@ -301,20 +296,13 @@ static char *resolve_image_src(GtkWidget *w, int w_px, int h_px) {
         }
     }
 
-    // 2. Кастомные виджеты (NautilusImage и др.) — paintable через property
     GdkPaintable *p = get_paintable_via_property(w);
     if (p) {
         char *uri = paintable_to_uri(p);
         g_object_unref(p);
-        if (uri) {
-            if (g_debug)
-                fprintf(stderr, "[hook] paintable prop on %s → %u-byte URI\n",
-                        G_OBJECT_TYPE_NAME(w), (unsigned)strlen(uri));
-            return uri;
-        }
+        if (uri) return uri;
     }
 
-    // 3. Последний шанс — рендерим сам виджет через GtkWidgetPaintable
     const char *uri = widget_uri_cached(w, w_px, h_px);
     if (uri) return g_strdup(uri);
 
@@ -400,12 +388,10 @@ static gboolean walk_into(GString *o, GtkWidget *w,
     }
     else if (widget_is_image_like(w)) {
         char *resolved = resolve_image_src(w, (int)b.size.width, (int)b.size.height);
-
         g_string_append(o, ",");
         jkey(o, "src");
         jstr(o, resolved ? resolved : "icon:Image");
         if (resolved) g_free(resolved);
-
         g_string_append(o, ",");
         jkey(o, "color"); jstr(o, "#a6adc8");
     }
@@ -482,14 +468,258 @@ static gboolean walk_into(GString *o, GtkWidget *w,
     return TRUE;
 }
 
+/* ---------- X11 geometry ------------------------------------------------- */
+
+static gboolean window_get_x11_info(GtkWindow *win,
+                                    int *out_x, int *out_y,
+                                    unsigned long *out_xid) {
+#ifdef GDK_WINDOWING_X11
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(win));
+    if (!surface) return FALSE;
+
+    GdkDisplay *display = gdk_surface_get_display(surface);
+    if (!GDK_IS_X11_DISPLAY(display)) return FALSE;
+
+    Window xid = gdk_x11_surface_get_xid(surface);
+    if (!xid) return FALSE;
+
+    Display *dpy = gdk_x11_display_get_xdisplay(display);
+    if (!dpy) return FALSE;
+
+    XWindowAttributes attrs;
+    if (!XGetWindowAttributes(dpy, xid, &attrs)) return FALSE;
+
+    int rx = 0, ry = 0;
+    Window child = 0;
+    if (!XTranslateCoordinates(dpy, xid, attrs.root, 0, 0, &rx, &ry, &child))
+        return FALSE;
+
+    *out_x = rx;
+    *out_y = ry;
+    *out_xid = (unsigned long)xid;
+    return TRUE;
+#else
+    (void)win; (void)out_x; (void)out_y; (void)out_xid;
+    return FALSE;
+#endif
+}
+
+/* ---------- multi-window tracking --------------------------------------- */
+
+typedef struct {
+    int   id;
+    guint last_hash;
+    guint frame_counter;
+    int   last_screen_x;
+    int   last_screen_y;
+    int   last_screen_w;
+    int   last_screen_h;
+    gboolean geom_valid;
+} WindowEntry;
+
+static GHashTable *g_windows     = NULL;
+static int         g_next_win_id = 1;
+static guint       g_global_tick = 0;
+
+static void window_entry_free(gpointer p) { g_free(p); }
+
+static void window_id_str(int id, char *out, size_t out_sz) {
+    snprintf(out, out_sz, "gtk-%d-%d", (int)getpid(), id);
+}
+
+static void on_window_destroy(GtkWidget *w, gpointer data) {
+    (void)data;
+    if (!g_windows) return;
+    WindowEntry *e = g_hash_table_lookup(g_windows, w);
+    if (!e) return;
+
+    char wid[64];
+    window_id_str(e->id, wid, sizeof(wid));
+    fprintf(stderr, "[hook] window destroyed: %s\n", wid);
+
+    if (sock_fd >= 0) {
+        GString *o = g_string_new(NULL);
+        g_string_append(o, "{\"type\":\"window-removed\",");
+        jkey(o, "windowId"); jstr(o, wid);
+        g_string_append_c(o, '}');
+        send_frame(sock_fd, o->str);
+        g_string_free(o, TRUE);
+    }
+    g_hash_table_remove(g_windows, w);
+}
+
+static void ensure_socket(void) {
+    if (sock_fd < 0) sock_fd = connect_daemon();
+}
+
+static void announce_window(GtkWindow *win, WindowEntry *e) {
+    char wid[64];
+    window_id_str(e->id, wid, sizeof(wid));
+
+    const char *title = gtk_window_get_title(win);
+    fprintf(stderr, "[hook] tracking window: %s id=%s (\"%s\")\n",
+            G_OBJECT_TYPE_NAME(win), wid, title ? title : "");
+
+    ensure_socket();
+    if (sock_fd < 0) return;
+
+    GString *o = g_string_new(NULL);
+    g_string_append(o, "{\"type\":\"window-added\",");
+    jkey(o, "windowId"); jstr(o, wid);
+    g_string_append_c(o, ',');
+    jkey(o, "title"); jstr(o, title ? title : "Untitled");
+    g_string_append_c(o, '}');
+    send_frame(sock_fd, o->str);
+    g_string_free(o, TRUE);
+}
+
+static void install_hook(GtkWidget *win) {
+    if (!win) return;
+    if (!GTK_IS_WINDOW(win)) return;
+
+    void *gtk4 = dlopen("libgtk-4.so.1", RTLD_NOLOAD | RTLD_LAZY);
+    if (!gtk4) {
+        static int warned = 0;
+        if (!warned) {
+            warned = 1;
+            fprintf(stderr, "[hook] GTK4 not loaded — hook disabled\n");
+        }
+        return;
+    }
+    dlclose(gtk4);
+
+    if (!gdk_display_get_default()) return;
+
+    if (!g_windows)
+        g_windows = g_hash_table_new_full(g_direct_hash, g_direct_equal,
+                                          NULL, window_entry_free);
+
+    if (g_hash_table_contains(g_windows, win)) return;
+
+    WindowEntry *e = g_new0(WindowEntry, 1);
+    e->id = g_next_win_id++;
+    e->last_hash = 0;
+    e->frame_counter = 0;
+    e->geom_valid = FALSE;
+
+    g_hash_table_insert(g_windows, win, e);
+    g_signal_connect(win, "destroy", G_CALLBACK(on_window_destroy), NULL);
+
+    if (g_hide_original) {
+        if (g_debug)
+            fprintf(stderr, "[hook] hiding original via opacity=%.4f\n", g_hide_opacity);
+        gtk_widget_set_opacity(GTK_WIDGET(win), g_hide_opacity);
+        gtk_widget_queue_draw(GTK_WIDGET(win));
+    }
+
+    announce_window(GTK_WINDOW(win), e);
+
+    if (g_global_tick == 0) {
+        g_global_tick = g_timeout_add(100, emit_all_frames, NULL);
+        fprintf(stderr, "[hook] global emit timer started\n");
+    }
+}
+
 /* ---------- frame emission ---------------------------------------------- */
 
-static GtkWidget *tracked_window = NULL;
-static guint      frame_counter  = 0;
-static guint      last_hash      = 0;
-static guint      tick_id        = 0;
+static void emit_geometry_if_changed(GtkWindow *win, WindowEntry *e) {
+    if (sock_fd < 0) return;
 
-static gboolean emit_frame(gpointer data) {
+    int sx = 0, sy = 0;
+    unsigned long xid = 0;
+    if (!window_get_x11_info(win, &sx, &sy, &xid)) return;
+
+    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(win));
+    if (!root) return;
+    graphene_rect_t rb;
+    if (!gtk_widget_compute_bounds(GTK_WIDGET(win), GTK_WIDGET(root), &rb)) return;
+
+    int sw = (int)rb.size.width;
+    int sh = (int)rb.size.height;
+
+    if (e->geom_valid &&
+        sx == e->last_screen_x && sy == e->last_screen_y &&
+        sw == e->last_screen_w && sh == e->last_screen_h)
+        return;
+
+    e->last_screen_x = sx;
+    e->last_screen_y = sy;
+    e->last_screen_w = sw;
+    e->last_screen_h = sh;
+    e->geom_valid = TRUE;
+
+    char wid[64];
+    window_id_str(e->id, wid, sizeof(wid));
+
+    GString *o = g_string_new(NULL);
+    g_string_append(o, "{\"type\":\"geometry\",");
+    jkey(o, "windowId"); jstr(o, wid);
+    g_string_append_c(o, ',');
+    g_string_append_printf(o,
+        "\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"xid\":\"0x%lx\"",
+        sx, sy, sw, sh, xid);
+    g_string_append_c(o, '}');
+
+    if (g_debug)
+        fprintf(stderr, "[hook] %s GEOM %d,%d %dx%d\n", wid, sx, sy, sw, sh);
+
+    send_frame(sock_fd, o->str);
+    g_string_free(o, TRUE);
+}
+
+static gboolean emit_one_window(GtkWindow *win, WindowEntry *e) {
+    GtkRoot *root = gtk_widget_get_root(GTK_WIDGET(win));
+    if (!root) return FALSE;
+
+    graphene_rect_t rb;
+    if (!gtk_widget_compute_bounds(GTK_WIDGET(win), GTK_WIDGET(root), &rb))
+        return FALSE;
+    if (rb.size.width <= 0 || rb.size.height <= 0) return FALSE;
+
+    char wid[64];
+    window_id_str(e->id, wid, sizeof(wid));
+
+    GString *o = g_string_new(NULL);
+    g_string_append(o, "{\"type\":\"frame\",");
+    jkey(o, "windowId"); jstr(o, wid);
+    g_string_append_c(o, ',');
+    jkey(o, "frame"); g_string_append_printf(o, "%u", e->frame_counter++);
+    g_string_append_c(o, ',');
+    {
+        const char *t = gtk_window_get_title(win);
+        jkey(o, "title"); jstr(o, t ? t : "Untitled");
+    }
+    g_string_append_c(o, ',');
+    g_string_append(o, "\"width\":");  jdouble(o, rb.size.width);
+    g_string_append(o, ",\"height\":"); jdouble(o, rb.size.height);
+    g_string_append_c(o, ',');
+    jkey(o, "root");
+    gboolean first = TRUE;
+    if (!walk_into(o, GTK_WIDGET(win), "0", NULL, &first))
+        g_string_append(o, "null");
+    g_string_append_c(o, '}');
+
+    guint h = g_str_hash(o->str);
+    if (h != e->last_hash || e->frame_counter <= 5) {
+        e->last_hash = h;
+        if (g_debug && g_emit_calls <= 30)
+            fprintf(stderr, "[hook] %s SEND %u bytes\n",
+                    wid, (unsigned)o->len);
+        if (!send_frame(sock_fd, o->str)) {
+            fprintf(stderr, "[hook] send_frame failed: %s\n", strerror(errno));
+            close(sock_fd); sock_fd = -1;
+            GHashTableIter it;
+            gpointer k, v;
+            g_hash_table_iter_init(&it, g_windows);
+            while (g_hash_table_iter_next(&it, &k, &v))
+                ((WindowEntry*)v)->last_hash = 0;
+        }
+    }
+    g_string_free(o, TRUE);
+    return TRUE;
+}
+
+static gboolean emit_all_frames(gpointer data) {
     (void)data;
     g_emit_calls++;
 
@@ -498,46 +728,15 @@ static gboolean emit_frame(gpointer data) {
         sock_fd = connect_daemon();
         if (sock_fd < 0) return G_SOURCE_CONTINUE;
     }
-    if (!tracked_window) return G_SOURCE_CONTINUE;
+    if (!g_windows || g_hash_table_size(g_windows) == 0) return G_SOURCE_CONTINUE;
 
-    GtkRoot *root = gtk_widget_get_root(tracked_window);
-    if (!root) return G_SOURCE_CONTINUE;
-
-    graphene_rect_t rb;
-    if (!gtk_widget_compute_bounds(tracked_window, GTK_WIDGET(root), &rb))
-        return G_SOURCE_CONTINUE;
-    if (rb.size.width <= 0 || rb.size.height <= 0) return G_SOURCE_CONTINUE;
-
-    GString *o = g_string_new(NULL);
-    g_string_append(o, "{\"type\":\"frame\",");
-    g_string_append_printf(o, "\"windowId\":\"gtk-%d\",", (int)getpid());
-
-    const char *title = gtk_window_get_title(GTK_WINDOW(tracked_window));
-    jkey(o, "title"); jstr(o, title ? title : "Untitled");
-    g_string_append_c(o, ',');
-    jkey(o, "frame"); g_string_append_printf(o, "%u", frame_counter++);
-    g_string_append_c(o, ',');
-    g_string_append(o, "\"width\":");  jdouble(o, rb.size.width);
-    g_string_append(o, ",\"height\":"); jdouble(o, rb.size.height);
-    g_string_append_c(o, ',');
-    jkey(o, "root");
-    gboolean first = TRUE;
-    if (!walk_into(o, tracked_window, "0", NULL, &first))
-        g_string_append(o, "null");
-    g_string_append_c(o, '}');
-
-    guint h = g_str_hash(o->str);
-    if (h != last_hash || g_emit_calls <= 5) {
-        last_hash = h;
-        if (g_debug && g_emit_calls <= 20)
-            fprintf(stderr, "[hook] emit #%d: SEND %u bytes\n",
-                    g_emit_calls, (unsigned)o->len);
-        if (!send_frame(sock_fd, o->str)) {
-            fprintf(stderr, "[hook] send_frame failed: %s\n", strerror(errno));
-            close(sock_fd); sock_fd = -1; last_hash = 0;
-        }
+    GHashTableIter it;
+    gpointer k, v;
+    g_hash_table_iter_init(&it, g_windows);
+    while (g_hash_table_iter_next(&it, &k, &v)) {
+        emit_geometry_if_changed(GTK_WINDOW(k), (WindowEntry*)v);
+        emit_one_window(GTK_WINDOW(k), (WindowEntry*)v);
     }
-    g_string_free(o, TRUE);
     return G_SOURCE_CONTINUE;
 }
 
@@ -546,53 +745,6 @@ static gboolean emit_frame(gpointer data) {
 typedef GtkWidget *(*gtk_app_win_new_t)(GtkApplication *);
 typedef GtkWidget *(*gtk_win_new_t)(void);
 typedef void       (*gtk_window_present_t)(GtkWindow *);
-
-static gboolean widget_has_size(GtkWidget *w) {
-    if (!w) return FALSE;
-    GtkRoot *root = gtk_widget_get_root(w);
-    if (!root) return FALSE;
-    graphene_rect_t r;
-    if (!gtk_widget_compute_bounds(w, GTK_WIDGET(root), &r)) return FALSE;
-    return r.size.width > 0 && r.size.height > 0;
-}
-
-static void install_hook(GtkWidget *win) {
-    if (!win) return;
-
-    void *gtk4 = dlopen("libgtk-4.so.1", RTLD_NOLOAD | RTLD_LAZY);
-    if (!gtk4) {
-        static int warned = 0;
-        if (!warned) {
-            warned = 1;
-            fprintf(stderr, "[hook] GTK4 not loaded in this process — hook disabled\n");
-        }
-        return;
-    }
-    dlclose(gtk4);
-
-    if (!gdk_display_get_default()) return;
-
-    if (tracked_window && widget_has_size(tracked_window) &&
-        GTK_IS_WINDOW(tracked_window) && gtk_widget_get_visible(tracked_window))
-        return;
-
-    tracked_window = win;
-    fprintf(stderr, "[hook] tracking window: %s (visible=%d, has_size=%d)\n",
-        G_OBJECT_TYPE_NAME(win),
-        gtk_widget_get_visible(win),
-        widget_has_size(win));
-
-    if (g_hide_original) {
-        if (g_debug) fprintf(stderr, "[hook] hiding original via opacity=0\n");
-        gtk_widget_set_opacity(GTK_WIDGET(win), 0.0);
-    }
-
-    if (sock_fd < 0) sock_fd = connect_daemon();
-    if (tick_id == 0) {
-        tick_id = g_timeout_add(100, emit_frame, NULL);
-        fprintf(stderr, "[hook] emit timer started\n");
-    }
-}
 
 GtkWidget *gtk_application_window_new(GtkApplication *app) {
     static gtk_app_win_new_t real = NULL;
@@ -621,7 +773,11 @@ __attribute__((constructor))
 static void hook_init(void) {
     if (getenv("GTK_HOOK_DEBUG")) g_debug = 1;
     if (getenv("GTK_HOOK_HIDE"))  g_hide_original = 1;
+    if (getenv("GTK_HOOK_HIDE_OPACITY")) {
+        double v = atof(getenv("GTK_HOOK_HIDE_OPACITY"));
+        if (v > 0.0 && v < 1.0) g_hide_opacity = v;
+    }
     if (g_debug)
-        fprintf(stderr, "[hook] loaded pid=%d hide=%d\n",
-                (int)getpid(), g_hide_original);
+        fprintf(stderr, "[hook] loaded pid=%d hide=%d opacity=%.4f\n",
+                (int)getpid(), g_hide_original, g_hide_opacity);
 }
