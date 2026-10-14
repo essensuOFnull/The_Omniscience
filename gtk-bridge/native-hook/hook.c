@@ -1,8 +1,8 @@
 // libgtk-hook.so — LD_PRELOAD-хук для перехвата GTK-окон.
 // Multi-window: каждое GtkWindow трекается отдельно, свой windowId.
-// Отправляет: window-added / frame / geometry / window-removed
-// Geometry берётся напрямую из X11 (XGetWindowAttributes + XTranslateCoordinates).
-// Изображения: icon_name → gicon → paintable → widget render → PNG data-URI
+// Отправляет: window-added / frame / geometry / window-removed.
+// Координаты контента корректируются на _GTK_FRAME_EXTENTS (CSD-тень GTK4).
+// Изображения: icon_name → gicon → paintable → widget render → PNG data-URI.
 // Length-prefixed framing: [uint32 LE длина][N байт JSON]
 
 #define _GNU_SOURCE
@@ -22,6 +22,10 @@
 #ifdef GDK_WINDOWING_X11
 #include <gdk/x11/gdkx.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
+// Подавляем deprecated warnings от gdk_x11_* — они нужны, API другой нет
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
 /* ---------- forward declarations --------------------------------------- */
@@ -468,8 +472,44 @@ static gboolean walk_into(GString *o, GtkWidget *w,
     return TRUE;
 }
 
-/* ---------- X11 geometry ------------------------------------------------- */
+/* ---------- X11 geometry (с учётом CSD) --------------------------------- */
 
+// Читает _GTK_FRAME_EXTENTS у X11-окна.
+// Возвращает TRUE и заполняет out_left/top/right/bottom, если свойство есть.
+static gboolean read_gtk_frame_extents(Display *dpy, Window xid,
+                                       int *out_left, int *out_top,
+                                       int *out_right, int *out_bottom) {
+    *out_left = *out_top = *out_right = *out_bottom = 0;
+    Atom a = XInternAtom(dpy, "_GTK_FRAME_EXTENTS", False);
+    if (a == None) return FALSE;
+
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    if (XGetWindowProperty(dpy, xid, a, 0, 4, False, XA_CARDINAL,
+                           &actual_type, &actual_format, &nitems,
+                           &bytes_after, &data) != Success) {
+        if (data) XFree(data);
+        return FALSE;
+    }
+    if (!data) return FALSE;
+
+    gboolean ok = FALSE;
+    if (nitems >= 4) {
+        unsigned long *e = (unsigned long *)data;
+        *out_left   = (int)e[0];
+        *out_right  = (int)e[1];
+        *out_top    = (int)e[2];
+        *out_bottom = (int)e[3];
+        ok = TRUE;
+    }
+    XFree(data);
+    return ok;
+}
+
+// Возвращает позицию ВИДИМОГО КОНТЕНТА окна на экране (с поправкой на CSD-тень).
 static gboolean window_get_x11_info(GtkWindow *win,
                                     int *out_x, int *out_y,
                                     unsigned long *out_xid) {
@@ -493,6 +533,16 @@ static gboolean window_get_x11_info(GtkWindow *win,
     Window child = 0;
     if (!XTranslateCoordinates(dpy, xid, attrs.root, 0, 0, &rx, &ry, &child))
         return FALSE;
+
+    // Корректируем на CSD-тень: позиция видимого контента = позиция X11-окна + (left, top)
+    int left = 0, top = 0, right = 0, bottom = 0;
+    if (read_gtk_frame_extents(dpy, xid, &left, &top, &right, &bottom)) {
+        if (g_debug)
+            fprintf(stderr, "[hook] _GTK_FRAME_EXTENTS = %d,%d,%d,%d\n",
+                    left, right, top, bottom);
+    }
+    rx += left;
+    ry += top;
 
     *out_x = rx;
     *out_y = ry;
@@ -781,3 +831,6 @@ static void hook_init(void) {
         fprintf(stderr, "[hook] loaded pid=%d hide=%d opacity=%.4f\n",
                 (int)getpid(), g_hide_original, g_hide_opacity);
 }
+#ifdef GDK_WINDOWING_X11
+#pragma GCC diagnostic pop
+#endif

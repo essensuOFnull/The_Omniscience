@@ -1,11 +1,9 @@
 #!/bin/sh
 # Usage: gtk-bridge/launch.sh <app> [args...]
-# Запускает GTK4-приложение с хуком и сокетом демона.
 #
-# Переменные окружения:
-#   GTK_HOOK_DEBUG=1          — подробный лог хука в stderr
-#   GTK_HOOK_HIDE=1           — скрыть оригинальное окно (по умолчанию 0)
-#   GTK_HOOK_HIDE_OPACITY=X   — прозрачность скрытого окна (0.01)
+# CSD-тень GTK4 (12px или около того) теперь компенсируется прямо в C-хуке
+# через чтение свойства _GTK_FRAME_EXTENTS. Внешние зависимости (gtk-nocsd)
+# не нужны.
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$DIR/native-hook/libgtk-hook.so"

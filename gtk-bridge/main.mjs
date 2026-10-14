@@ -1,30 +1,29 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, ipcMain, BrowserWindow } from 'electron';
 import { WebSocket } from 'ws';
-import { execFile } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.dirname(__dirname);
 
 const DAEMON_BIN = path.join(__dirname, 'daemon', 'gtk-bridge-daemon');
-const HOOK_SO = path.join(__dirname, 'native-hook', 'libgtk-hook.so');
+const HOOK_SO    = path.join(__dirname, 'native-hook', 'libgtk-hook.so');
 const SOCKET_PATH = '/tmp/gtk-bridge.sock';
-const WS_URL = 'ws://127.0.0.1:8765';
-const PREFIX = 'gtk-bridge:';
+const WS_URL      = 'ws://127.0.0.1:8765';
+const PREFIX      = 'gtk-bridge:';
 
 let daemonProc = null;
 let ws = null;
 let wsRetry = null;
 let enabled = true;
 
-// daemonWindowId → electronWindowId (для логов)
-const windowIdMap = new Map();
 // daemonWindowId → BrowserWindow оверлея
 const overlays = new Map();
-// daemonWindowId → последний известный frame
+// daemonWindowId → последний известный frame (для отложенной доставки)
 const lastFrameByWindowId = new Map();
+// daemonWindowId → sessionId (для группового закрытия)
+const sessionByWindowId = new Map();
 
 // ---------- daemon ---------------------------------------------------------
 
@@ -38,6 +37,8 @@ function startDaemon() {
   daemonProc.on('exit', (code, sig) => {
     console.log(`[gtk-bridge] daemon exited code=${code} sig=${sig}`);
     daemonProc = null;
+    // Демон ушёл — все сессии мертвы, закрываем все оверлеи
+    closeAllOverlays('daemon-exit');
     if (enabled) setTimeout(startDaemon, 2000);
   });
   console.log('[gtk-bridge] daemon started');
@@ -45,9 +46,9 @@ function startDaemon() {
 
 function stopDaemon() {
   if (!daemonProc) return;
-  try { daemonProc.kill('SIGTERM'); } catch { }
+  try { daemonProc.kill('SIGTERM'); } catch {}
   setTimeout(() => {
-    if (daemonProc) try { daemonProc.kill('SIGKILL'); } catch { }
+    if (daemonProc) try { daemonProc.kill('SIGKILL'); } catch {}
   }, 1500);
 }
 
@@ -72,7 +73,7 @@ function connectWS() {
 
 function disconnectWS() {
   if (wsRetry) { clearTimeout(wsRetry); wsRetry = null; }
-  if (ws) { try { ws.close(); } catch { } ws = null; }
+  if (ws) { try { ws.close(); } catch {} ws = null; }
 }
 
 // ---------- overlay window -------------------------------------------------
@@ -89,21 +90,17 @@ function overlayUrl(daemonWindowId, electronId) {
   return `file://${base}?${q.toString()}`;
 }
 
-// Поднимаем GTK-окно в текущий стек над оверлеем.
-// Без постоянного флага "always on top" — иначе GTK будет висеть над всем DE.
 function raiseGtkWindow(xid) {
   if (!xid) return;
-  // windowraise — одноразовый подъём в стеке, не делает окно "всегда сверху".
   execFile('xdotool', ['windowraise', xid], (err) => {
     if (err) console.warn('[gtk-bridge] xdotool windowraise failed:', err.message);
   });
 }
 
-function createOverlay(daemonWindowId, title) {
+function createOverlay(daemonWindowId, title, sessionId) {
   if (overlays.has(daemonWindowId)) return overlays.get(daemonWindowId);
 
   const electronId = PREFIX + daemonWindowId;
-  windowIdMap.set(daemonWindowId, electronId);
 
   const ov = new BrowserWindow({
     width: 900,
@@ -120,8 +117,6 @@ function createOverlay(daemonWindowId, title) {
     maximizable: false,
     skipTaskbar: true,
     show: false,
-    // focusable НЕ трогаем — оставляем дефолтным (true).
-    // type НЕ указываем — по умолчанию normal, и KWin не будет поднимать его.
     webPreferences: {
       preload: global.paths.reactPreload,
       contextIsolation: true,
@@ -132,28 +127,54 @@ function createOverlay(daemonWindowId, title) {
     },
   });
 
-  // Клики не ловим. НЕ трогаем alwaysOnTop.
   ov.setIgnoreMouseEvents(true);
 
   ov.loadURL(overlayUrl(daemonWindowId, electronId));
 
   ov.webContents.once('did-finish-load', () => {
     const last = lastFrameByWindowId.get(daemonWindowId);
-    if (last) {
-      ov.webContents.send('gtk-bridge:frame', last);
-    }
+    if (last) ov.webContents.send('gtk-bridge:frame', last);
   });
 
   ov.on('closed', () => {
     console.log(`[gtk-bridge] overlay closed: ${daemonWindowId}`);
     overlays.delete(daemonWindowId);
-    windowIdMap.delete(daemonWindowId);
     lastFrameByWindowId.delete(daemonWindowId);
+    sessionByWindowId.delete(daemonWindowId);
   });
 
   overlays.set(daemonWindowId, ov);
-  console.log(`[gtk-bridge] overlay created for ${daemonWindowId} ("${title}")`);
+  sessionByWindowId.set(daemonWindowId, sessionId);
+  console.log(`[gtk-bridge] overlay created for ${daemonWindowId} (session=${sessionId}, "${title}")`);
   return ov;
+}
+
+// ---------- закрытие оверлеев --------------------------------------------
+
+function closeOverlay(daemonWindowId, reason) {
+  const ov = overlays.get(daemonWindowId);
+  if (ov && !ov.isDestroyed()) {
+    console.log(`[gtk-bridge] closing overlay ${daemonWindowId} (${reason})`);
+    try { ov.close(); } catch {}
+  }
+  overlays.delete(daemonWindowId);
+  lastFrameByWindowId.delete(daemonWindowId);
+  sessionByWindowId.delete(daemonWindowId);
+}
+
+function closeSessionOverlays(sessionId, reason) {
+  const victims = [];
+  for (const [wid, sid] of sessionByWindowId) {
+    if (sid === sessionId) victims.push(wid);
+  }
+  console.log(`[gtk-bridge] session ${sessionId} ended (${reason}), closing ${victims.length} overlay(s)`);
+  for (const wid of victims) closeOverlay(wid, reason);
+}
+
+function closeAllOverlays(reason) {
+  const victims = Array.from(overlays.keys());
+  console.log(`[gtk-bridge] closing all ${victims.length} overlay(s) (${reason})`);
+  for (const wid of victims) closeOverlay(wid, reason);
 }
 
 // ---------- daemon events --------------------------------------------------
@@ -161,7 +182,7 @@ function createOverlay(daemonWindowId, title) {
 function handleDaemon(msg) {
   switch (msg.type) {
     case 'window-added': {
-      createOverlay(msg.windowId, msg.title);
+      createOverlay(msg.windowId, msg.title, msg.sessionId);
       break;
     }
 
@@ -176,10 +197,8 @@ function handleDaemon(msg) {
           height: Math.max(80, msg.height | 0),
         });
         if (!ov.isVisible()) {
-          ov.showInactive();       // показываем без фокуса
-          console.log(`[gtk-bridge] overlay shown at ${msg.x},${msg.y} ${msg.width}x${msg.height}`);
+          ov.showInactive();
         }
-        // Каждый раз, когда GTK-окно двигается, возвращаем его наверх оверлея
         if (msg.xid) raiseGtkWindow(msg.xid);
       } catch (e) {
         console.warn('[gtk-bridge] setBounds failed:', e.message);
@@ -197,13 +216,19 @@ function handleDaemon(msg) {
     }
 
     case 'window-removed': {
-      lastFrameByWindowId.delete(msg.windowId);
-      const ov = overlays.get(msg.windowId);
-      if (ov && !ov.isDestroyed()) {
-        try { ov.close(); } catch { }
-      }
-      overlays.delete(msg.windowId);
-      windowIdMap.delete(msg.windowId);
+      closeOverlay(msg.windowId, 'window-removed');
+      break;
+    }
+
+    case 'session-ended': {
+      // Сокет hook-процесса закрылся — значит весь GTK-процесс мёртв.
+      // Все окна этой сессии — мертвы, оверлеи закрываем.
+      closeSessionOverlays(msg.sessionId, 'session-ended');
+      break;
+    }
+
+    case 'daemon-shutdown': {
+      closeAllOverlays('daemon-shutdown');
       break;
     }
   }
@@ -224,18 +249,13 @@ function registerIpc() {
     } else {
       disconnectWS();
       stopDaemon();
-      for (const [, ov] of overlays) {
-        try { ov.close(); } catch { }
-      }
-      overlays.clear();
-      windowIdMap.clear();
-      lastFrameByWindowId.clear();
+      closeAllOverlays('toggle-off');
     }
   });
 
   ipcMain.on('gtk-bridge:send', (_e, payload) => {
     if (ws && ws.readyState === 1) {
-      try { ws.send(JSON.stringify(payload)); } catch { }
+      try { ws.send(JSON.stringify(payload)); } catch {}
     }
   });
 
@@ -260,10 +280,7 @@ export default async function initGtkBridge() {
   app.on('before-quit', () => {
     disconnectWS();
     stopDaemon();
-    for (const [, ov] of overlays) {
-      try { ov.destroy(); } catch { }
-    }
-    overlays.clear();
+    closeAllOverlays('app-quit');
   });
 }
 

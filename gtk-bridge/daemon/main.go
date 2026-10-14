@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -14,14 +15,12 @@ import (
 	"syscall"
 
 	"github.com/gorilla/websocket"
-
-	"fmt"
 )
 
 const (
 	SocketPath = "/tmp/gtk-bridge.sock"
 	WSAddr     = "127.0.0.1:8765"
-	MaxFrame   = 16 * 1024 * 1024 // 16 МБ
+	MaxFrame   = 64 * 1024 * 1024 // 64 МБ — с запасом на base64-иконки
 )
 
 var upgrader = websocket.Upgrader{
@@ -116,7 +115,28 @@ func startSocket(hub *Hub) {
 
 func handleHook(conn net.Conn, session int, hub *Hub) {
 	defer conn.Close()
+
 	log.Printf("[ipc] hook #%d connected", session)
+
+	// При старте сессии — говорим клиентам, что сессия открыта
+	{
+		openMsg, _ := json.Marshal(map[string]any{
+			"type":      "session-started",
+			"sessionId": session,
+		})
+		hub.Broadcast(openMsg)
+	}
+
+	// При выходе из этой функции — говорим клиентам, что сессия закрыта.
+	// Это ключевое: любой оверлей этой сессии должен быть закрыт.
+	defer func() {
+		endMsg, _ := json.Marshal(map[string]any{
+			"type":      "session-ended",
+			"sessionId": session,
+		})
+		hub.Broadcast(endMsg)
+		log.Printf("[ipc] hook #%d disconnected (broadcast session-ended)", session)
+	}()
 
 	r := bufio.NewReader(conn)
 	received := 0
@@ -127,50 +147,44 @@ func handleHook(conn net.Conn, session int, hub *Hub) {
 			if err != io.EOF {
 				log.Printf("[ipc] hook #%d: read hdr: %v", session, err)
 			}
-			break
+			return
 		}
 		length := binary.LittleEndian.Uint32(hdr[:])
 		if length == 0 || length > MaxFrame {
 			log.Printf("[ipc] hook #%d: bad length %d", session, length)
-			break
+			return
 		}
 
 		payload := make([]byte, length)
 		if _, err := io.ReadFull(r, payload); err != nil {
 			log.Printf("[ipc] hook #%d: read payload (%d bytes): %v", session, length, err)
-			break
+			return
 		}
 		received++
 
 		var msg map[string]any
 		if err := json.Unmarshal(payload, &msg); err != nil {
-    fmt.Fprintln(os.Stderr, "\n════════════════════════════════════════════════════════════")
-    fmt.Fprintf(os.Stderr, "BAD JSON from hook #%d\n", session)
-    fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-    fmt.Fprintf(os.Stderr, "Length: %d bytes\n", len(payload))
-    fmt.Fprintln(os.Stderr, "────────────────────────────────────────────────────────────")
-    fmt.Fprintln(os.Stderr, string(payload))
-    fmt.Fprintln(os.Stderr, "════════════════════════════════════════════════════════════")
-
-    if os.Getenv("CRASH_ON_BAD_JSON") == "1" {
-        os.Exit(2)
-    }
-    continue
-}
+			preview := payload
+			if len(preview) > 300 {
+				preview = preview[:300]
+			}
+			log.Printf("[ipc] hook #%d: bad JSON (%d bytes): %v | preview: %q",
+				session, len(payload), err, string(preview))
+			continue
+		}
 
 		if received <= 3 {
 			title, _ := msg["title"].(string)
+			typ, _ := msg["type"].(string)
 			frame, _ := msg["frame"].(float64)
-			log.Printf("[ipc] hook #%d frame #%v '%s' (%d bytes)",
-				session, frame, title, length)
+			log.Printf("[ipc] hook #%d %s frame #%v '%s' (%d bytes)",
+				session, typ, frame, title, length)
 		}
 
 		msg["sessionId"] = session
 		out, _ := json.Marshal(msg)
 		hub.Broadcast(out)
 	}
-
-	log.Printf("[ipc] hook #%d disconnected (received %d messages)", session, received)
 }
 
 // ---------- main ----------------------------------------------------------
@@ -182,9 +196,15 @@ func main() {
 	go startWS(hub)
 	go startSocket(hub)
 
+	// Ждём сигнал завершения
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
+
 	log.Printf("shutting down")
 	os.Remove(SocketPath)
+
+	// Сообщаем всем клиентам, что демон уходит
+	bye, _ := json.Marshal(map[string]any{"type": "daemon-shutdown"})
+	hub.Broadcast(bye)
 }

@@ -30,10 +30,18 @@ else
 fi
 echo "🐧 Дистрибутив: $DISTRO"
 
-# --- Конфиги KWin ---
+# ============================================================
+# Конфиги KWin
+# ============================================================
 echo "📝 Создаю конфиги..."
 sudo mkdir -p /etc/omniscience
 
+# --- kwinrc: композитор + декорации отключены глобально ---
+#
+# Секция [org.kde.kdecoration2] с NoPlugin=true отключает плагин
+# декораций KWin целиком. Ни одно окно не получит заголовок/рамки,
+# и _NET_FRAME_EXTENTS будет 0,0,0,0 — координаты client-area
+# совпадут с координатами frame.
 sudo tee /etc/omniscience/kwinrc > /dev/null << 'EOF'
 [Compositing]
 Enabled=true
@@ -71,31 +79,24 @@ zoomEnabled=false
 [Desktops]
 Number=1
 Rows=1
+
+[org.kde.kdecoration2]
+NoPlugin=true
+BorderSize=None
+BorderSizeAuto=false
 EOF
 
-# Правила окон для /etc-конфига (используется сессией).
-sudo tee /etc/omniscience/kwinrulesrc > /dev/null << 'EOF'
-[General]
-count=1
-rules=1
-
-[1]
-Description=Omniscience no borders
-noborder=true
-noborderrule=2
-fsplevel=0
-fsplevelrule=2
-EOF
-
-# Продублируем правило noborder в пользовательский конфиг KWin —
-# на случай, если сессия по какой-то причине запускает KWin с
-# ~/.config/kwinrc, а не с /etc/omniscience/kwinrc. Правило матчится
-# по WM_CLASS, чтобы не влиять на посторонние окна.
-mkdir -p "$HOME/.config"
-cat > "$HOME/.config/kwinrulesrc" << 'EOF'
-[General]
-count=1
-rules=1
+# --- kwinrulesrc: два правила ---
+#
+# 1) Явное правило для самого окна Omniscience (по WM_CLASS).
+# 2) Глобальное правило (wmclassmatch=0 = "любое окно") — убирает
+#    декорации у ВСЕХ окон. Это критично для GTK-хука: только при
+#    отсутствии декораций _NET_FRAME_EXTENTS = 0,0,0,0 и координаты
+#    client-area совпадают с экранными, что даёт точное позиционирование
+#    оверлея Electron поверх реального GTK-окна.
+KWINRULES_CONTENT='[General]
+count=2
+rules=1,2
 
 [1]
 Description=Omniscience no borders
@@ -105,7 +106,20 @@ noborder=true
 noborderrule=2
 fsplevel=0
 fsplevelrule=2
-EOF
+
+[2]
+Description=Global frameless for all windows
+wmclassmatch=0
+noborder=true
+noborderrule=2
+'
+
+echo "$KWINRULES_CONTENT" | sudo tee /etc/omniscience/kwinrulesrc > /dev/null
+
+# Дублируем в пользовательский конфиг — на случай, если сессия запускает
+# KWin с ~/.config/kwinrc, а не с /etc/omniscience/kwinrc.
+mkdir -p "$HOME/.config"
+echo "$KWINRULES_CONTENT" > "$HOME/.config/kwinrulesrc"
 
 # --- Размытие фона для окон Omniscience (X11 + KWin) ---
 #
@@ -243,6 +257,10 @@ echo "   Лог: /tmp/omniscience-blur.log"
 #    пользовательский kwinrc с decorations, и рамки окон возвращаются.
 #    qdbus reconfigure перечитывает ТЕКУЩИЙ конфиг (тот, с которым KWin
 #    уже запущен) — безопасно и без побочных эффектов.
+#
+#    Также: правила из kwinrulesrc применяются только при перезагрузке
+#    списка правил. reconfigure подхватывает и его, но для гарантии
+#    лучше перезайти в сессию.
 if [ -n "${DISPLAY:-}" ]; then
   echo "🔄 Прошу KWin перечитать конфиг..."
   (qdbus org.kde.KWin /KWin reconfigure 2>/dev/null) \
@@ -395,6 +413,7 @@ echo "📋 Лог сессии:      /tmp/omniscience-session.log"
 echo "📋 Лог blur-helper: /tmp/omniscience-blur.log"
 echo "   Смотреть:  cat /tmp/omniscience-session.log"
 echo ""
-echo "ℹ️  Если эффект Blur или отсутствие рамок не видны сразу —"
-echo "    выйдите из сессии и зайдите снова. KWin подхватит"
-echo "    /etc/omniscience/kwinrc при следующем старте."
+echo "ℹ️  Если эффект Blur, отсутствие рамок или точное позиционирование"
+echo "    оверлея gtk-bridge не видны сразу — выйдите из сессии и зайдите"
+echo "    снова. KWin подхватит /etc/omniscience/kwinrc + kwinrulesrc"
+echo "    при следующем старте."
