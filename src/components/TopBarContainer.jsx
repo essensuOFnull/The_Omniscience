@@ -21,7 +21,7 @@ export default function TopBarContainer() {
       .then((s) => {
         if (s) setState((p) => ({ ...p, ...s }));
       })
-      .catch(() => {});
+      .catch(() => { });
 
     const off = api.on('topbar:state-update', (patch) => {
       if (patch) setState((p) => ({ ...p, ...patch }));
@@ -39,9 +39,7 @@ export default function TopBarContainer() {
       <TopBar
         {...state}
         onToggleOverview={() => send('topbar:toggle-overview')}
-        onOpenDevTools={(id) => send('topbar:open-devtools', { id })}
-        onLaunch={(app) => send('topbar:launch-app', { app })}
-        onAddQuickLaunch={() => send('topbar:open-launcher')}
+        onOpenWindowSettings={(id) => send('topbar:open-window-settings', { id })}
         onFocusWindow={(w) => send('topbar:focus-window', { id: w.id })}
         onCloseWindow={(w) => send('topbar:close-window', { id: w.id })}
         onRequestSearch={() => send('topbar:open-search')}

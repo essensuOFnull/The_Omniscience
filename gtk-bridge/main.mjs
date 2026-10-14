@@ -3,15 +3,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, ipcMain, BrowserWindow } from 'electron';
 import { WebSocket } from 'ws';
+import { registerBridgeOverlay, unregisterBridgeOverlay } from '../main/ipc_windowManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.dirname(__dirname);
 
 const DAEMON_BIN = path.join(__dirname, 'daemon', 'gtk-bridge-daemon');
-const HOOK_SO    = path.join(__dirname, 'native-hook', 'libgtk-hook.so');
+const HOOK_SO = path.join(__dirname, 'native-hook', 'libgtk-hook.so');
 const SOCKET_PATH = '/tmp/gtk-bridge.sock';
-const WS_URL      = 'ws://127.0.0.1:8765';
-const PREFIX      = 'gtk-bridge:';
+const WS_URL = 'ws://127.0.0.1:8765';
+const PREFIX = 'gtk-bridge:';
 
 let daemonProc = null;
 let ws = null;
@@ -24,6 +25,9 @@ const overlays = new Map();
 const lastFrameByWindowId = new Map();
 // daemonWindowId → sessionId (для группового закрытия)
 const sessionByWindowId = new Map();
+// daemonWindowId → xid GTK-окна (hex-строка '0x...')
+const gtkXidByDaemonId = new Map();
+global.gtkBridgeXidMap = gtkXidByDaemonId;
 
 // ---------- daemon ---------------------------------------------------------
 
@@ -46,9 +50,9 @@ function startDaemon() {
 
 function stopDaemon() {
   if (!daemonProc) return;
-  try { daemonProc.kill('SIGTERM'); } catch {}
+  try { daemonProc.kill('SIGTERM'); } catch { }
   setTimeout(() => {
-    if (daemonProc) try { daemonProc.kill('SIGKILL'); } catch {}
+    if (daemonProc) try { daemonProc.kill('SIGKILL'); } catch { }
   }, 1500);
 }
 
@@ -73,7 +77,7 @@ function connectWS() {
 
 function disconnectWS() {
   if (wsRetry) { clearTimeout(wsRetry); wsRetry = null; }
-  if (ws) { try { ws.close(); } catch {} ws = null; }
+  if (ws) { try { ws.close(); } catch { } ws = null; }
 }
 
 // ---------- overlay window -------------------------------------------------
@@ -137,6 +141,7 @@ function createOverlay(daemonWindowId, title, sessionId) {
   });
 
   ov.on('closed', () => {
+    try { unregisterBridgeOverlay(electronId); } catch { }
     console.log(`[gtk-bridge] overlay closed: ${daemonWindowId}`);
     overlays.delete(daemonWindowId);
     lastFrameByWindowId.delete(daemonWindowId);
@@ -145,6 +150,15 @@ function createOverlay(daemonWindowId, title, sessionId) {
 
   overlays.set(daemonWindowId, ov);
   sessionByWindowId.set(daemonWindowId, sessionId);
+  // Регистрируем оверлей в реестре окон, чтобы TopBar его видел
+  try {
+    registerBridgeOverlay(ov, electronId, {
+      title: title,
+      daemonWindowId: daemonWindowId,
+    });
+  } catch (e) {
+    console.warn('[gtk-bridge] registerBridgeOverlay failed:', e.message);
+  }
   console.log(`[gtk-bridge] overlay created for ${daemonWindowId} (session=${sessionId}, "${title}")`);
   return ov;
 }
@@ -155,8 +169,9 @@ function closeOverlay(daemonWindowId, reason) {
   const ov = overlays.get(daemonWindowId);
   if (ov && !ov.isDestroyed()) {
     console.log(`[gtk-bridge] closing overlay ${daemonWindowId} (${reason})`);
-    try { ov.close(); } catch {}
+    try { ov.close(); } catch { }
   }
+  try { unregisterBridgeOverlay(PREFIX + daemonWindowId); } catch { }
   overlays.delete(daemonWindowId);
   lastFrameByWindowId.delete(daemonWindowId);
   sessionByWindowId.delete(daemonWindowId);
@@ -182,11 +197,13 @@ function closeAllOverlays(reason) {
 function handleDaemon(msg) {
   switch (msg.type) {
     case 'window-added': {
+      if (msg.xid) gtkXidByDaemonId.set(msg.windowId, msg.xid);
       createOverlay(msg.windowId, msg.title, msg.sessionId);
       break;
     }
 
     case 'geometry': {
+      if (msg.xid) gtkXidByDaemonId.set(msg.windowId, msg.xid);
       const ov = overlays.get(msg.windowId);
       if (!ov || ov.isDestroyed()) return;
       try {
@@ -216,6 +233,7 @@ function handleDaemon(msg) {
     }
 
     case 'window-removed': {
+      gtkXidByDaemonId.delete(msg.windowId);
       closeOverlay(msg.windowId, 'window-removed');
       break;
     }
@@ -255,7 +273,7 @@ function registerIpc() {
 
   ipcMain.on('gtk-bridge:send', (_e, payload) => {
     if (ws && ws.readyState === 1) {
-      try { ws.send(JSON.stringify(payload)); } catch {}
+      try { ws.send(JSON.stringify(payload)); } catch { }
     }
   });
 
@@ -266,6 +284,10 @@ function registerIpc() {
 
   ipcMain.handle('gtk-bridge:hook-path', () => HOOK_SO);
   ipcMain.handle('gtk-bridge:socket-path', () => SOCKET_PATH);
+
+  ipcMain.handle('gtk-bridge:get-xid-map', () => {
+    return Object.fromEntries(gtkXidByDaemonId);
+  });
 }
 
 // ---------- init -----------------------------------------------------------

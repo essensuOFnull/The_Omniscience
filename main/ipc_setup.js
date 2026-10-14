@@ -15,4 +15,5 @@ export default function () {
   global.$.ipc_windowManager();
   global.$.ipc_topbar();
   global.$.ipc_overview();
+  global.$.ipc_pidTree();
 }

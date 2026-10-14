@@ -109,6 +109,16 @@ async function runWmctrl(args) {
   }
 }
 
+async function runXprop(args) {
+  try {
+    await execFileAsync('xprop', args, { timeout: 2000 });
+    return true;
+  } catch (e) {
+    dbgWarn('xprop', args.join(' '), '→', e?.message || e);
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Настройки                                                           */
 /* ------------------------------------------------------------------ */
@@ -561,13 +571,13 @@ function computeDragTarget(mode, direction, frameGeo, clientGeo) {
 
   switch (direction) {
     case 'nw': return { x: xL, y: yT };
-    case 'n':  return { x: xC, y: yT };
+    case 'n': return { x: xC, y: yT };
     case 'ne': return { x: xR, y: yT };
-    case 'e':  return { x: xR, y: yC };
+    case 'e': return { x: xR, y: yC };
     case 'se': return { x: xR, y: yB };
-    case 's':  return { x: xC, y: yB };
+    case 's': return { x: xC, y: yB };
     case 'sw': return { x: xL, y: yB };
-    case 'w':  return { x: xL, y: yC };
+    case 'w': return { x: xL, y: yC };
   }
   return { x: xC, y: yT + 15 };
 }
@@ -734,25 +744,25 @@ class X11Watcher {
       if (ev.window === this.root) {
         if (ev.atom === this.atomMap._NET_ACTIVE_WINDOW) safe(this.applyActiveXid(), 'applyActiveXid');
         if (ev.atom === this.atomMap._NET_CLIENT_LIST ||
-            ev.atom === this.atomMap._NET_CLIENT_LIST_STACKING) this.scheduleRefresh();
+          ev.atom === this.atomMap._NET_CLIENT_LIST_STACKING) this.scheduleRefresh();
         return;
       }
       const rec = this.windows.get(ev.window);
       if (!rec) return;
       if (ev.atom === this.atomMap._NET_WM_STATE ||
-          ev.atom === this.atomMap.WM_STATE) {
+        ev.atom === this.atomMap.WM_STATE) {
         safe(this.refreshWmState(ev.window), 'refreshWmState');
       } else if (ev.atom === this.atomMap._NET_WM_NAME ||
-                 ev.atom === this.atomMap.WM_NAME) {
+        ev.atom === this.atomMap.WM_NAME) {
         safe(this.refreshTitle(ev.window), 'refreshTitle');
       }
       return;
     }
 
     if (ev.window === this.root &&
-        (t === 'CreateNotify' || t === 'MapNotify' ||
-         t === 'UnmapNotify' || t === 'DestroyNotify' ||
-         t === 'ReparentNotify')) {
+      (t === 'CreateNotify' || t === 'MapNotify' ||
+        t === 'UnmapNotify' || t === 'DestroyNotify' ||
+        t === 'ReparentNotify')) {
       this.scheduleRefresh();
       return;
     }
@@ -975,7 +985,7 @@ class X11Watcher {
     try {
       const atoms = await readWmStateAtoms(this.X, win, this.atomMap._NET_WM_STATE);
       return atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_VERT) &&
-             atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
+        atoms.includes(this.atomMap._NET_WM_STATE_MAXIMIZED_HORZ);
     } catch { return false; }
   }
 
@@ -1251,6 +1261,83 @@ export async function maximizeWindowById(id, maximized) {
     return { ok: false };
   }
 }
+/* ------------------------------------------------------------------ */
+/* Прозрачность (работает и для наших, и для native окон)              */
+/* ------------------------------------------------------------------ */
+
+// EWMH-совместимое свойство _NET_WM_WINDOW_OPACITY.
+// Значение: 32-битное беззнаковое, 0 = прозрачное, 0xFFFFFFFF = непрозрачное.
+// KWin/XFCE/Mutter/Openbox и т.д. читают его и применяют к окну.
+const OPACITY_ATOM = '_NET_WM_WINDOW_OPACITY';
+const OPACITY_MAX = 0xFFFFFFFF;
+
+export async function setWindowOpacityById(id, opacity) {
+  const t = resolveTarget(id);
+  if (!t) return { ok: false };
+
+  const clamped = Math.max(0, Math.min(1, Number(opacity)));
+  if (!Number.isFinite(clamped)) return { ok: false };
+
+  // Наши Electron-окна — через встроенный API, он даёт более плавный результат
+  if (t.kind === 'our') {
+    const w = getWindowById(t.appId);
+    if (w && !w.isDestroyed()) {
+      try { w.setOpacity(Math.max(0.05, clamped)); } catch { /* ignore */ }
+      return { ok: true };
+    }
+  }
+
+  // Native — через xprop. Не трогаем сам процесс, только WM.
+  if (t.xid != null) {
+    const hex = xidToHex(t.xid);
+    const value = Math.round(clamped * OPACITY_MAX);
+    const valueStr = '0x' + value.toString(16);
+    const ok = await runXprop([
+      '-id', hex,
+      '-f', OPACITY_ATOM, '32c',
+      '-set', OPACITY_ATOM, valueStr,
+    ]);
+    return { ok };
+  }
+
+  return { ok: false };
+}
+
+export async function getWindowOpacityById(id) {
+  const t = resolveTarget(id);
+  if (!t) return { ok: false, opacity: 1 };
+
+  if (t.kind === 'our') {
+    const w = getWindowById(t.appId);
+    if (w && !w.isDestroyed()) {
+      try { return { ok: true, opacity: w.getOpacity() }; }
+      catch { /* ignore */ }
+    }
+  }
+
+  if (t.xid != null && watcher && watcher.X) {
+    try {
+      const hex = xidToHex(t.xid);
+      const out = await new Promise((resolve) => {
+        execFile('xprop', ['-id', hex, OPACITY_ATOM], (err, stdout) => {
+          if (err) return resolve(null);
+          resolve(String(stdout || ''));
+        });
+      });
+      if (!out) return { ok: true, opacity: 1 };
+
+      // Формат: "_NET_WM_WINDOW_OPACITY(CARDINAL) = 4294967295"
+      const m = out.match(/=\s*(\d+)/);
+      if (!m) return { ok: true, opacity: 1 };
+
+      const raw = Number(m[1]);
+      if (!Number.isFinite(raw)) return { ok: true, opacity: 1 };
+      return { ok: true, opacity: raw / OPACITY_MAX };
+    } catch { /* ignore */ }
+  }
+
+  return { ok: true, opacity: 1 };
+}
 
 /* ------------------------------------------------------------------ */
 /* export default                                                      */
@@ -1361,10 +1448,10 @@ export default async function () {
   });
 
   /* -------- прямые IPC-каналы -------- */
-  ipcMain.handle('native-window:focus',   (_e, { id }) => focusWindowById(id));
-  ipcMain.handle('native-window:close',   (_e, { id }) => closeWindowById(id));
-  ipcMain.handle('native-window:minimize',(_e, { id }) => minimizeWindowById(id));
-  ipcMain.handle('native-window:maximize',(_e, { id, maximized }) =>
+  ipcMain.handle('native-window:focus', (_e, { id }) => focusWindowById(id));
+  ipcMain.handle('native-window:close', (_e, { id }) => closeWindowById(id));
+  ipcMain.handle('native-window:minimize', (_e, { id }) => minimizeWindowById(id));
+  ipcMain.handle('native-window:maximize', (_e, { id, maximized }) =>
     maximizeWindowById(id, maximized));
 
   ipcMain.handle('native-window:get-bounds', async (_e, { id }) => {
@@ -1392,8 +1479,16 @@ export default async function () {
     catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('shell:logout', async () => {
-    try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll')}
+    try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll') }
     catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  ipcMain.handle('native-window:set-opacity', async (_e, { id, opacity }) => {
+    return setWindowOpacityById(id, opacity);
+  });
+
+  ipcMain.handle('native-window:get-opacity', async (_e, { id }) => {
+    return getWindowOpacityById(id);
   });
 
   return watcher;

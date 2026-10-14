@@ -20,12 +20,12 @@ export default function TopBar({
   showClock = true,
   showClockMs = false,
   onToggleOverview,
-  onOpenDevTools,
+  onOpenWindowSettings,
   onFocusWindow,
   onCloseWindow,
   onRequestSearch,
   onRequestSettings,
-  onRequestLogout
+  onRequestLogout,
 }) {
   return (
     <Box sx={{
@@ -45,7 +45,7 @@ export default function TopBar({
       }}>
         <ControlGrid
           activeWindow={activeWindow}
-          onOpenDevTools={() => onOpenDevTools?.(activeWindow?.id)}
+          onOpenWindowSettings={onOpenWindowSettings}
         />
       </Box>
 

@@ -613,11 +613,21 @@ static void announce_window(GtkWindow *win, WindowEntry *e) {
     ensure_socket();
     if (sock_fd < 0) return;
 
+        // На момент announce окно может быть ещё не realized — XID берём,
+    // если есть; пустая строка не мешает, geometry дошлёт позже.
+    int sx = 0, sy = 0;
+    unsigned long xid = 0;
+    window_get_x11_info(win, &sx, &sy, &xid);
+
     GString *o = g_string_new(NULL);
     g_string_append(o, "{\"type\":\"window-added\",");
     jkey(o, "windowId"); jstr(o, wid);
     g_string_append_c(o, ',');
     jkey(o, "title"); jstr(o, title ? title : "Untitled");
+    g_string_append_c(o, ',');
+    if (xid) g_string_append_printf(o, "\"xid\":\"0x%lx\",", xid);
+    else     g_string_append(o, "\"xid\":null,");
+    g_string_append_printf(o, "\"pid\":%d", (int)getpid());
     g_string_append_c(o, '}');
     send_frame(sock_fd, o->str);
     g_string_free(o, TRUE);

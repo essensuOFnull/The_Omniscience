@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 
 import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
 import SearchIcon from '@mui/icons-material/Search';
-import BuildIcon from '@mui/icons-material/Build';
+import SettingsIcon from '@mui/icons-material/Settings';
 import NorthWestIcon from '@mui/icons-material/NorthWest';
 import NorthIcon from '@mui/icons-material/North';
 import NorthEastIcon from '@mui/icons-material/NorthEast';
@@ -77,7 +77,7 @@ function Cell({ children, cursor, onClick, onMouseDown, title, disabled, col, ro
   );
 }
 
-export default function ControlGrid({ activeWindow, onOpenDevTools }) {
+export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
   const iconSize = 14;
   const awRef = useRef(activeWindow);
   awRef.current = activeWindow;
@@ -224,13 +224,13 @@ export default function ControlGrid({ activeWindow, onOpenDevTools }) {
           : <DesktopWindowsIcon style={{ fontSize: iconSize }} />}
       </Cell>
 
-      <Cell col={1} row={2} title="Поиск" disabled={!hasWin} onClick={() => {}}>
+      <Cell col={1} row={2} title="Поиск" disabled={!hasWin} onClick={() => { }}>
         <SearchIcon style={{ fontSize: iconSize }} />
       </Cell>
 
-      <Cell col={1} row={3} title="Открыть DevTools"
-        disabled={!hasWin} onClick={() => onOpenDevTools?.(activeWindow?.id)}>
-        <BuildIcon style={{ fontSize: iconSize }} />
+      <Cell col={1} row={3} title="Настройки окна"
+        disabled={!hasWin} onClick={() => onOpenWindowSettings?.(activeWindow?.id)}>
+        <SettingsIcon style={{ fontSize: iconSize }} />
       </Cell>
 
       <Cell col={2} row={1} cursor={CURSORS.nw} disabled={!canResize}
