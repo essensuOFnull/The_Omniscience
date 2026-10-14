@@ -198,7 +198,6 @@ export function createWindowByRequest({
     show: false,
     skipTaskbar: false,
     webPreferences: {
-      session: session || undefined,
       preload: preload || undefined,
       nodeIntegration: false,
       contextIsolation: true,

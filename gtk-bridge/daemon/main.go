@@ -4,14 +4,19 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -186,10 +191,39 @@ func handleHook(conn net.Conn, session int, hub *Hub) {
 	}
 }
 
+// ---------- port cleanup --------------------------------------------------
+
+// Убиваем всё, что держит TCP-порт. Используем lsof, потому что он есть
+// на всех дистрибутивах с KDE. Если нет — ругаемся в лог, но не падаем.
+func killPreviousOnPort(addr string) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return
+	}
+	out, err := exec.Command("lsof", "-t", "-i", ":"+port).Output()
+	if err != nil {
+		return
+	}
+	for _, pidStr := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(pidStr)
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		log.Printf("[startup] killing stale process on port %s: pid=%d", port, pid)
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+	time.Sleep(150 * time.Millisecond)
+}
+
 // ---------- main ----------------------------------------------------------
 
 func main() {
 	log.SetFlags(log.Ltime)
+
+	// Освобождаем порт от предыдущего экземпляра демона, если он остался
+	// (SIGKILL прошлой сессии оставил сокет занятым).
+	killPreviousOnPort(WSAddr)
+
 	hub := NewHub()
 
 	go startWS(hub)
@@ -206,4 +240,6 @@ func main() {
 	// Сообщаем всем клиентам, что демон уходит
 	bye, _ := json.Marshal(map[string]any{"type": "daemon-shutdown"})
 	hub.Broadcast(bye)
+
+	_ = fmt.Sprint // на случай, если fmt останется неиспользованным
 }

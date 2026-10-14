@@ -122,7 +122,6 @@ function createOverlay(daemonWindowId, title, sessionId) {
     skipTaskbar: true,
     show: false,
     webPreferences: {
-      preload: global.paths.reactPreload,
       contextIsolation: true,
       nodeIntegration: false,
       transparent: true,

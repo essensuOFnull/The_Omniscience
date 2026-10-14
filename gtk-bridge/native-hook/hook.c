@@ -1,9 +1,9 @@
 // libgtk-hook.so — LD_PRELOAD-хук для перехвата GTK-окон.
 // Multi-window: каждое GtkWindow трекается отдельно, свой windowId.
 // Отправляет: window-added / frame / geometry / window-removed.
-// Координаты контента корректируются на _GTK_FRAME_EXTENTS (CSD-тень GTK4).
+// Координаты корректируются на _GTK_FRAME_EXTENTS (CSD-тень GTK4).
 // Изображения: icon_name → gicon → paintable → widget render → PNG data-URI.
-// Length-prefixed framing: [uint32 LE длина][N байт JSON]
+// Framing: [uint32 LE длина][N байт JSON].
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -23,7 +23,6 @@
 #include <gdk/x11/gdkx.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
-// Подавляем deprecated warnings от gdk_x11_* — они нужны, API другой нет
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
@@ -31,13 +30,13 @@
 /* ---------- forward declarations --------------------------------------- */
 
 static gboolean emit_all_frames(gpointer data);
+static gboolean window_get_x11_info(GtkWindow *win, int *out_x, int *out_y,
+                                    unsigned long *out_xid);
 
 /* ---------- flags -------------------------------------------------------- */
 
-static int    g_debug         = 0;
-static int    g_emit_calls    = 0;
-static int    g_hide_original = 0;
-static double g_hide_opacity  = 0.01;
+static int g_debug      = 0;
+static int g_emit_calls = 0;
 
 /* ---------- socket ------------------------------------------------------- */
 
@@ -375,8 +374,6 @@ static gboolean walk_into(GString *o, GtkWidget *w,
     if (!gtk_widget_get_sensitive(w)) {
         g_string_append(o, ","); jkey(o, "sensitive"); g_string_append(o, "false");
     }
-    double op = gtk_widget_get_opacity(w);
-    if (op < 1.0) { g_string_append(o, ","); jkey(o, "opacity"); jdouble(o, op); }
 
     if (GTK_IS_LABEL(w)) {
         const char *t = gtk_label_get_text(GTK_LABEL(w));
@@ -474,8 +471,6 @@ static gboolean walk_into(GString *o, GtkWidget *w,
 
 /* ---------- X11 geometry (с учётом CSD) --------------------------------- */
 
-// Читает _GTK_FRAME_EXTENTS у X11-окна.
-// Возвращает TRUE и заполняет out_left/top/right/bottom, если свойство есть.
 static gboolean read_gtk_frame_extents(Display *dpy, Window xid,
                                        int *out_left, int *out_top,
                                        int *out_right, int *out_bottom) {
@@ -509,7 +504,6 @@ static gboolean read_gtk_frame_extents(Display *dpy, Window xid,
     return ok;
 }
 
-// Возвращает позицию ВИДИМОГО КОНТЕНТА окна на экране (с поправкой на CSD-тень).
 static gboolean window_get_x11_info(GtkWindow *win,
                                     int *out_x, int *out_y,
                                     unsigned long *out_xid) {
@@ -610,14 +604,12 @@ static void announce_window(GtkWindow *win, WindowEntry *e) {
     fprintf(stderr, "[hook] tracking window: %s id=%s (\"%s\")\n",
             G_OBJECT_TYPE_NAME(win), wid, title ? title : "");
 
-    ensure_socket();
-    if (sock_fd < 0) return;
-
-        // На момент announce окно может быть ещё не realized — XID берём,
-    // если есть; пустая строка не мешает, geometry дошлёт позже.
     int sx = 0, sy = 0;
     unsigned long xid = 0;
     window_get_x11_info(win, &sx, &sy, &xid);
+
+    ensure_socket();
+    if (sock_fd < 0) return;
 
     GString *o = g_string_new(NULL);
     g_string_append(o, "{\"type\":\"window-added\",");
@@ -629,6 +621,7 @@ static void announce_window(GtkWindow *win, WindowEntry *e) {
     else     g_string_append(o, "\"xid\":null,");
     g_string_append_printf(o, "\"pid\":%d", (int)getpid());
     g_string_append_c(o, '}');
+
     send_frame(sock_fd, o->str);
     g_string_free(o, TRUE);
 }
@@ -664,13 +657,6 @@ static void install_hook(GtkWidget *win) {
 
     g_hash_table_insert(g_windows, win, e);
     g_signal_connect(win, "destroy", G_CALLBACK(on_window_destroy), NULL);
-
-    if (g_hide_original) {
-        if (g_debug)
-            fprintf(stderr, "[hook] hiding original via opacity=%.4f\n", g_hide_opacity);
-        gtk_widget_set_opacity(GTK_WIDGET(win), g_hide_opacity);
-        gtk_widget_queue_draw(GTK_WIDGET(win));
-    }
 
     announce_window(GTK_WINDOW(win), e);
 
@@ -832,15 +818,10 @@ void gtk_window_present(GtkWindow *window) {
 __attribute__((constructor))
 static void hook_init(void) {
     if (getenv("GTK_HOOK_DEBUG")) g_debug = 1;
-    if (getenv("GTK_HOOK_HIDE"))  g_hide_original = 1;
-    if (getenv("GTK_HOOK_HIDE_OPACITY")) {
-        double v = atof(getenv("GTK_HOOK_HIDE_OPACITY"));
-        if (v > 0.0 && v < 1.0) g_hide_opacity = v;
-    }
     if (g_debug)
-        fprintf(stderr, "[hook] loaded pid=%d hide=%d opacity=%.4f\n",
-                (int)getpid(), g_hide_original, g_hide_opacity);
+        fprintf(stderr, "[hook] loaded pid=%d\n", (int)getpid());
 }
+
 #ifdef GDK_WINDOWING_X11
 #pragma GCC diagnostic pop
 #endif

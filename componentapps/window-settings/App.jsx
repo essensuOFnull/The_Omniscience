@@ -36,7 +36,6 @@ export default function App() {
     const w = await invoke('window-settings:get', { id: windowId });
     setWin(w || null);
 
-    // Прозрачность — отдельным запросом, работает и для native
     const op = await invoke('native-window:get-opacity', { id: windowId });
     if (op && typeof op.opacity === 'number') {
       setOpacity(op.opacity);
@@ -59,12 +58,9 @@ export default function App() {
     };
   }, [windowId, reload]);
 
-  // Кнопка перезагрузки окна настроек — жёсткий reload страницы.
-  // Самый надёжный способ: переспросит всё с нуля.
   const hardReload = () => {
     try { window.location.reload(); }
     catch {
-      // Fallback: если reload недоступен — навигируемся на тот же URL
       try { window.location.href = window.location.href; } catch { /* ignore */ }
     }
   };
@@ -78,11 +74,16 @@ export default function App() {
     setTimeout(() => setSaving(false), 300);
   };
 
+  const onOpenOverlay = () => {
+    fire('topbar:open-overlay', { id: windowId });
+  };
+
   const close = () => window.close();
 
   const isOur = win?.kind === 'our';
   const isNative = win?.kind === 'native';
   const isOverlay = !!win?.isBridgeOverlay;
+  const hasOverlay = !!win?.overlayWindowId;
 
   return (
     <Box sx={{
@@ -137,6 +138,7 @@ export default function App() {
         {win?.daemonWindowId && <Box>daemon: {win.daemonWindowId}</Box>}
         {win?.gtkXid && <Box>GTK XID: {win.gtkXid}</Box>}
         {win?.ownerId && <Box>owner: {win.ownerId}</Box>}
+        {win?.overlayWindowId && <Box>overlay: {win.overlayWindowId}</Box>}
       </Stack>
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 1.5 }} />
@@ -174,7 +176,7 @@ export default function App() {
             Инструменты
           </Typography>
 
-          {isOur && (
+          {isOur && !isOverlay && (
             <Button
               size="small" variant="outlined" onClick={onOpenDevTools}
               startIcon={<BuildIcon sx={{ fontSize: 14 }} />}
@@ -187,32 +189,37 @@ export default function App() {
             </Button>
           )}
 
-          {isOverlay && (
-            <Button
-              size="small" variant="outlined"
-              startIcon={<LayersIcon sx={{ fontSize: 14 }} />}
-              disabled
-              sx={{
-                color: '#89b4fa', borderColor: 'rgba(137,180,250,0.4)',
-                textTransform: 'none', fontSize: 11, mb: 0.75,
-              }}
-            >
-              Настройки overlay (скоро)
-            </Button>
-          )}
-
           {isNative && (
             <Button
               size="small" variant="outlined"
+              onClick={hasOverlay ? undefined : onOpenOverlay}
+              disabled={hasOverlay}
               startIcon={<LayersIcon sx={{ fontSize: 14 }} />}
-              disabled
               sx={{
-                color: '#a6e3a1', borderColor: 'rgba(166,227,161,0.4)',
+                color: hasOverlay ? '#6c7086' : '#a6e3a1',
+                borderColor: hasOverlay
+                  ? 'rgba(255,255,255,0.1)'
+                  : 'rgba(166,227,161,0.4)',
                 textTransform: 'none', fontSize: 11, mb: 0.75,
+                '&.Mui-disabled': {
+                  color: '#6c7086',
+                  borderColor: 'rgba(255,255,255,0.1)',
+                },
               }}
             >
-              Открыть DOM-overlay (скоро)
+              {hasOverlay
+                ? 'DOM-overlay открыт'
+                : 'Открыть DOM-overlay'}
             </Button>
+          )}
+
+          {isNative && !hasOverlay && (
+            <Typography sx={{
+              fontSize: 9, color: '#666',
+              mt: -0.25, mb: 0.75, px: 0.5, lineHeight: 1.3,
+            }}>
+              Приложение будет перезапущено с хуком через launch.sh
+            </Typography>
           )}
         </>
       )}
