@@ -31,6 +31,6 @@ registerArkhScheme();
   await global.$.app_on_ready();
 
   await initGtkBridge();
-  
+
   global.$.log('Приложение полностью запущено');
 })();

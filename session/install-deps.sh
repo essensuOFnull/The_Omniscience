@@ -2,8 +2,9 @@
 # scripts/install-deps.sh
 # Единая точка установки ВСЕХ системных зависимостей The Omniscience:
 #   1) build-цепочка для node-pty / electron-rebuild
-#   2) рантайм DE: KWin(X11), X11-утилиты, PipeWire, EasyEffects, KRunner,
-#      D-Bus user-session (systemd --user), kglobalacceld и т.д.
+#   2) рантайм DE: KWin(X11), X11-утилиты, xterm/uxterm, Terminus,
+#      PipeWire, EasyEffects, KRunner, D-Bus user-session,
+#      kglobalacceld, ksmserver, kded6 и т.д.
 #
 # ════════════════════════════════════════════════════════════════════
 # ⚠️⚠️⚠️  ВНИМАНИЕ: ФЛАГ --noconfirm (pacman) — НИГДЕ НЕ ИСПОЛЬЗОВАТЬ  ⚠️⚠️⚠️
@@ -63,7 +64,7 @@ install_build_deps() {
 }
 
 # ---------------------------------------------------------------------
-# 2. Рантайм-зависимости DE (KWin/X11/PipeWire/KRunner/D-Bus/утилиты)
+# 2. Рантайм-зависимости DE
 # ---------------------------------------------------------------------
 install_runtime_deps() {
   case "$DISTRO" in
@@ -71,8 +72,9 @@ install_runtime_deps() {
       sudo apt install -y \
         kwin-x11 \
         dbus dbus-user-session dbus-bin dbus-x11 \
-        x11-xserver-utils wmctrl xdotool \
-        x11-xkb-utils x11-utils xdpyinfo \
+        bindfs fuse3 \
+        xterm xfonts-terminus fonts-dejavu-core \
+        x11-xserver-utils x11-xkb-utils x11-utils wmctrl xdotool \
         kglobalacceld kded6 kactivitymanagerd \
         polkit-kde-agent-1 \
         kscreen powerdevil kde-config-gtk-style \
@@ -86,17 +88,19 @@ install_runtime_deps() {
         easyeffects lsp-plugins-lv2 lsp-plugins-vst \
         curl git
 
-      sudo apt install -y krunner || true
+      sudo apt install -y xdpyinfo 2>/dev/null || true
+      sudo apt install -y krunner    2>/dev/null || true
       sudo apt install -y qt6-base-dev-tools 2>/dev/null \
         || sudo apt install -y qtbase5-dev-tools 2>/dev/null \
         || true
       ;;
 
     arch|manjaro|endeavouros|garuda)
-      # --noconfirm НЕ добавлять (см. шапку файла)
+      # --noconfirm НЕ добавлять к pacman (см. шапку файла)
       sudo pacman -S --needed \
         kwin-x11 \
-        dbus \
+        dbus fuse3 \
+        xterm terminus-font \
         xorg-xrandr wmctrl xdotool \
         xorg-setxkbmap xorg-xprop xorg-xdpyinfo \
         kglobalacceld kded kactivitymanagerd \
@@ -111,16 +115,29 @@ install_runtime_deps() {
         easyeffects lsp-plugins calf \
         curl git
 
-      sudo pacman -S --needed krunner || true
-      sudo pacman -S --needed qt6-tools || true
+      sudo pacman -S --needed krunner qt6-tools || true
+
+      # bindfs живёт в AUR, pacman его не видит.
+      if command -v pamac >/dev/null 2>&1; then
+        pamac build --no-confirm bindfs || true
+      elif command -v yay >/dev/null 2>&1; then
+        yay -S --noconfirm bindfs || true
+      elif command -v paru >/dev/null 2>&1; then
+        paru -S --noconfirm bindfs || true
+      else
+        echo "⚠️  bindfs в AUR. Установите вручную: pamac build bindfs"
+      fi
       ;;
 
     fedora|rhel|centos)
       sudo dnf install -y \
         kwin-x11 \
         dbus dbus-tools dbus-x11 \
-        xrandr wmctrl xdotool \
-        xkbcomp xkeyboard-config xprop xdpyinfo \
+        bindfs fuse3 \
+        xterm xorg-x11-fonts-terminus \
+        xorg-x11-server-utils xorg-x11-utils \
+        wmctrl xdotool \
+        xkbcomp xkeyboard-config \
         kglobalacceld kf6-kded kactivitymanagerd \
         polkit-kde \
         kscreen powerdevil kde-gtk-config \
@@ -133,6 +150,7 @@ install_runtime_deps() {
         wireplumber easyeffects lsp-plugins \
         curl git
 
+      sudo dnf install -y xdpyinfo || true
       sudo dnf install -y krunner || true
       sudo dnf install -y qt6-qttools || true
       ;;
@@ -141,6 +159,8 @@ install_runtime_deps() {
       sudo zypper install -y \
         kwin6-x11 \
         dbus-1 dbus-1-tools dbus-1-x11 \
+        bindfs fuse3 \
+        xterm terminus-bitmap-fonts \
         xrandr wmctrl xdotool \
         xkeyboard-config xprop xdpyinfo \
         kglobalacceld6 kded6 kactivitymanagerd6 \
@@ -163,6 +183,8 @@ install_runtime_deps() {
       sudo xbps-install -y \
         kwin \
         dbus \
+        bindfs fuse3 \
+        xterm terminus-font \
         xrandr wmctrl xdotool \
         setxkbmap xprop xdpyinfo \
         kglobalacceld kded kactivitymanagerd \
@@ -181,7 +203,9 @@ install_runtime_deps() {
     alpine)
       sudo apk add \
         kwin \
-        dbus \
+        dbus dbus-x11 \
+        bindfs fuse3 \
+        xterm terminus-font \
         xrandr wmctrl xdotool \
         xkeyboard-config xprop xdpyinfo \
         kglobalacceld kded kactivitymanagerd \
@@ -198,9 +222,16 @@ install_runtime_deps() {
       ;;
 
     gentoo)
+      # В Gentoo пакеты — category/name. Простые имена не работают.
+      # sys-fs/fuse с версии 3.x — это FUSE3 (fusermount3, libfuse3).
+      # Если нужен USE-флаг для --allow_other: check /etc/portage/package.use.
+      #
+      # dbus-launch больше не нужен — используем dbus-run-session из sys-apps/dbus.
       sudo emerge \
         kde-plasma/kwin-x11 \
         sys-apps/dbus \
+        sys-fs/bindfs sys-fs/fuse \
+        x11-terms/xterm media-fonts/terminus-font \
         x11-apps/xrandr x11-misc/wmctrl x11-misc/xdotool \
         x11-misc/setxkbmap x11-apps/xprop x11-apps/xdpyinfo \
         kde-plasma/kglobalacceld kde-frameworks/kded kde-plasma/kactivitymanagerd \
@@ -247,8 +278,8 @@ fi
 # ---------------------------------------------------------------------
 # Диагностика
 # ---------------------------------------------------------------------
-# Некоторые бинарники KDE (kglobalacceld) лежат не в $PATH, а в /usr/lib.
-# Поэтому для них — отдельный поиск.
+# Многие бинарники KDE6 лежат не в $PATH, а в /usr/libexec, /usr/lib/kf6,
+# /usr/lib/${multiarch}/libexec и т.п.
 find_kde_bin() {
   local name="$1"
   if command -v "$name" >/dev/null 2>&1; then
@@ -257,7 +288,10 @@ find_kde_bin() {
   fi
   for p in "/usr/lib/$name" "/usr/libexec/$name" \
            "/usr/lib/kf6/$name" "/usr/lib/libexec/$name" \
-           "/usr/lib64/$name"; do
+           "/usr/lib64/$name" "/usr/lib64/libexec/$name" \
+           "/usr/lib/x86_64-linux-gnu/libexec/$name" \
+           "/usr/lib/aarch64-linux-gnu/libexec/$name" \
+           "/usr/lib/${name%-*}${name##*-}/$name"; do
     [ -x "$p" ] && { echo "$p"; return 0; }
   done
   return 1
@@ -265,14 +299,41 @@ find_kde_bin() {
 
 echo ""
 echo "🔎 Проверка ключевых бинарников:"
-for bin in kwin_x11 wmctrl xdotool krunner qdbus qdbus6 pipewire easyeffects systemsettings \
-           kglobalacceld kded6 dbus-send dbus-update-activation-environment; do
+LOCAL_BIN="${HOME}/.local/bin"
+mkdir -p "$LOCAL_BIN"
+
+for bin in kwin_x11 ksmserver kded6 kglobalacceld qdbus6 qdbus \
+           uxterm xterm xrandr wmctrl xdotool krunner \
+           pipewire easyeffects systemsettings \
+           dbus-send dbus-update-activation-environment; do
   if bin_path=$(find_kde_bin "$bin"); then
     printf '  ✓ %-34s %s\n' "$bin" "$bin_path"
+
+    # Если бинарь не в $PATH — сделаем симлинк в ~/.local/bin
+    case "$bin_path" in
+      "$LOCAL_BIN"/*) : ;;
+      /usr/bin/*|/bin/*|/usr/local/bin/*) : ;;
+      *)
+        if [ ! -e "$LOCAL_BIN/$bin" ]; then
+          ln -sf "$bin_path" "$LOCAL_BIN/$bin"
+          printf '      ↳ симлинк: %s\n' "$LOCAL_BIN/$bin"
+        fi
+        ;;
+    esac
   else
-    printf '  ✗ %-34s не найден\n' "$bin"
+    printf '  ✗ %-34s НЕ НАЙДЕН\n' "$bin"
   fi
 done
+
+echo ""
+echo "🔎 Проверка Terminus:"
+if fc-list 2>/dev/null | grep -qi terminus; then
+  printf '  ✓ Terminus найден через fontconfig\n'
+elif xlsfonts 2>/dev/null | grep -qi terminus; then
+  printf '  ✓ Terminus найден как X11 core font\n'
+else
+  printf '  ✗ Terminus не найден. uxterm возьмёт дефолтный шрифт.\n'
+fi
 
 echo ""
 echo "🔎 Проверка D-Bus user-session:"
@@ -281,6 +342,17 @@ if [ -S "$USER_BUS" ]; then
   printf '  ✓ %-34s %s\n' "user-bus" "$USER_BUS"
 else
   printf '  ✗ %-34s нет сокета — нужен dbus-user-session (Debian) / вход через DM\n' "user-bus"
+fi
+
+echo ""
+echo "🔎 Проверка X-сессии:"
+if [ -n "${DISPLAY:-}" ]; then
+  printf '  ✓ DISPLAY=%s\n' "$DISPLAY"
+  if command -v xrandr >/dev/null 2>&1; then
+    xrandr --query | head -1 | sed 's/^/  /'
+  fi
+else
+  printf '  ⚠️  DISPLAY не задан (это норм при установке из TTY)\n'
 fi
 
 echo ""

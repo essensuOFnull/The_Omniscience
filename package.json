@@ -4,8 +4,8 @@
   "type": "module",
   "main": "index.mjs",
   "scripts": {
-    "start": "OMNISCIENCE_SESSION= npx electron .",
-    "postinstall": "sh ./scripts/install-deps.sh && npm run build:gtk-bridge && npx electron-rebuild --use-tmp-dir && sh ./install-omniscience-session.sh",
+    "start": "node session/launch.mjs",
+    "postinstall": "sh ./session/install-deps.sh && npm run build:gtk-bridge && npx electron-rebuild --use-tmp-dir",
     "build:gtk-bridge": "sh ./gtk-bridge/build.sh"
   },
   "dependencies": {

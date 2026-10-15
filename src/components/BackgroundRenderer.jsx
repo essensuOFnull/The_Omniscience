@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSetting } from '../settings/useSettings';
 import { useProjectRoot, resolveForDisplay } from '../viewRuntime/paths';
+import { BootConsole } from './BootConsole';
 
 const CUSTOM_BACKGROUNDS = {
   // 'MyCustom': React.lazy(() => import('./backgrounds/MyCustom')),
@@ -27,6 +28,7 @@ function OuterLayer({ opacity, scrollable, children }) {
         boxSizing: 'border-box',
       }}
     >
+      <BootConsole/>
       {children}
     </div>
   );

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=EasyEffects
+Comment=Аудиоэффекты PipeWire
+Exec=easyeffects --service-mode
+Icon=easyeffects
+Terminal=false
+X-KDE-autostart-after=pipewire

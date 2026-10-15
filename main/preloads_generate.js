@@ -148,6 +148,7 @@ export default async function () {
 
   const commonPreload = [
     global._.imports,
+    global._.console_ipc,
     extPreloadCode,                            // ← chrome.* API, первым
     stealthEvasionsCode,                       // ← Stealth-маскировка, применяется сразу на старте
     global._.csp_coconut,

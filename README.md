@@ -63,7 +63,7 @@ Omniscience **не работает на Windows и macOS**. Это осозна
 
 ```bash
 cd /путь/к/проекту
-chmod +x install-omniscience-session.sh
+chmod 777 install-omniscience-session.sh
 ./install-omniscience-session.sh
 ```
 
