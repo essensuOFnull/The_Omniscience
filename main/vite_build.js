@@ -67,7 +67,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       alias: {
         '@src': srcDir,
         '@public': publicDir,
-        '@viewRuntime': path.join(srcDir, 'viewRuntime', 'index.js'),
         '@themes': path.join(rootDir, 'themes'),
       },
     },

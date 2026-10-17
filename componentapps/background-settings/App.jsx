@@ -3,9 +3,9 @@ import {
   Box, Typography, TextField, Select, MenuItem, FormControl,
   InputLabel, Slider, Button, Divider, Alert,
 } from '@mui/material';
-import {
-  useViewSetting, viewDispatch, useProjectRoot, resolveForDisplay,
-} from '@viewRuntime';
+import { settingsStore } from '../../src/settings/store';
+import { useSetting } from '../../src/settings/useSettings';
+import { useProjectRoot, resolveForDisplay } from '../../src/settings/paths';
 
 function Preview({ bg, keyNonce, projectRoot }) {
   if (!bg.source && bg.type !== 'color') {
@@ -16,29 +16,21 @@ function Preview({ bg, keyNonce, projectRoot }) {
     );
   }
 
-  const src = resolveForDisplay(bg.source, projectRoot);
+  const src = resolveForDisplay(bg.source, projectRoot) || bg.source;
 
   const fill = {
-    width: '100%',
-    height: '100%',
-    border: 'none',
-    display: 'block',
-    margin: 0,
-    padding: 0,
+    width: '100%', height: '100%',
+    border: 'none', display: 'block',
+    margin: 0, padding: 0,
   };
 
   return (
     <Box sx={{
-      flex: 1,
-      minHeight: 200,
-      width: '100%',
-      borderRadius: 1,
-      overflow: 'hidden',
+      flex: 1, minHeight: 200, width: '100%',
+      borderRadius: 1, overflow: 'hidden',
       border: '1px solid rgba(255,255,255,0.1)',
       bgcolor: '#111',
-      display: 'flex',
-      alignItems: 'stretch',
-      justifyContent: 'stretch',
+      display: 'flex', alignItems: 'stretch', justifyContent: 'stretch',
     }}>
       {bg.type === 'color' && <Box sx={{ width: '100%', height: '100%', bgcolor: bg.color }} />}
       {bg.type === 'image' && <img key={keyNonce} src={src} alt="preview" style={{ ...fill, objectFit: 'contain' }} />}
@@ -63,13 +55,13 @@ function Preview({ bg, keyNonce, projectRoot }) {
   );
 }
 
-export default function BackgroundTab() {
-  const bg = useViewSetting('settings.background') || {};
+export default function App() {
+  const bg = useSetting('background') || {};
   const projectRoot = useProjectRoot();
   const [nonce, setNonce] = useState(0);
 
   const set = (key, value) => {
-    viewDispatch('updateSetting', { path: `background.${key}`, value });
+    settingsStore.update(`background.${key}`, value);
   };
 
   const type = bg.type || 'color';

@@ -1,21 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Switch, IconButton, Divider, Stack, Alert,
+  Box, Typography, Switch, IconButton, Divider, Stack,
 } from '@mui/material';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import LockIcon from '@mui/icons-material/Lock';
-import { useViewSetting, viewDispatch } from '@viewRuntime';
+import { settingsStore } from '../../src/settings/store';
+import { useSetting } from '../../src/settings/useSettings';
 
 export default function TabsTab() {
-  const config = useViewSetting('settings.overviewTabs') || [];
+  const config = useSetting('overviewTabs', []);
   const [apps, setApps] = useState([]);
 
   useEffect(() => {
-    window.electron_view_API?.getAppsList?.().then(setApps).catch(() => {});
+    window.electron_view_API?.getAppsList?.()
+      .then(setApps)
+      .catch(() => {});
   }, []);
 
-  // Собранный список: сначала всё из config (в порядке), потом остальные приложения
   const rows = useMemo(() => {
     const configIds = new Set(config.map((e) => e.id));
     const configured = config.map((e) => ({
@@ -28,10 +30,7 @@ export default function TabsTab() {
     return [...configured, ...rest];
   }, [config, apps]);
 
-  const update = (newConfig) => viewDispatch('updateSetting', {
-    path: 'overviewTabs',
-    value: newConfig,
-  });
+  const update = (value) => settingsStore.update('overviewTabs', value);
 
   const toggle = (id) => {
     const entry = config.find((e) => e.id === id);
@@ -55,10 +54,6 @@ export default function TabsTab() {
 
   return (
     <Stack spacing={2}>
-      <Alert severity="info" sx={{ bgcolor: 'rgba(168,85,247,0.1)', color: '#fff' }}>
-        Порядок вкладок в Overview. Настройки — обязательная вкладка, её нельзя скрыть.
-      </Alert>
-
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>

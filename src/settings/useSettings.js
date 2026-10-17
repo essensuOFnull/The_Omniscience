@@ -9,7 +9,8 @@ export function useSettings() {
   );
 }
 
-export function useSetting(path) {
+export function useSetting(path, fallback) {
   const settings = useSettings();
-  return path.split('.').reduce((acc, k) => (acc == null ? acc : acc[k]), settings);
+  const value = path.split('.').reduce((obj, k) => obj?.[k], settings);
+  return value === undefined ? fallback : value;
 }

@@ -5,7 +5,7 @@
   "main": "index.mjs",
   "scripts": {
     "start": "node session/launch.mjs",
-    "postinstall": "sh ./session/install-deps.sh && npm run build:gtk-bridge && npx electron-rebuild --use-tmp-dir",
+    "postinstall": "node ./session/install-deps.mjs && npm run build:gtk-bridge && npx electron-rebuild --use-tmp-dir",
     "build:gtk-bridge": "sh ./gtk-bridge/build.sh"
   },
   "dependencies": {

@@ -3,31 +3,24 @@ const STORAGE_KEY = 'theOmniscienceSettings';
 const defaultSettings = {
   themeEnabled: true,
   themeColors: {
-    maxR: 128,
-    maxG: 0,
-    maxB: 128,
-    targetAlpha: 0.25,
-    textBrightness: 255,
+    maxR: 128, maxG: 0, maxB: 128,
+    targetAlpha: 0.25, textBrightness: 255,
   },
   background: {
     type: 'image',
-    source: 'public/images/background.jpg',
+    source: './public/images/background.jpg',
     color: '#000000',
-    opacity: 1,
+    opacity: 0.75,
     componentName: 'Background',
   },
   animationsEnabled: true,
   customAnimations: null,
-  // Список вкладок Overview. Порядок = порядок в массиве.
-  // settings — locked, его нельзя скрыть или удалить.
   overviewTabs: [
-    { id: 'apps-list', visible: true },
-    { id: 'settings', visible: true, locked: true },
-    { id: 'web-search', visible: true },
+    { id: 'apps-list', visible: true, locked: true },
   ],
   desktopFiles: {
     enabled: true,
-    path: null, // null → автоматически ~/Desktop из XDG
+    path: null,
   },
 };
 
@@ -80,3 +73,12 @@ export const settingsStore = {
     emit();
   },
 };
+
+// Другое окно settings изменило настройки — перечитываем и перерисовываемся.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORAGE_KEY) return;
+    currentSettings = loadSettings();
+    emit();
+  });
+}

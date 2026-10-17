@@ -2,12 +2,12 @@ import React from 'react';
 import {
   Box, Typography, Switch, FormControlLabel, TextField, Divider, Alert,
 } from '@mui/material';
-import { useSetting } from '../../src/settings/useSettings';
 import { settingsStore } from '../../src/settings/store';
+import { useSetting } from '../../src/settings/useSettings';
 
-export default function DesktopTab() {
-  const enabled = useSetting('desktopFiles.enabled');
-  const path = useSetting('desktopFiles.path');
+export default function App() {
+  const enabled = useSetting('desktopFiles.enabled', false);
+  const path = useSetting('desktopFiles.path', null);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -28,10 +28,7 @@ export default function DesktopTab() {
 
       {enabled && (
         <>
-          <Alert
-            severity="info"
-            sx={{ bgcolor: 'rgba(168,85,247,0.1)', color: '#fff' }}
-          >
+          <Alert severity="info" sx={{ bgcolor: 'rgba(168,85,247,0.1)', color: '#fff' }}>
             По умолчанию используется системная папка Desktop (из XDG user-dirs).
             Оставьте поле пустым, чтобы использовать её.
           </Alert>
@@ -52,7 +49,6 @@ export default function DesktopTab() {
       )}
 
       <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
-
       <Typography variant="caption" sx={{ color: '#888' }}>
         Двойной клик по файлу — открыть через систему. Правый клик — контекстное меню.
       </Typography>

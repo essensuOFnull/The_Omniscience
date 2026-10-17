@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { app } = electronPkg;
+const { app,ipcMain } = electronPkg;
 
 // ── Статический импорт. Синхронный. До любого await.
 // Именно поэтому arkh_protocol минует autoimport:
@@ -34,3 +34,7 @@ registerArkhScheme();
 
   global.$.log('Приложение полностью запущено');
 })();
+
+ipcMain.on('get-project-root', (event) => {
+  event.returnValue = app.getAppPath();
+});
