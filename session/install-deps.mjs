@@ -2,23 +2,13 @@
 // session/install-deps.mjs
 //
 // Единая точка установки всех системных зависимостей The Omniscience.
-//
-// Заменяет bash-версию install-deps.sh. Логика — та же, но на JS:
-//   - список пакетов задаётся массивами,
-//   - пакетный менеджер вызывается по имени дистрибутива,
-//   - каждый пакет/группа ставится отдельной командой, чтобы провал
-//     одной группы не рушил остальные.
-//
 // Запуск:  node session/install-deps.mjs
-// Флаги:   --build-only     только build-зависимости
-//          --runtime-only   только runtime
-//          --skip-diagnostics  не запускать финальную проверку
+// Флаги:   --build-only, --runtime-only, --skip-diagnostics
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 // ─── Определение дистрибутива ───────────────────────────────────────────
-
 function detectDistro() {
     if (!existsSync('/etc/os-release')) return null;
     const txt = readFileSync('/etc/os-release', 'utf8');
@@ -34,28 +24,12 @@ if (!DISTRO) {
 console.log(`🔍 Обнаружен дистрибутив: ${DISTRO}`);
 
 // ─── Флаги ──────────────────────────────────────────────────────────────
-
 const ARGS = new Set(process.argv.slice(2));
-const BUILD_ONLY      = ARGS.has('--build-only');
-const RUNTIME_ONLY    = ARGS.has('--runtime-only');
+const BUILD_ONLY       = ARGS.has('--build-only');
+const RUNTIME_ONLY     = ARGS.has('--runtime-only');
 const SKIP_DIAGNOSTICS = ARGS.has('--skip-diagnostics');
 
 // ─── Списки пакетов ─────────────────────────────────────────────────────
-//
-// Каждый дистрибутив имеет свой набор имён. Здесь собраны:
-//   build   — для node-pty / electron-rebuild / gtk-bridge
-//   core    — WM, Xorg, D-Bus, keyring, polkit, session basics
-//   kde     — KDE-сервисы (kded6, kglobalacceld, krunner)
-//   audio   — PipeWire полный стек + EasyEffects
-//   input   — IME, libinput, специальные возможности
-//   display — яркость, ночной режим, ICC, автоповорот
-//   peripherals — принтеры, сканеры, планшеты
-//   theme   — Qt/GTK темы, шрифты
-//   extras  — скриншоты, TTS, автомонтирование, XDG autostart
-//
-// Если что-то из перечисленного не найдётся в репозиториях —
-// соответствующая группа просто пропустится, остальное встанет.
-
 const PACKAGES = {
     // ─── Debian / Ubuntu и производные ───
     debian: {
@@ -69,12 +43,12 @@ const PACKAGES = {
             'fuse3',
             'x11-xserver-utils', 'x11-xkb-utils', 'x11-utils',
             'xdotool', 'wmctrl',
-            'gnome-keyring',
             'policykit-1',
+            // 'gnome-keyring', // conflict with oo7
         ],
         kde: [
             'kglobalacceld', 'kded6', 'krunner',
-            'plasma-workspace',   // даёт kaccess, klipper, krunner и др.
+            'plasma-workspace',
             'kio', 'kio-extras',
         ],
         audio: [
@@ -110,8 +84,9 @@ const PACKAGES = {
             'curl', 'git',
         ],
         optional: [
-            'lxpolkit',              // polkit agent, легковесный
+            'lxpolkit',
             'xterm', 'xfonts-terminus',
+            'oo7-daemon', // may not be packaged; try, but don't fail
         ],
     },
 
@@ -128,8 +103,8 @@ const PACKAGES = {
             'xorg-xrandr', 'xorg-xset', 'xorg-setxkbmap',
             'xorg-xprop', 'xorg-xdpyinfo',
             'xdotool', 'wmctrl',
-            'gnome-keyring',
             'polkit',
+            'oo7', // Secret Service provider (replaces gnome-keyring)
         ],
         kde: [
             'kglobalacceld', 'kded', 'krunner',
@@ -167,15 +142,11 @@ const PACKAGES = {
             'curl', 'git',
         ],
         optional: [
-            'lxqt-policykit',        // polkit agent
+            'lxqt-policykit',
             'terminus-font',
             'xterm',
         ],
-        // Специальные: AUR-пакеты. Ставятся отдельным шагом через
-        // pamac/yay/paru, если найдётся хоть один из них.
-        aur: [
-
-        ],
+        aur: [],
     },
 
     // ─── Fedora / RHEL / CentOS ───
@@ -190,8 +161,8 @@ const PACKAGES = {
             'fuse3',
             'xorg-x11-server-utils', 'xorg-x11-utils',
             'xdotool', 'wmctrl',
-            'gnome-keyring',
             'polkit',
+            'oo7-daemon', // Secret Service provider
         ],
         kde: [
             'kglobalacceld', 'kf6-kded', 'krunner',
@@ -245,8 +216,8 @@ const PACKAGES = {
             'dbus-1', 'dbus-1-tools', 'dbus-1-x11',
             'fuse3',
             'xrandr', 'xdotool', 'wmctrl',
-            'gnome-keyring',
             'polkit',
+            'oo7-daemon', // Secret Service provider
         ],
         kde: [
             'kglobalacceld6', 'kded6', 'krunner6',
@@ -300,8 +271,8 @@ const PACKAGES = {
             'fuse3',
             'xrandr', 'setxkbmap', 'xprop', 'xdpyinfo',
             'xdotool', 'wmctrl',
-            'gnome-keyring',
             'polkit',
+            // 'gnome-keyring', // removed; oo7 preferred if available
         ],
         kde: [
             'kglobalacceld', 'kded', 'krunner',
@@ -341,6 +312,7 @@ const PACKAGES = {
         optional: [
             'lxpolkit',
             'xterm', 'terminus-font',
+            'oo7', // may be available; try
         ],
     },
 
@@ -355,8 +327,8 @@ const PACKAGES = {
             'fuse3',
             'xrandr', 'setxkbmap', 'xprop', 'xdpyinfo',
             'xdotool', 'wmctrl',
-            'gnome-keyring',
             'polkit',
+            // 'gnome-keyring', // removed
         ],
         kde: [
             'kglobalacceld', 'kded', 'krunner',
@@ -396,12 +368,11 @@ const PACKAGES = {
         optional: [
             'lxpolkit',
             'xterm', 'terminus-font',
+            'oo7-server', // maybe packaged under this name
         ],
     },
 
     // ─── Gentoo ───
-    // В Gentoo пакеты — category/name, и USE-флаги настраиваются отдельно.
-    // Здесь — базовый набор, USE-флаги придётся проверить руками.
     gentoo: {
         build: [
             'sys-devel/gcc', 'sys-devel/make',
@@ -414,8 +385,8 @@ const PACKAGES = {
             'x11-apps/xrandr', 'x11-misc/setxkbmap',
             'x11-apps/xprop', 'x11-apps/xdpyinfo',
             'x11-misc/xdotool', 'x11-misc/wmctrl',
-            'gnome-base/gnome-keyring',
             'sys-auth/polkit',
+            // 'gnome-base/gnome-keyring', // removed
         ],
         kde: [
             'kde-plasma/kglobalacceld', 'kde-frameworks/kded',
@@ -455,12 +426,12 @@ const PACKAGES = {
         optional: [
             'lxde-base/lxpolkit',
             'x11-terms/xterm', 'media-fonts/terminus-font',
+            'app-crypt/oo7', // may exist in overlays
         ],
     },
 };
 
-// ─── Псевдонимы: варианты ID из /etc/os-release → ключ в PACKAGES ────────
-
+// ─── Псевдонимы дистрибутивов ───────────────────────────────────────────
 const DISTRO_ALIASES = {
     ubuntu: 'debian', linuxmint: 'debian', pop: 'debian',
     parrot: 'debian', kali: 'debian', elementary: 'debian',
@@ -483,10 +454,6 @@ if (!DISTRO_KEY || !PACKAGES[DISTRO_KEY]) {
 const SPEC = PACKAGES[DISTRO_KEY];
 
 // ─── Пакетные менеджеры ─────────────────────────────────────────────────
-//
-// Каждая запись — функция, принимающая массив имён пакетов и
-// возвращающая [command, args]. Возвращает null, если менеджер не найден.
-
 const MANAGERS = {
     debian: {
         install(pkgs) {
@@ -496,11 +463,9 @@ const MANAGERS = {
     },
     arch: {
         install(pkgs) {
-            // ВНИМАНИЕ: --noconfirm у pacman не используем (см. практику).
             return ['sudo', ['pacman', '-S', '--needed', ...pkgs]];
         },
         aur: {
-            // Пробуем разные AUR-хелперы.
             installOne(pkg) {
                 for (const helper of ['pamac', 'yay', 'paru']) {
                     const r = spawnSync('which', [helper], { stdio: 'ignore' });
@@ -549,7 +514,6 @@ if (!MANAGER) {
 }
 
 // ─── Утилиты для вывода ─────────────────────────────────────────────────
-
 const C = {
     reset: '\x1b[0m',
     bold: '\x1b[1m',
@@ -564,7 +528,6 @@ const fail = s => console.error(`${C.red}[fail]${C.reset} ${s}`);
 const ok   = s => console.log(`${C.green}✓${C.reset} ${s}`);
 
 // ─── Установка одной группы ─────────────────────────────────────────────
-
 function installGroup(label, packages) {
     if (!packages?.length) return true;
     log(`установка: ${label} (${packages.length} пакетов)`);
@@ -580,14 +543,12 @@ function installGroup(label, packages) {
 }
 
 // ─── Установка build-зависимостей ───────────────────────────────────────
-
 if (!RUNTIME_ONLY) {
     log('📥 [build] компилятор и python для node-pty / electron-rebuild');
     installGroup('build', SPEC.build);
 }
 
 // ─── Установка runtime-зависимостей ─────────────────────────────────────
-
 if (!BUILD_ONLY) {
     log('📥 [runtime] системные пакеты DE');
 
@@ -597,13 +558,12 @@ if (!BUILD_ONLY) {
         installGroup(name, SPEC[name]);
     }
 
-    // optional — ставим каждый отдельно, чтобы провал одного не рушил группу
+    // optional — каждый отдельно, чтобы провал одного не рушил группу
     if (SPEC.optional?.length) {
         log(`📥 [optional] необязательные пакеты (${SPEC.optional.length} шт.)`);
         for (const pkg of SPEC.optional) {
-            const r = spawnSync(MANAGER.install([pkg])[0],
-                                MANAGER.install([pkg])[1],
-                                { stdio: 'ignore' });
+            const [cmd, args] = MANAGER.install([pkg]);
+            const r = spawnSync(cmd, args, { stdio: 'ignore' });
             if (r.status === 0) {
                 ok(`optional: ${pkg}`);
             } else {
@@ -618,8 +578,7 @@ if (!BUILD_ONLY) {
         for (const pkg of SPEC.aur) {
             const cmd = MANAGER.aur.installOne(pkg);
             if (!cmd) {
-                warn(`AUR-хелпер не найден. Установите ${pkg} вручную:`);
-                warn(`  pamac build ${pkg}   # или yay -S ${pkg}`);
+                warn(`AUR-хелпер не найден. Установите ${pkg} вручную.`);
                 continue;
             }
             log(`  устанавливаем ${pkg} через ${cmd[0]}`);
@@ -631,7 +590,6 @@ if (!BUILD_ONLY) {
 }
 
 // ─── Диагностика ────────────────────────────────────────────────────────
-
 if (SKIP_DIAGNOSTICS) {
     log('диагностика пропущена (--skip-diagnostics)');
     process.exit(0);
@@ -641,22 +599,15 @@ console.log('');
 log('🔎 проверка ключевых бинарников');
 
 const REQUIRED = [
-    // ядро сессии
     'kwin_x11', 'kglobalacceld', 'kded6', 'krunner',
-    // X11
     'xrandr', 'setxkbmap', 'xprop', 'xdpyinfo', 'xdotool', 'wmctrl',
-    // dbus / polkit / keyring
-    'dbus-run-session', 'gnome-keyring-daemon',
-    // audio
+    'dbus-run-session',
     'pipewire', 'wireplumber', 'pipewire-pulse', 'easyeffects',
-    // input
     'fcitx5',
-    // display
     'brightnessctl', 'gammastep',
-    // theme
     'qt6ct',
-    // misc
     'udisksctl', 'dex',
+    'systemd-creds', // for oo7 credential encryption
 ];
 
 const OPTIONAL_BINS = [
@@ -665,6 +616,8 @@ const OPTIONAL_BINS = [
     'espeak-ng', 'nmcli', 'bluetoothctl',
     'fusermount3',
     'setpriv', 'getcap',
+    'oo7-daemon', // will warn if missing, but session can still fallback
+    'oo7-cli',
 ];
 
 function findBin(name) {
@@ -704,7 +657,6 @@ for (const bin of OPTIONAL_BINS) {
 }
 
 // ─── Итог ───────────────────────────────────────────────────────────────
-
 console.log('');
 if (missingRequired > 0) {
     fail(`Не хватает ${missingRequired} обязательных бинарников.`);
@@ -712,7 +664,7 @@ if (missingRequired > 0) {
     console.log('Возможные причины:');
     console.log('  - пакет называется иначе в вашем репозитории;');
     console.log('  - группа установки провалилась (см. вывод выше);');
-    console.log('  - пакет лежит не в $PATH (проверьте /usr/libexec, /usr/lib/kf6).');
+    console.log('  - пакет лежит не в $PATH.');
     console.log('');
     console.log('Поправьте соответствующий массив в этом файле и запустите снова.');
 } else {

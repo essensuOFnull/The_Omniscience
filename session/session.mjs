@@ -2,12 +2,6 @@
 // session/session.mjs
 //
 // Запускается xinit'ом ВНУТРИ X, от имени текущего пользователя.
-//
-// Архитектура:
-//   kwin_x11 + PipeWire + независимые сервисы + Electron.
-//
-// Не запускаем: plasmashell, klipper, powerdevil, baloo, screen locker,
-// notification daemon, system tray, trash, kactivitymanagerd, порталы.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { connect } from 'node:net';
@@ -20,7 +14,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ─── Окружение сессии ──────────────────────────────────────────────────
-
 process.env.KDE_FULL_SESSION    = 'true';
 process.env.KDE_SESSION_VERSION = '6';
 process.env.XDG_CURRENT_DESKTOP = 'Omniscience';
@@ -35,7 +28,6 @@ process.env.SDL_IM_MODULE  = 'fcitx';
 process.env.GLFW_IM_MODULE = 'ibus';
 
 // ─── Логирование ───────────────────────────────────────────────────────
-
 let logSocket = null;
 if (process.env.OMNISCIENCE_LOG_SOCKET) {
     try {
@@ -65,7 +57,6 @@ process.on('unhandledRejection', err => {
 log('session.mjs loaded');
 
 // ─── Импорт electron ───────────────────────────────────────────────────
-
 let electronPath;
 try {
     const mod = await import('electron');
@@ -77,7 +68,6 @@ try {
 }
 
 // ─── Пути ──────────────────────────────────────────────────────────────
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = process.env.OMNISCIENCE_PROJECT_ROOT
     ?? path.resolve(__dirname, '..');
@@ -94,11 +84,6 @@ if (!process.env.DISPLAY) {
 }
 
 // ─── Изолированный XDG_CONFIG_HOME ─────────────────────────────────────
-//
-// Чтобы конфиги KDE-сессии не смешивались с обычной KDE-сессией,
-// держим свой каталог. Он пересоздаётся при каждом запуске,
-// конфиги копируются из PROJECT_ROOT/configs/.
-
 const RUNTIME = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid()}`;
 const SESSION_CONFIG = path.join(RUNTIME, 'omniscience-config');
 try { mkdirSync(SESSION_CONFIG, { recursive: true }); } catch {}
@@ -110,7 +95,6 @@ process.env.KDEHOME = path.join(SESSION_CONFIG, 'kde');
 log(`XDG_CONFIG_HOME=${SESSION_CONFIG}`);
 
 // ─── Копирование конфигов ──────────────────────────────────────────────
-
 const PROJECT_CONFIGS = path.join(PROJECT_ROOT, 'configs');
 log(`project configs: ${PROJECT_CONFIGS}`);
 
@@ -149,7 +133,7 @@ for (const { src, dst } of KDE_CONFIGS) {
     }
 }
 
-// kded6rc — отключаем проблемные модули
+// kded6rc
 {
     const rcPath = path.join(SESSION_CONFIG, 'kded6rc');
     writeFileSync(rcPath, [
@@ -175,38 +159,7 @@ for (const { src, dst } of KDE_CONFIGS) {
     log('  wrote kded6rc');
 }
 
-// ─── Keyring password ──────────────────────────────────────────────────
-
-function ensureKeyringPassword() {
-    const dir = path.join(process.env.HOME, '.local', 'share', 'omniscience');
-    try { mkdirSync(dir, { recursive: true }); } catch {}
-    const secretFile = path.join(dir, '.keyring-secret');
-
-    if (existsSync(secretFile)) {
-        try {
-            const pw = readFileSync(secretFile, 'utf8').trim();
-            if (pw.length > 0) {
-                log(`  keyring password: loaded (${pw.length} chars)`);
-                return pw;
-            }
-        } catch {}
-    }
-
-    const pw = randomBytes(32).toString('hex');
-    try {
-        writeFileSync(secretFile, pw, { mode: 0o600 });
-        chmodSync(secretFile, 0o600);
-        log(`  keyring password: generated (${pw.length} chars, mode 0600)`);
-    } catch (err) {
-        log(`  WARN: cannot write ${secretFile}: ${err.message}`);
-    }
-    return pw;
-}
-
-const KEYRING_PASSWORD = ensureKeyringPassword();
-
 // ─── resolveBinary ─────────────────────────────────────────────────────
-
 function resolveBinary(candidates) {
     for (const c of candidates) {
         if (c.startsWith('/')) {
@@ -225,10 +178,7 @@ function resolveBinary(candidates) {
     return null;
 }
 
-// ─── Убийство stale-процессов от предыдущей сессии ─────────────────────
-//
-// На случай если предыдущая сессия не смогла корректно всё завершить.
-
+// ─── Убийство stale-процессов ──────────────────────────────────────────
 async function killStale(name) {
     const r = spawnSync('pgrep', ['-u', process.env.USER ?? '', '-x', name], {
         encoding: 'utf8',
@@ -254,7 +204,6 @@ async function killStale(name) {
 }
 
 // ─── Всё запущенное — в одном месте ────────────────────────────────────
-
 const children = [];
 
 function startService(label, candidates, args = []) {
@@ -276,33 +225,65 @@ function startService(label, candidates, args = []) {
     }
 }
 
-// ─── 1. Keyring ────────────────────────────────────────────────────────
+// ─── 1. OO7 Secret Service ─────────────────────────────────────────────
+log('starting oo7-daemon');
 
-log('starting gnome-keyring');
-{
-    const bin = resolveBinary(['gnome-keyring-daemon']);
-    if (bin) {
-        // Указываем демону keyring на сокет D-Bus внутри XDG_RUNTIME_DIR
-        const dbusAddress = `unix:path=${process.env.XDG_RUNTIME_DIR}/bus`;
-        const child = spawn(bin, ['--unlock', '--replace', '--components=secrets'], {
-            stdio: ['pipe', 'pipe', 'inherit'],
-            env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: dbusAddress },
-        });
+const oo7Bin = resolveBinary(['oo7-daemon']);
+if (!oo7Bin) {
+    log('  WARN: oo7-daemon не найден. Keyring не будет работать.');
+} else {
+    const credDir = path.join(process.env.XDG_CONFIG_HOME, 'credstore.encrypted');
+    const credFile = path.join(credDir, 'oo7.keyring-encryption-password');
+
+    if (!existsSync(credFile)) {
+        log('  generating new keyring encryption password...');
         try {
-            child.stdin.write(KEYRING_PASSWORD + '\n');
-            child.stdin.end();
-        } catch {}
-        child.on('error', err => log(`  keyring spawn error: ${err.message}`));
-        child.on('exit', (code, sig) => log(`  gnome-keyring exited code=${code} sig=${sig}`));
-        children.push(child);
-        log(`  started gnome-keyring-daemon (pid=${child.pid})`);
+            mkdirSync(credDir, { recursive: true, mode: 0o700 });
+
+            const password = randomBytes(32).toString('hex');
+
+            const result = spawnSync('systemd-creds', [
+                'encrypt',
+                '--user',
+                '--name=oo7.keyring-encryption-password',
+                '-',
+                credFile,
+            ], {
+                input: password,
+                encoding: 'utf8',
+            });
+
+            if (result.status !== 0) {
+                throw new Error(result.stderr || 'systemd-creds encrypt failed');
+            }
+            log('  credential created successfully');
+        } catch (err) {
+            log(`  ERROR: не удалось создать credential: ${err.message}`);
+            log('  keyring может запросить пароль интерактивно.');
+        }
     } else {
-        log('  WARN: gnome-keyring-daemon не найден');
+        log('  credential already exists, reusing');
     }
+
+    // Убиваем возможные старые процессы
+    await killStale('gnome-keyring-daemon');
+    await killStale('oo7-daemon');
+
+    // Запускаем oo7-daemon.
+    // Без --login он попытается загрузить credential
+    // "oo7.keyring-encryption-password" из credstore.
+    // Требуется systemd v258+.
+    const child = spawn(oo7Bin, ['--verbose'], {
+        stdio: 'inherit',
+        env: process.env,
+    });
+    child.on('error', err => log(`  oo7-daemon spawn error: ${err.message}`));
+    child.on('exit', (code, sig) => log(`  oo7-daemon exited code=${code} sig=${sig}`));
+    children.push(child);
+    log(`  started oo7-daemon (pid=${child.pid})`);
 }
 
 // ─── 2. PipeWire ───────────────────────────────────────────────────────
-
 log('starting PipeWire stack');
 await killStale('pipewire');
 await killStale('wireplumber');
@@ -313,7 +294,6 @@ if (startService('wireplumber', ['wireplumber'])) await new Promise(r => setTime
 if (startService('pipewire-pulse', ['pipewire-pulse'])) await new Promise(r => setTimeout(r, 200));
 
 // ─── 3. KWin ───────────────────────────────────────────────────────────
-
 async function waitForWM(timeoutMs = 15000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -343,7 +323,6 @@ if (!await waitForWM()) {
 log('KWin registered as WM');
 
 // ─── 4. Раскладка ──────────────────────────────────────────────────────
-
 {
     const rcPath = path.join(SESSION_CONFIG, 'kxkbrc');
     let layout = 'us', model = 'pc105', options = '', variant = '';
@@ -368,18 +347,18 @@ log('KWin registered as WM');
 }
 
 // ─── 5. KDE-сервисы ────────────────────────────────────────────────────
-
 log('starting KDE services');
 await killStale('kded6');
+await killStale('kglobalacceld');
 await killStale('krunner');
 await killStale('kaccess');
 
 startService('kded6', ['kded6', 'kded5', 'kded']);
+startService('kglobalacceld', ['kglobalacceld', 'kglobalaccel6']);
 startService('krunner', ['krunner', 'krunner6']);
 startService('kaccess', ['kaccess']);
 
 // ─── 6. Polkit agent ───────────────────────────────────────────────────
-
 log('starting polkit agent');
 startService('polkit agent', [
     'lxpolkit', 'lxqt-policykit', 'mini-polkit',
@@ -387,21 +366,17 @@ startService('polkit agent', [
 ]);
 
 // ─── 7. IME ────────────────────────────────────────────────────────────
-
 log('starting fcitx5');
 await killStale('fcitx5');
 startService('fcitx5', ['fcitx5'], ['-d']);
 
 // ─── 8. Display-сервисы ────────────────────────────────────────────────
-
 log('starting display services');
 startService('xiccd', ['xiccd']);
 startService('iio-sensor-proxy', ['iio-sensor-proxy']);
-// gammastep: раскомментируй если хочешь ночной режим
 // startService('gammastep', ['gammastep'], ['-m', 'randr', '-O', '6500']);
 
 // ─── 9. XDG autostart ──────────────────────────────────────────────────
-
 log('running XDG autostart via dex');
 {
     const bin = resolveBinary(['dex']);
@@ -416,12 +391,10 @@ log('running XDG autostart via dex');
 }
 
 // ─── 10. EasyEffects ───────────────────────────────────────────────────
-
 log('starting easyeffects --service-mode');
 startService('easyeffects', ['easyeffects'], ['--service-mode']);
 
 // ─── 11. Electron ──────────────────────────────────────────────────────
-
 log('launching electron');
 
 const electronDataDir = path.join(RUNTIME, 'omniscience-electron');
@@ -448,7 +421,6 @@ electron.on('exit', (code, sig) => log(`electron exited code=${code} sig=${sig}`
 children.push(electron);
 
 // ─── Завершение ────────────────────────────────────────────────────────
-
 let shuttingDown = false;
 function shutdown(reason, code = 0) {
     if (shuttingDown) return;
