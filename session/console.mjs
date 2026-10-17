@@ -12,7 +12,6 @@ import { spawn } from 'node:child_process';
 // stdio: 'inherit' означает: stdout/stderr сервиса идут в pty → в xterm.js.
 const SERVICES = [
     { cmd: 'kded6',              args: [] },
-    { cmd: 'kglobalacceld',      args: [] },
     { cmd: 'ksmserver',          args: ['--no-lockscreen'] },
     { cmd: 'polkit-kde-agent-1', args: [] },
     { cmd: 'easyeffects',        args: ['--service-mode'] },

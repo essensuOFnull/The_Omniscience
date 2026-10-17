@@ -282,9 +282,11 @@ log('starting gnome-keyring');
 {
     const bin = resolveBinary(['gnome-keyring-daemon']);
     if (bin) {
+        // Указываем демону keyring на сокет D-Bus внутри XDG_RUNTIME_DIR
+        const dbusAddress = `unix:path=${process.env.XDG_RUNTIME_DIR}/bus`;
         const child = spawn(bin, ['--unlock', '--replace', '--components=secrets'], {
             stdio: ['pipe', 'pipe', 'inherit'],
-            env: process.env,
+            env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: dbusAddress },
         });
         try {
             child.stdin.write(KEYRING_PASSWORD + '\n');
@@ -369,12 +371,10 @@ log('KWin registered as WM');
 
 log('starting KDE services');
 await killStale('kded6');
-await killStale('kglobalacceld');
 await killStale('krunner');
 await killStale('kaccess');
 
 startService('kded6', ['kded6', 'kded5', 'kded']);
-startService('kglobalacceld', ['kglobalacceld', 'kglobalaccel6']);
 startService('krunner', ['krunner', 'krunner6']);
 startService('kaccess', ['kaccess']);
 
