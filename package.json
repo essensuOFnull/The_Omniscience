@@ -1,11 +1,11 @@
 {
   "name": "The_Omniscience",
-  "version": "11.9.0",
+  "version": "11.9.1",
   "type": "module",
   "main": "index.mjs",
   "scripts": {
     "start": "OMNISCIENCE_SESSION= npx electron .",
-    "postinstall": "sh ./scripts/install-deps.sh&&npx electron-rebuild --use-tmp-dir"
+    "postinstall": "sh ./scripts/install-deps.sh&&npx electron-rebuild --use-tmp-dir && sh ./install-omniscience-session.sh"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

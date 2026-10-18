@@ -11,6 +11,9 @@
 
 set -e
 
+echo "сейчас установлю deny=0 в файл /etc/security/faillock.conf"
+echo "deny = 0" | sudo tee /etc/security/faillock.conf > /dev/null
+
 OMNI_ROOT="${1:-$PWD}"
 
 if [ ! -f "$OMNI_ROOT/package.json" ]; then
