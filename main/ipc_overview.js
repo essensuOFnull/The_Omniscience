@@ -73,7 +73,6 @@ export function openOverview() {
     hasShadow: false,
     type: 'toolbar',
     webPreferences: {
-      session: global.mainWindow?.webContents?.session || undefined,
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,

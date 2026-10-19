@@ -39,7 +39,7 @@ export default function TopBarContainer() {
       <TopBar
         {...state}
         onToggleOverview={() => send('topbar:toggle-overview')}
-        onOpenDevTools={(id) => send('topbar:open-devtools', { id })}
+        onOpenWindowSettings={(id) => send('topbar:open-window-settings', { id })}
         onLaunch={(app) => send('topbar:launch-app', { app })}
         onAddQuickLaunch={() => send('topbar:open-launcher')}
         onFocusWindow={(w) => send('topbar:focus-window', { id: w.id })}

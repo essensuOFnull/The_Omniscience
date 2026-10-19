@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { app } = electronPkg;
+const { app, ipcMain } = electronPkg;
 
 // ── Статический импорт. Синхронный. До любого await.
 // Именно поэтому arkh_protocol минует autoimport:
@@ -8,6 +8,8 @@ import { registerArkhScheme } from './main/arkh_protocol.js';
 
 import autoimport from './main/autoimport.js';
 import paths from './main/paths.js';
+
+import initGtkBridge from './gtk-bridge/main.mjs';
 
 // Регистрируем сразу. Тут нет await — управление не уходит,
 // ready ещё не испущен.
@@ -27,5 +29,12 @@ registerArkhScheme();
   global.$.app_on_willQuit();
 
   await global.$.app_on_ready();
+
+  await initGtkBridge();
+
   global.$.log('Приложение полностью запущено');
 })();
+
+ipcMain.on('get-project-root', (event) => {
+  event.returnValue = app.getAppPath();
+});

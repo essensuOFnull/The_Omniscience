@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { BrowserWindow, ipcMain, screen } = electronPkg;
+const { BrowserWindow, ipcMain, screen, webContents } = electronPkg;
 import { pathToFileURL } from 'url';
 import path from 'path';
 import { attachToWebContents } from './ipc_browserContextMenu.js';
@@ -109,6 +109,9 @@ export function listWindows() {
       focused: entry.win.isFocused(),
       bounds: entry.win.getBounds(),
       xid: entry.meta.xid,
+      // --- bridge overlay ---
+      isBridgeOverlay: !!entry.meta.isBridgeOverlay,
+      daemonWindowId: entry.meta.daemonWindowId || null,
     }));
 }
 
@@ -195,7 +198,6 @@ export function createWindowByRequest({
     show: false,
     skipTaskbar: false,
     webPreferences: {
-      session: session || undefined,
       preload: preload || undefined,
       nodeIntegration: false,
       contextIsolation: true,
@@ -344,8 +346,7 @@ export default function () {
 }
 
 /* ------------------------------------------------------------------ */
-/* Shell-окна (Overview и т.п.) — регистрируются вручную из своих      */
-/* модулей, чтобы viewRuntime мог их найти как host для WebContentsView */
+/* Shell-окна (Overview, TopBar и т.п.)                                */
 /* ------------------------------------------------------------------ */
 
 export function registerShellWindow(win, id, meta = {}) {
@@ -373,4 +374,100 @@ export function unregisterShellWindow(id) {
 
 export function isShellWindow(id) {
   return !!windows.get(id)?.meta?.isShell;
+}
+
+/* ------------------------------------------------------------------ */
+/* Bridge-оверлеи (gtk-bridge)                                         */
+/* ------------------------------------------------------------------ */
+
+// Оверлей — это полноценное окно, но созданное не через
+// createWindowByRequest. Регистрируем его в том же реестре, чтобы
+// TopBar и window:list его видели. isShell НЕ ставим — иначе listWindows
+// его отфильтрует.
+export function registerBridgeOverlay(win, id, meta = {}) {
+  if (!id || !win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
+    return false;
+  }
+  windows.set(id, {
+    win,
+    meta: {
+      appId: 'gtk-bridge',
+      title: meta.title || id,
+      icon: meta.icon || null,
+      xid: getXid(win),
+      isBridgeOverlay: true,
+      daemonWindowId: meta.daemonWindowId || null,
+      ...meta,
+    },
+  });
+  return true;
+}
+
+export function unregisterBridgeOverlay(id) {
+  if (!id) return;
+  windows.delete(id);
+}
+
+/* ------------------------------------------------------------------ */
+/* Наши обычные окна (window-settings и подобные)                      */
+/* ------------------------------------------------------------------ */
+
+// Отличие от registerShellWindow: НЕ помечает окно как shell,
+// поэтому оно попадает в listWindows и в TopBar.
+export function registerOwnWindow(win, id, meta = {}) {
+  if (!id || !win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
+    return false;
+  }
+  windows.set(id, {
+    win,
+    meta: {
+      appId: meta.appId || 'app',
+      title: meta.title || id,
+      icon: meta.icon || null,
+      xid: getXid(win),
+      ...meta,
+    },
+  });
+  return true;
+}
+
+export function unregisterOwnWindow(id) {
+  if (!id) return;
+  windows.delete(id);
+}
+
+/* ------------------------------------------------------------------ */
+/* DevTools webContents — не BrowserWindow, но полноценные окна        */
+/* ------------------------------------------------------------------ */
+
+export function listDevTools() {
+  const out = [];
+  try {
+    for (const wc of webContents.getAllWebContents()) {
+      try {
+        if (wc.getType() !== 'devtools') continue;
+        if (wc.isDestroyed()) continue;
+
+        const owner = wc.getOwnerBrowserWindow?.();
+        if (!owner || owner.isDestroyed()) continue;
+
+        // Ищем id владельца в реестре окон
+        let ownerId = null;
+        for (const [id, entry] of windows) {
+          if (entry.win === owner) { ownerId = id; break; }
+        }
+        if (!ownerId) continue;
+
+        out.push({
+          id: '__devtools__:' + wc.id,
+          ownerId,
+          title: 'DevTools',
+          webContentsId: wc.id,
+          focused: wc.isFocused?.() || false,
+          bounds: wc.getBounds?.() || null,
+        });
+      } catch { /* ignore individual */ }
+    }
+  } catch { /* ignore */ }
+  return out;
 }
