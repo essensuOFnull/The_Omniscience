@@ -26,41 +26,43 @@ fi
 echo "🔍 Обнаружен дистрибутив: $DISTRO"
 
 # ---------------------------------------------------------------------
-# 1. Build-зависимости (нужны для сборки node-pty / electron-rebuild)
+# 1. Build-зависимости (нужны для сборки)
 # ---------------------------------------------------------------------
 install_build_deps() {
   case "$DISTRO" in
     ubuntu|debian|parrot|kali|linuxmint|pop)
       sudo apt update
-      sudo apt install -y build-essential python3 python3-dev python3-setuptools make g++ libnode-dev
+      sudo apt install -y build-essential python3 python3-dev python3-setuptools make g++ libnode-dev golang-go
       ;;
     arch|manjaro|endeavouros|garuda)
       # --noconfirm НЕ добавлять (см. шапку файла)
-      sudo pacman -S --needed base-devel python nodejs npm python-setuptools
+      sudo pacman -S --needed base-devel python nodejs npm python-setuptools go
       ;;
     fedora|rhel|centos)
-      sudo dnf install -y make automake gcc gcc-c++ kernel-devel python3 python3-devel python3-setuptools
+      sudo dnf install -y make automake gcc gcc-c++ kernel-devel python3 python3-devel python3-setuptools golang
       ;;
     opensuse*|sles)
       sudo zypper install -y -t pattern devel_basis
-      sudo zypper install -y python3 python3-devel python3-setuptools
+      sudo zypper install -y python3 python3-devel python3-setuptools go
       ;;
     void)
-      sudo xbps-install -y base-devel python3 python3-setuptools
+      sudo xbps-install -y base-devel python3 python3-setuptools go
       ;;
     alpine)
-      sudo apk add build-base python3 python3-dev py3-setuptools
+      sudo apk add build-base python3 python3-dev py3-setuptools go
       ;;
     gentoo)
-      sudo emerge sys-devel/gcc sys-devel/make dev-lang/python dev-python/setuptools
+      sudo emerge sys-devel/gcc sys-devel/make dev-lang/python dev-python/setuptools dev-lang/go
       ;;
     *)
       echo "⚠️  Неизвестный дистрибутив. Установите вручную:"
-      echo "   build-essential, python3, setuptools, make, g++"
+      # Не забудьте обновить подсказку для пользователя, если Go теперь обязателен
+      echo "   build-essential, python3, setuptools, make, g++, go/golang"
       return 1
       ;;
   esac
 }
+
 
 # ---------------------------------------------------------------------
 # 2. Рантайм-зависимости DE (KWin/X11/PipeWire/KRunner/D-Bus/утилиты)
