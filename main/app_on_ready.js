@@ -8,10 +8,10 @@ export default async function () {
     try {
       await configureWindowsAutostart();
     } catch (error) {
-      console.error('[windows-autostart] registration failed:', error.message);
+      console.error('[windows-startup] configuration failed:', error.message);
       dialog.showErrorBox(
-        'Автозапуск Omniscience',
-        `Не удалось добавить приложение в автозагрузку Windows.\n\n${error.message}`
+        'Запуск Omniscience в Windows',
+        `Не удалось настроить автозапуск или оболочку текущего пользователя.\n\n${error.message}`
       );
     }
   }
