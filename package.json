@@ -4,9 +4,7 @@
   "type": "module",
   "main": "index.mjs",
   "scripts": {
-    "start": "OMNISCIENCE_SESSION= npx electron .",
-    "postinstall": "sh ./scripts/install-deps.sh&&npm run build:gtk-bridge&&npx electron-rebuild --use-tmp-dir && sh ./install-omniscience-session.sh",
-    "build:gtk-bridge": "sh ./gtk-bridge/build.sh"
+    "start": "npx electron ."
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -20,6 +18,7 @@
     "@emotion/styled": "^11.14.1",
     "@ghostery/adblocker-electron": "^2.18.2",
     "@lezer/highlight": "^1.2.4",
+    "@lydell/node-pty": "^1.2.0-beta.18",
     "@monaco-editor/react": "^4.7.0",
     "@mui/icons-material": "^9.4.0",
     "@mui/material": "^9.4.0",
@@ -52,7 +51,6 @@
     "jzz-synth-tiny": "^1.4.4",
     "lodash": "^4.18.1",
     "motion": "^13.4.4",
-    "node-pty": "^1.1.0",
     "node-web-audio-api": "^2.2.0",
     "npm-check-updates": "^23.1.0",
     "onnxruntime-web": "^1.30.0",
@@ -74,7 +72,6 @@
     "scarf": true
   },
   "devDependencies": {
-    "electron-rebuild": "^3.2.9",
     "esbuild": "^0.28.2"
   }
 }

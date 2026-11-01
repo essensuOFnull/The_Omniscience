@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { spawn } from 'node-pty';
+import { spawn } from '@lydell/node-pty';
 
 // senderId → ptyProcess. Один pty на каждый view, а не один на приложение.
 const ptys = new Map();
@@ -7,7 +7,7 @@ const ptys = new Map();
 function killPty(senderId) {
   const pty = ptys.get(senderId);
   if (!pty) return;
-  try { pty.kill(); } catch (_) {}
+  try { pty.kill(); } catch (_) { }
   ptys.delete(senderId);
 }
 
@@ -27,6 +27,7 @@ export default function () {
       rows: 30,
       cwd: process.env.HOME || process.cwd(),
       env: process.env,
+      useConpty: true, // <-- добавьте для Windows
     });
 
     ptys.set(senderId, pty);
@@ -60,7 +61,7 @@ export default function () {
   ipcMain.on('terminal-resize', (event, { cols, rows }) => {
     const pty = ptys.get(event.sender.id);
     if (pty && cols > 0 && rows > 0) {
-      try { pty.resize(cols, rows); } catch (_) {}
+      try { pty.resize(cols, rows); } catch (_) { }
     }
   });
 
