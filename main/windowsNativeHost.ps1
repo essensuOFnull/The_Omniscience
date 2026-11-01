@@ -7,6 +7,7 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $nativeSource = @'
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -59,6 +60,13 @@ public static class OmniWin32
         public int Y;
     }
 
+    private sealed class ShellWindowState
+    {
+        public readonly HashSet<int> ProcessIds = new HashSet<int>();
+        public bool HasTaskbar;
+        public bool HasDesktop;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct APPBARDATA
     {
@@ -74,6 +82,8 @@ public static class OmniWin32
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int maxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maxCount);
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")]
@@ -184,6 +194,44 @@ public static class OmniWin32
         return true;
     }
 
+    private static bool EnumerateShellWindow(IntPtr hwnd, IntPtr lParam)
+    {
+        var state = (ShellWindowState)GCHandle.FromIntPtr(lParam).Target;
+        var className = new StringBuilder(128);
+        if (GetClassName(hwnd, className, className.Capacity) <= 0) return true;
+        string name = className.ToString();
+        bool isTaskbar = name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd";
+        bool isDesktop = name == "Progman" || name == "WorkerW";
+        if (!isTaskbar && !isDesktop) return true;
+
+        uint pid;
+        GetWindowThreadProcessId(hwnd, out pid);
+        try
+        {
+            using (Process process = Process.GetProcessById((int)pid))
+            {
+                if (!string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch (ArgumentException) { return true; }
+        catch (InvalidOperationException) { return true; }
+
+        state.ProcessIds.Add((int)pid);
+        state.HasTaskbar |= isTaskbar;
+        state.HasDesktop |= isDesktop;
+        return true;
+    }
+
+    private static ShellWindowState GetExplorerShellState()
+    {
+        var state = new ShellWindowState();
+        GCHandle handle = GCHandle.Alloc(state);
+        try { EnumWindows(EnumerateShellWindow, GCHandle.ToIntPtr(handle)); }
+        finally { handle.Free(); }
+        return state;
+    }
+
     private sealed class EnumerationState
     {
         public readonly List<OmniWindowInfo> Windows = new List<OmniWindowInfo>();
@@ -258,6 +306,67 @@ public static class OmniWin32
         IntPtr hwnd = GetForegroundWindow();
         hwnd = GetAncestor(hwnd, 2);
         return hwnd == IntPtr.Zero ? null : hwnd.ToInt64().ToString(CultureInfo.InvariantCulture);
+    }
+
+    public static object GetExplorerShellStatus()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        return new {
+            running = state.ProcessIds.Count > 0,
+            taskbar = state.HasTaskbar,
+            desktop = state.HasDesktop,
+            processIds = new List<int>(state.ProcessIds).ToArray()
+        };
+    }
+
+    public static bool StopExplorerShell()
+    {
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            ShellWindowState state = GetExplorerShellState();
+            if (state.ProcessIds.Count == 0) return true;
+            foreach (int pid in state.ProcessIds)
+            {
+                try
+                {
+                    using (Process process = Process.GetProcessById(pid))
+                    {
+                        if (!string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        process.Kill();
+                        process.WaitForExit(5000);
+                    }
+                }
+                catch (ArgumentException) { }
+                catch (InvalidOperationException) { }
+            }
+            Thread.Sleep(300);
+        }
+
+        return GetExplorerShellState().ProcessIds.Count == 0;
+    }
+
+    public static bool StartExplorerShell()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        if (state.HasTaskbar && state.HasDesktop) return true;
+
+        string explorerPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"
+        );
+        Process.Start(new ProcessStartInfo {
+            FileName = explorerPath,
+            UseShellExecute = true
+        });
+
+        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(250);
+            state = GetExplorerShellState();
+            if (state.HasTaskbar && state.HasDesktop) return true;
+        }
+        return false;
     }
 
     public static bool SetBounds(long hwnd, int x, int y, int width, int height)
@@ -547,7 +656,20 @@ function Get-ShellLauncherStatus {
         -Name EditionID -ErrorAction Stop).EditionID
     $supported = $editionId -match '^(Enterprise|Education|IoTEnterprise)'
     $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    if (-not $supported) {
+        return @{
+            supported = $false
+            edition = $os.Caption
+            editionId = $editionId
+            available = $false
+            enabled = $false
+            sid = $sid
+        }
+    }
+
     try {
+        Get-CimClass -Namespace 'root\standardcimv2\embedded' `
+            -ClassName 'WESL_UserSetting' -ErrorAction Stop | Out-Null
         $class = [wmiclass]'\\.\root\standardcimv2\embedded:WESL_UserSetting'
         $enabledResult = $class.IsEnabled()
         $enabled = [bool]$enabledResult.Enabled
@@ -569,6 +691,13 @@ function Get-ShellLauncherStatus {
             defaultShell = $default.Shell
         }
     } catch {
+        $detail = $_.Exception.Message
+        $errorCode = 'shell_launcher_status_failed'
+        if ($detail -match '(?i)not found|invalid class|class .* not registered|0x80041010' `
+            -or $_.FullyQualifiedErrorId -match '0x80041002|0x80041010') {
+            $errorCode = 'shell_launcher_feature_disabled'
+            $detail = 'WESL_UserSetting is not available in root\standardcimv2\embedded.'
+        }
         return @{
             supported = $supported
             edition = $os.Caption
@@ -576,7 +705,8 @@ function Get-ShellLauncherStatus {
             available = $false
             enabled = $false
             sid = $sid
-            error = $_.Exception.Message
+            error = $errorCode
+            detail = $detail
         }
     }
 }
@@ -676,6 +806,9 @@ while ($null -ne ($line = $reader.ReadLine())) {
                 )
             }
             'shell-status' { Get-ShellLauncherStatus }
+            'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
+            'explorer-shell-stop' { [OmniWin32]::StopExplorerShell() }
+            'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
             default { throw "Unsupported native action: $($request.action)" }
         }

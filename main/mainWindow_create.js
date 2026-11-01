@@ -1,7 +1,10 @@
 import electronPkg from 'electron';
 const { BrowserWindow, screen, app, ipcMain } = electronPkg;
 import { attachToWebContents } from './ipc_browserContextMenu.js';
-import { setWindowsDesktopWindow } from './ipc_nativeWindows.js';
+import {
+    restoreWindowsExplorerForShutdown,
+    setWindowsDesktopWindow,
+} from './ipc_nativeWindows.js';
 import { execFile } from 'node:child_process';
 
 // Защита от повторного запуска: before-quit, SIGTERM/SIGINT и watchdog
@@ -89,6 +92,8 @@ async function shutdownAll(mainWindow) {
         clearInterval(wmWatchdogTimer);
         wmWatchdogTimer = null;
     }
+
+    await restoreWindowsExplorerForShutdown();
 
     try {
         while (true) {

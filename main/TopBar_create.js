@@ -1,6 +1,8 @@
 import electronPkg from 'electron';
 const { BrowserWindow, screen, ipcMain } = electronPkg;
-import { setWindowsDockSuppressed } from './ipc_nativeWindows.js';
+import {
+  recoverWindowsShell, setWindowsDockSuppressed,
+} from './ipc_nativeWindows.js';
 
 const TOPBAR_H = 72;
 
@@ -30,7 +32,28 @@ export default async function () {
     },
   });
 
-  global.topbarWindow.loadURL(global.paths.topBarIndex);
+  const reportRendererFailure = (reason) => {
+    recoverWindowsShell(reason).catch((error) => {
+      console.error('[topbar] shell recovery failed:', error.message);
+    });
+  };
+  global.topbarWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, description, _url, isMainFrame) => {
+      if (isMainFrame && errorCode !== -3) {
+        reportRendererFailure(`TopBar failed to load (${errorCode}): ${description}`);
+      }
+    },
+  );
+  global.topbarWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (details.reason !== 'clean-exit') {
+      reportRendererFailure(`TopBar renderer exited: ${details.reason} (${details.exitCode})`);
+    }
+  });
+
+  global.topbarWindow.loadURL(global.paths.topBarIndex).catch((error) => {
+    reportRendererFailure(`TopBar load failed: ${error.message}`);
+  });
   global.$.initPanelStruts();
 
   // ── Растянуть/сжать для Overview ──

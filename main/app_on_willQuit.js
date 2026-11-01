@@ -6,6 +6,5 @@ export default async function () {
 		/*session.defaultSession.clearCache();*/
 		global.gc();
 		global.$.log('Приложение полностью выключено');
-		process.exit(0);
 	});
 }

@@ -5,6 +5,7 @@ function describeError(error) {
   const messages = {
     unsupported_edition: 'Shell Launcher доступен только в Enterprise, Education и IoT Enterprise.',
     shell_launcher_feature_disabled: 'Компонент Shell Launcher не установлен или недоступен. Установите его средствами Windows; приложение не устанавливает системные компоненты.',
+    shell_launcher_status_failed: 'Не удалось получить сведения о Shell Launcher. Проверьте системный журнал и компоненты Windows.',
     administrator_required: 'Для этой операции нужны права администратора.',
     backup_not_found: 'Сохранённая резервная копия конфигурации не найдена.',
     backup_user_mismatch: 'Резервная копия относится к другой учётной записи.',

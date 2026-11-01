@@ -1,8 +1,20 @@
 import electronPkg from 'electron';
-const { app, session } = electronPkg;
+const { app, dialog, session } = electronPkg;
+import { configureWindowsAutostart } from './ipc_nativeWindows.js';
 
 export default async function () {
   await app.whenReady();
+  if (process.platform === 'win32') {
+    try {
+      await configureWindowsAutostart();
+    } catch (error) {
+      console.error('[windows-autostart] registration failed:', error.message);
+      dialog.showErrorBox(
+        'Автозапуск Omniscience',
+        `Не удалось добавить приложение в автозагрузку Windows.\n\n${error.message}`
+      );
+    }
+  }
 
   app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');

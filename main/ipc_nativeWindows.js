@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { app, BrowserWindow, ipcMain, screen } = electronPkg;
+const { app, BrowserWindow, dialog, ipcMain, screen } = electronPkg;
 import { spawn, execFile, exec } from 'child_process';
 import net from 'net';
 import { promisify } from 'util';
@@ -22,6 +22,11 @@ const execFileAsync = promisify(execFile);
 // потому что X11 работает асинхронно, и окно может исчезнуть в любой момент.
 process.on('unhandledRejection', (reason) => {
   if (DEBUG) console.warn('[nativeWindows] unhandledRejection:', reason?.message || reason);
+  if (process.platform === 'win32' && win32ShellMode) {
+    recoverWindowsShell(reason?.stack || reason?.message || String(reason)).catch((error) => {
+      console.error('[windows-shell] recovery after unhandled rejection failed:', error.message);
+    });
+  }
 });
 process.on('uncaughtException', (err) => {
   if (err && /X11|BadWindow|BadDrawable|BadMatch|BadValue|BadAtom/i.test(err.message || '')) {
@@ -29,6 +34,11 @@ process.on('uncaughtException', (err) => {
     return;
   }
   console.error('[nativeWindows] uncaughtException:', err);
+  if (process.platform === 'win32' && win32ShellMode) {
+    recoverWindowsShell(err?.stack || err?.message || String(err)).catch((error) => {
+      console.error('[windows-shell] recovery after uncaught exception failed:', error.message);
+    });
+  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -85,6 +95,10 @@ let win32RefreshPromise = null;
 let win32Windows = [];
 let win32ActiveHwnd = null;
 let win32LastHash = '';
+let win32ShellMode = false;
+let win32ShellTransition = null;
+let win32ShellRecovery = null;
+let win32ShellFailureSuppressedUntil = 0;
 
 function failWin32Requests(error) {
   for (const { reject, timer } of win32Pending.values()) {
@@ -261,6 +275,153 @@ export async function setWindowsDockSuppressed(win, suppressed) {
   if (suppressed) win32DockSuppressed.add(win);
   else win32DockSuppressed.delete(win);
   return updateWindowsDock(win);
+}
+
+export function getWindowsShellMode() {
+  return win32ShellMode;
+}
+
+export async function configureWindowsAutostart() {
+  if (process.platform !== 'win32') return false;
+  const args = app.isPackaged ? [] : [`"${app.getAppPath()}"`];
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    path: process.execPath,
+    args,
+    name: 'The_Omniscience',
+    enabled: true,
+  });
+  const settings = app.getLoginItemSettings({ path: process.execPath, args });
+  if (!settings.openAtLogin) {
+    throw new Error('Windows did not enable the Omniscience login item');
+  }
+  return true;
+}
+
+async function ensureExplorerShell() {
+  if (process.platform !== 'win32') return true;
+  const status = await requestWin32('explorer-shell-status');
+  if (!status?.taskbar || !status?.desktop) {
+    const started = await requestWin32('explorer-shell-start');
+    if (!started) throw new Error('Explorer did not restore its desktop and taskbar');
+  }
+  if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+    const attached = await setWindowsDesktopWindow(global.mainWindow);
+    if (!attached) {
+      console.warn('[windows-shell] Explorer is running, but desktop window could not be reattached');
+    }
+  }
+  win32ShellMode = false;
+  global.topbarBroadcast?.();
+  return true;
+}
+
+async function showWindowsShellError(reason, explorerRestored) {
+  const detail = explorerRestored
+    ? 'Обычный рабочий стол и панель задач Explorer восстановлены.'
+    : 'Не удалось подтвердить восстановление Explorer. Запустите explorer.exe вручную через Диспетчер задач.';
+  try {
+    await dialog.showMessageBox({
+      type: explorerRestored ? 'warning' : 'error',
+      title: 'Ошибка оболочки Omniscience',
+      message: 'Не удалось надёжно отобразить или переключить панель Omniscience.',
+      detail: `${reason || 'Ошибка отрисовки панели.'}\n\n${detail}`,
+      buttons: ['OK'],
+    });
+  } catch (error) {
+    console.error('[windows-shell] failed to show recovery dialog:', error.message);
+  }
+}
+
+export async function recoverWindowsShell(reason) {
+  if (process.platform !== 'win32') return false;
+  if (win32ShellRecovery) return win32ShellRecovery;
+  if (Date.now() < win32ShellFailureSuppressedUntil) return !win32ShellMode;
+  win32ShellFailureSuppressedUntil = Date.now() + 10000;
+  win32ShellRecovery = (async () => {
+    let restored = false;
+    try {
+      await ensureExplorerShell();
+      restored = true;
+    } catch (error) {
+      console.error('[windows-shell] Explorer recovery failed:', error.message);
+    }
+    console.error('[windows-shell] renderer failure:', reason || 'unknown rendering error');
+    await showWindowsShellError(reason, restored);
+    return restored;
+  })().finally(() => {
+    win32ShellRecovery = null;
+  });
+  return win32ShellRecovery;
+}
+
+export async function restoreWindowsExplorerForShutdown() {
+  if (process.platform !== 'win32') return true;
+  try {
+    if (!win32ShellMode) {
+      const status = await requestWin32('explorer-shell-status');
+      if (status?.taskbar && status?.desktop) return true;
+    }
+    await ensureExplorerShell();
+    return true;
+  } catch (error) {
+    console.error('[windows-shell] failed to restore Explorer during shutdown:', error.message);
+    await showWindowsShellError(error.message, false);
+    return false;
+  }
+}
+
+export async function toggleWindowsShellMode() {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows only' };
+  if (win32ShellTransition) return win32ShellTransition;
+  win32ShellTransition = (async () => {
+    const shellStatus = await requestWin32('explorer-shell-status');
+    win32ShellMode = !(shellStatus?.taskbar && shellStatus?.desktop);
+    if (win32ShellMode) {
+      try {
+        await ensureExplorerShell();
+        return { ok: true, shellMode: false };
+      } catch (error) {
+        console.error('[windows-shell] failed to restore Explorer:', error.message);
+        await showWindowsShellError(error.message, false);
+        return { ok: false, shellMode: true, error: error.message };
+      }
+    }
+
+    const confirmation = await dialog.showMessageBox(global.topbarWindow, {
+      type: 'warning',
+      title: 'Переключение оболочки Windows',
+      message: 'Завершить процессы Explorer, обслуживающие рабочий стол и панель задач?',
+      detail: 'Открытые окна Проводника, принадлежащие этим процессам, тоже могут закрыться. Изменение действует только до возврата в Explorer или выхода из Omniscience.',
+      buttons: ['Переключить оболочку', 'Отмена'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (confirmation.response !== 0) return { ok: false, cancelled: true, shellMode: false };
+
+    try {
+      const stopped = await requestWin32('explorer-shell-stop');
+      if (!stopped) throw new Error('Не удалось завершить процессы Explorer оболочки');
+      win32ShellMode = true;
+      global.topbarBroadcast?.();
+      return { ok: true, shellMode: true };
+    } catch (error) {
+      console.error('[windows-shell] failed to switch from Explorer:', error.message);
+      let restored = false;
+      try {
+        await ensureExplorerShell();
+        restored = true;
+      } catch (restoreError) {
+        console.error('[windows-shell] rollback failed:', restoreError.message);
+      }
+      await showWindowsShellError(error.message, restored);
+      return { ok: false, shellMode: false, error: error.message };
+    }
+  })().finally(() => {
+    win32ShellTransition = null;
+  });
+  return win32ShellTransition;
 }
 
 function failWin32AdminRequests(error) {
@@ -1900,6 +2061,12 @@ export default async function () {
     startWin32Host();
     refreshWin32Windows();
     win32RefreshTimer = setInterval(refreshWin32Windows, 500);
+    requestWin32('explorer-shell-status').then((status) => {
+      win32ShellMode = !(status?.taskbar && status?.desktop);
+      global.topbarBroadcast?.();
+    }).catch((error) => {
+      console.error('[windows-shell] initial Explorer state check failed:', error.message);
+    });
     ipcMain.handle('windows:shell-launcher-status', async () => {
       try {
         const status = await requestWin32('shell-status');
@@ -1949,7 +2116,7 @@ export default async function () {
         return { ok: false, error: err.message };
       }
     });
-    app.once('before-quit', () => {
+    app.once('will-quit', () => {
       if (win32RefreshTimer) clearInterval(win32RefreshTimer);
       win32RefreshTimer = null;
       if (win32Host && !win32Host.killed) win32Host.kill();

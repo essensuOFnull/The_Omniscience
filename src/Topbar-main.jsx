@@ -3,8 +3,21 @@ import { createRoot } from 'react-dom/client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import TopBarContainer from './components/TopBarContainer';
+import ShellErrorBoundary from './components/ShellErrorBoundary';
 
 document.addEventListener('DOMContentLoaded', () => {
+  const api = window.electron_topbar_API;
+  const reportFailure = (message) => {
+    try { api?.send('shell-session:renderer-error', { message }); }
+    catch (error) { console.error('[shell-session] failed to report startup error:', error); }
+  };
+  window.addEventListener('error', (event) => {
+    reportFailure(event.error?.stack || event.message || 'TopBar renderer error');
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    reportFailure(event.reason?.stack || event.reason?.message || String(event.reason));
+  });
+
   const darkTheme = createTheme({
     palette: {
       mode: 'dark',
@@ -13,12 +26,20 @@ document.addEventListener('DOMContentLoaded', () => {
     },
   });
 
-  createRoot(document.getElementById('TopBar-root')).render(
+  const rootElement = document.getElementById('TopBar-root');
+  if (!rootElement) {
+    reportFailure('TopBar root element is missing');
+    return;
+  }
+
+  createRoot(rootElement).render(
     <React.StrictMode>
-      <ThemeProvider theme={darkTheme}>
-        <CssBaseline />
-        <TopBarContainer />
-      </ThemeProvider>
+      <ShellErrorBoundary>
+        <ThemeProvider theme={darkTheme}>
+          <CssBaseline />
+          <TopBarContainer />
+        </ThemeProvider>
+      </ShellErrorBoundary>
     </React.StrictMode>
   );
 });

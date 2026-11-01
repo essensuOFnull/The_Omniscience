@@ -4,10 +4,12 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SearchIcon from '@mui/icons-material/Search';
 import SettingsIcon from '@mui/icons-material/Settings';
 import PowerSettingsNewIcon from '@mui/icons-material/PowerSettingsNew';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 
 import ControlGrid from './ControlGrid';
 import Clock from './topbar/Clock';
 import WindowList from './topbar/WindowList';
+import ShellErrorBoundary from './ShellErrorBoundary';
 
 const CELL = 20, GAP = 1;
 const CROSS_W = CELL * 5 + GAP * 4;
@@ -19,7 +21,10 @@ export default function TopBar({
   showWindowList = true,
   showClock = true,
   showClockMs = false,
+  shellSwitchAvailable = false,
+  windowsShellMode = false,
   onToggleOverview,
+  onToggleShellSession,
   onOpenWindowSettings,
   onFocusWindow,
   onCloseWindow,
@@ -74,6 +79,23 @@ export default function TopBar({
             sx={{ color: '#fff', WebkitAppRegion: 'no-drag', width: 24, height: 24 }}>
             <PowerSettingsNewIcon sx={{ fontSize: 14 }} />
           </IconButton>
+          {shellSwitchAvailable && (
+            <ShellErrorBoundary fallback={null}>
+              <IconButton
+                size="small"
+                onClick={onToggleShellSession}
+                title={windowsShellMode ? 'Вернуть оболочку Explorer' : 'Переключиться на Omniscience'}
+                aria-label={windowsShellMode ? 'Вернуть оболочку Explorer' : 'Переключиться на Omniscience'}
+                sx={{
+                  color: windowsShellMode ? '#fbbf24' : '#fff',
+                  WebkitAppRegion: 'no-drag',
+                  width: 24, height: 24,
+                }}
+              >
+                <SwapHorizIcon sx={{ fontSize: 14 }} />
+              </IconButton>
+            </ShellErrorBoundary>
+          )}
         </Box>
 
         {/* СТРОКА 2: меню + окна */}
