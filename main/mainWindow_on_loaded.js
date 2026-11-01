@@ -6,5 +6,7 @@ export default async function () {
 
 	await global.$.loadComponentIpc();
 
-	global.mainWindow.maximize();
+	if (process.platform !== 'win32') {
+		global.mainWindow.maximize();
+	}
 }

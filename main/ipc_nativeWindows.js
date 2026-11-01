@@ -70,6 +70,7 @@ const win32AdminPending = new Map();
 const win32DeferredBounds = new Map();
 const win32IconCache = new Map();
 const win32PendingIcons = new Set();
+const win32DockSuppressed = new WeakSet();
 let win32Host = null;
 let win32AdminServer = null;
 let win32AdminSocket = null;
@@ -156,6 +157,84 @@ function requestWin32(action, payload = {}, timeoutMs = 10000) {
       reject(err);
     });
   });
+}
+
+function getWin32Hwnd(win) {
+  try {
+    const handle = win.getNativeWindowHandle();
+    if (handle.length >= 8) return handle.readBigUInt64LE(0).toString();
+    if (handle.length >= 4) return String(handle.readUInt32LE(0));
+  } catch (error) {
+    console.error('[nativeWindows:win32] failed to read native window handle:', error.message);
+  }
+  return null;
+}
+
+export async function setWindowsDesktopWindow(win) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
+  const hwnd = getWin32Hwnd(win);
+  if (!hwnd) return false;
+  const bounds = screen.getPrimaryDisplay().bounds;
+  const rect = screen.dipToScreenRect(null, bounds);
+  try {
+    const attached = await requestWin32('desktop', {
+      hwnd, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+    });
+    if (!attached) {
+      console.warn('[nativeWindows:win32] Progman desktop host unavailable; using a regular window');
+      win.setBounds(bounds);
+    }
+    return attached;
+  } catch (error) {
+    console.error('[nativeWindows:win32] failed to set desktop window role:', error.message);
+    return false;
+  }
+}
+
+export async function updateWindowsDock(win) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
+  const hwnd = getWin32Hwnd(win);
+  if (!hwnd) return false;
+  if (!win.isVisible() || win32DockSuppressed.has(win)) {
+    try {
+      const removed = await requestWin32('dock-remove', { hwnd });
+      return removed;
+    } catch (error) {
+      console.error('[nativeWindows:win32] failed to release dock reservation:', error.message);
+      return false;
+    }
+  }
+  const rect = screen.dipToScreenRect(null, win.getBounds());
+  try {
+    const registered = await requestWin32('dock', {
+      hwnd, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+    });
+    if (!registered) console.warn('[nativeWindows:win32] failed to register dock appbar:', hwnd);
+    return registered;
+  } catch (error) {
+    console.error('[nativeWindows:win32] failed to register dock appbar:', error.message);
+    return false;
+  }
+}
+
+export async function removeWindowsDock(win) {
+  if (process.platform !== 'win32' || !win) return false;
+  const hwnd = getWin32Hwnd(win);
+  if (!hwnd) return false;
+  try {
+    const removed = await requestWin32('dock-remove', { hwnd });
+    return removed;
+  } catch (error) {
+    console.error('[nativeWindows:win32] failed to release dock reservation:', error.message);
+    return false;
+  }
+}
+
+export async function setWindowsDockSuppressed(win, suppressed) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
+  if (suppressed) win32DockSuppressed.add(win);
+  else win32DockSuppressed.delete(win);
+  return updateWindowsDock(win);
 }
 
 function failWin32AdminRequests(error) {

@@ -2,6 +2,7 @@ import electronPkg from 'electron';
 const { screen } = electronPkg;
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { removeWindowsDock, updateWindowsDock } from './ipc_nativeWindows.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -141,7 +142,7 @@ function strutsToXpropArgs(s) {
 /* ------------------------------------------------------------------ */
 
 export async function applyPanelStruts() {
-  if (process.platform === 'win32') return false;
+  if (process.platform === 'win32') return updateWindowsDock(global.topbarWindow);
   const tb = global.topbarWindow;
   if (!tb || tb.isDestroyed()) {
     console.warn('[panelStruts] нет topbarWindow');
@@ -201,6 +202,7 @@ export default function ({ show = true } = {}) {
     // Уже наверняка применяем и показываем
     applyPanelStruts().finally(() => {
       tb.show();
+      if (process.platform === 'win32') updateWindowsDock(tb);
     });
   });
 
@@ -208,4 +210,7 @@ export default function ({ show = true } = {}) {
   tb.on('resize', () => scheduleApplyPanelStruts());
   tb.on('show', () => scheduleApplyPanelStruts(50));
   tb.on('hide', () => scheduleApplyPanelStruts(50));
+  tb.on('close', () => {
+    if (process.platform === 'win32') removeWindowsDock(tb);
+  });
 }

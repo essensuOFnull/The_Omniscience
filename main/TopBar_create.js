@@ -1,5 +1,6 @@
 import electronPkg from 'electron';
 const { BrowserWindow, screen, ipcMain } = electronPkg;
+import { setWindowsDockSuppressed } from './ipc_nativeWindows.js';
 
 const TOPBAR_H = 72;
 
@@ -37,6 +38,9 @@ export default async function () {
     const w = global.topbarWindow;
     if (!w || w.isDestroyed()) return;
     const h = mode === 'overview' ? height : TOPBAR_H;
+    if (process.platform === 'win32') {
+      setWindowsDockSuppressed(w, mode === 'overview');
+    }
     w.setBounds({ x: 0, y: 0, width: width, height: h });
   });
 }

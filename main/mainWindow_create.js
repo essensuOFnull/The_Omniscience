@@ -1,6 +1,7 @@
 import electronPkg from 'electron';
 const { BrowserWindow, screen, app, ipcMain } = electronPkg;
 import { attachToWebContents } from './ipc_browserContextMenu.js';
+import { setWindowsDesktopWindow } from './ipc_nativeWindows.js';
 import { execFile } from 'node:child_process';
 
 // Защита от повторного запуска: before-quit, SIGTERM/SIGINT и watchdog
@@ -134,7 +135,7 @@ export default async function () {
         transparent: true,
         backgroundColor: '#00000000',
         resizable: true,
-        show: true,
+        show: process.platform !== 'win32',
         type: 'desktop',
         frame: false,
         icon: global.paths.icon,
@@ -149,6 +150,13 @@ export default async function () {
             webviewTag: true,
         },
     });
+
+    if (process.platform === 'win32') {
+        global.mainWindow.once('ready-to-show', async () => {
+            await setWindowsDesktopWindow(global.mainWindow);
+            if (!global.mainWindow.isDestroyed()) global.mainWindow.show();
+        });
+    }
 
     attachToWebContents(global.mainWindow.webContents);
 

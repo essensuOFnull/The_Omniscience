@@ -1,5 +1,8 @@
 param([string]$PipeName)
 $script:ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
 $nativeSource = @'
 using System;
@@ -26,6 +29,17 @@ public sealed class OmniWindowInfo
 public static class OmniWin32
 {
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    private const int GWL_STYLE = -16;
+    private const int WS_CHILD = 0x40000000;
+    private const int WS_POPUP = unchecked((int)0x80000000);
+    private const uint ABM_NEW = 0x00000000;
+    private const uint ABM_REMOVE = 0x00000001;
+    private const uint ABM_QUERYPOS = 0x00000002;
+    private const uint ABM_SETPOS = 0x00000003;
+    private const uint ABE_TOP = 1;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const int WM_APP = 0x8000;
+    private static readonly HashSet<IntPtr> AppBars = new HashSet<IntPtr>();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -34,6 +48,17 @@ public static class OmniWin32
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
     }
 
     [DllImport("user32.dll")]
@@ -56,6 +81,16 @@ public static class OmniWin32
     private static extern IntPtr GetWindowLongPtr64(IntPtr hwnd, int index);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
     private static extern int GetWindowLong32(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong32(IntPtr hwnd, int index, int value);
+    [DllImport("user32.dll")]
+    private static extern IntPtr FindWindow(string className, string windowName);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr child);
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
@@ -72,6 +107,8 @@ public static class OmniWin32
     private static extern bool SetCursorPos(int x, int y);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "ShellExecuteW")]
     private static extern IntPtr ShellExecute(IntPtr hwnd, string operation, string file, string parameters, string directory, int showCommand);
+    [DllImport("shell32.dll")]
+    private static extern UIntPtr SHAppBarMessage(uint message, ref APPBARDATA data);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -84,6 +121,24 @@ public static class OmniWin32
         return IntPtr.Size == 8
             ? GetWindowLongPtr64(hwnd, index)
             : new IntPtr(GetWindowLong32(hwnd, index));
+    }
+
+    private static IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value)
+    {
+        if (IntPtr.Size == 8) return SetWindowLongPtr64(hwnd, index, value);
+        return new IntPtr(SetWindowLong32(hwnd, index, value.ToInt32()));
+    }
+
+    private static APPBARDATA NewAppBarData(IntPtr hwnd, RECT rect)
+    {
+        return new APPBARDATA {
+            cbSize = Marshal.SizeOf(typeof(APPBARDATA)),
+            hWnd = hwnd,
+            uCallbackMessage = (uint)(WM_APP + 57),
+            uEdge = ABE_TOP,
+            rc = rect,
+            lParam = IntPtr.Zero
+        };
     }
 
     private static string GetImagePath(uint pid)
@@ -156,6 +211,62 @@ public static class OmniWin32
         return updated;
     }
 
+    public static bool SetDesktop(long hwnd, int x, int y, int width, int height)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        IntPtr desktop = FindWindow("Progman", null);
+        if (desktop == IntPtr.Zero) return false;
+        int style = GetWindowLongPtr(window, GWL_STYLE).ToInt32();
+        SetWindowLongPtr(window, GWL_STYLE, new IntPtr((style | WS_CHILD) & ~WS_POPUP));
+        IntPtr previousParent = SetParent(window, desktop);
+        if (GetParent(window) != desktop)
+        {
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            return false;
+        }
+        bool positioned = SetWindowPos(
+            window, new IntPtr(1), x, y, Math.Max(1, width), Math.Max(1, height),
+            SWP_NOACTIVATE | 0x0020
+        );
+        if (positioned) return true;
+        SetParent(window, previousParent);
+        SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+        return false;
+    }
+
+    public static bool SetDock(long hwnd, int x, int y, int width, int height)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        RECT requested = new RECT {
+            Left = x, Top = y, Right = x + Math.Max(1, width), Bottom = y + Math.Max(1, height)
+        };
+        APPBARDATA data = NewAppBarData(window, requested);
+        if (!AppBars.Contains(window))
+        {
+            if (SHAppBarMessage(ABM_NEW, ref data) == UIntPtr.Zero) return false;
+            AppBars.Add(window);
+        }
+
+        data = NewAppBarData(window, requested);
+        SHAppBarMessage(ABM_QUERYPOS, ref data);
+        data.rc.Bottom = data.rc.Top + Math.Max(1, height);
+        SHAppBarMessage(ABM_SETPOS, ref data);
+        return SetWindowPos(
+            window, new IntPtr(-1), data.rc.Left, data.rc.Top,
+            Math.Max(1, data.rc.Right - data.rc.Left),
+            Math.Max(1, data.rc.Bottom - data.rc.Top),
+            SWP_NOACTIVATE
+        );
+    }
+
+    public static bool RemoveDock(long hwnd)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        if (!AppBars.Remove(window)) return true;
+        APPBARDATA data = NewAppBarData(window, new RECT());
+        return SHAppBarMessage(ABM_REMOVE, ref data) != UIntPtr.Zero;
+    }
+
     public static bool SetCursor(int x, int y) { return SetCursorPos(x, y); }
 
     public static bool Focus(long hwnd)
@@ -204,7 +315,10 @@ if ($PipeName) {
 
 function Get-ShellLauncherStatus {
     $os = Get-CimInstance -ClassName Win32_OperatingSystem
-    $supported = $os.Caption -match 'Enterprise|Education|IoT Enterprise'
+    $editionId = (Get-ItemProperty `
+        -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' `
+        -Name EditionID -ErrorAction Stop).EditionID
+    $supported = $editionId -match '^(Enterprise|Education|IoTEnterprise)'
     $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     try {
         $class = [wmiclass]'\\.\root\standardcimv2\embedded:WESL_UserSetting'
@@ -216,6 +330,7 @@ function Get-ShellLauncherStatus {
         return @{
             supported = $supported
             edition = $os.Caption
+            editionId = $editionId
             available = $true
             enabled = $enabled
             sid = $sid
@@ -230,6 +345,7 @@ function Get-ShellLauncherStatus {
         return @{
             supported = $supported
             edition = $os.Caption
+            editionId = $editionId
             available = $false
             enabled = $false
             sid = $sid
@@ -302,6 +418,19 @@ while ($null -ne ($line = $reader.ReadLine())) {
                     [int]$request.width, [int]$request.height
                 )
             }
+            'desktop' {
+                [OmniWin32]::SetDesktop(
+                    [long]$request.hwnd, [int]$request.x, [int]$request.y,
+                    [int]$request.width, [int]$request.height
+                )
+            }
+            'dock' {
+                [OmniWin32]::SetDock(
+                    [long]$request.hwnd, [int]$request.x, [int]$request.y,
+                    [int]$request.width, [int]$request.height
+                )
+            }
+            'dock-remove' { [OmniWin32]::RemoveDock([long]$request.hwnd) }
             'cursor' { [OmniWin32]::SetCursor([int]$request.x, [int]$request.y) }
             'focus' { [OmniWin32]::Focus([long]$request.hwnd) }
             'minimize' { [OmniWin32]::Minimize([long]$request.hwnd) }
