@@ -22,6 +22,9 @@ function findViewName(wcId) {
     if (global.mainWindow && !global.mainWindow.isDestroyed()) {
         if (global.mainWindow.webContents.id === wcId) return 'shell';
     }
+    if (global.topbarWindow && !global.topbarWindow.isDestroyed()) {
+        if (global.topbarWindow.webContents.id === wcId) return 'topbar';
+    }
     // Check by URL if we can't find by registry
     for (const wc of webContents.getAllWebContents()) {
         if (wc.id === wcId) {
@@ -44,9 +47,7 @@ function shortUrl(url) {
     } catch (_) { return url.slice(0, 60); }
 }
 
-// Уровни из console-message (Chromium): 0=verbose, 1=info, 2=warning, 3=error
-const LEVEL_COLOR = { 0: GREY, 1: GREY, 2: YELLOW, 3: RED };
-const LEVEL_NAME = { 0: 'verbose', 1: 'info', 2: 'warn', 3: 'error' };
+const LEVEL_COLOR = { debug: GREY, info: GREY, warning: YELLOW, error: RED };
 
 const attached = new WeakSet();
 
@@ -56,24 +57,15 @@ function attachWebContents(wc) {
     attached.add(wc);
 
     // 1. Основное: все сообщения консоли из этого webContents
-    wc.on('console-message', (event, level, message, line, sourceId) => {
-        // Electron 44 может передавать либо (event, level, message, line, sourceId),
-        // либо (event, details). Проверяем оба варианта.
-        let lvl, msg, src, ln;
-        if (typeof level === 'object' && level !== null) {
-            const d = level;
-            lvl = d.level; msg = d.message; src = d.sourceId; ln = d.lineNumber;
-        } else {
-            lvl = level; msg = message; src = sourceId; ln = line;
-        }
+    wc.on('console-message', (details) => {
+        const { level, message, sourceId, lineNumber } = details;
 
         const name = findViewName(wc.id);
-        const color = LEVEL_COLOR[lvl] ?? GREY;
-        const lvlName = LEVEL_NAME[lvl] ?? 'log';
-        const file = shortUrl(src);
-        const loc = ln ? `:${ln}` : '';
+        const color = LEVEL_COLOR[level] ?? GREY;
+        const file = shortUrl(sourceId);
+        const loc = lineNumber ? `:${lineNumber}` : '';
 
-        console.log(`${color}[${name}]${RESET} ${lvlName} ${msg} ${GREY}(${file}${loc})${RESET}`);
+        console.log(`${color}[${name}]${RESET} ${level} ${message} ${GREY}(${file}${loc})${RESET}`);
     });
 
     // 2. Ошибки в preload — то, что видно только здесь

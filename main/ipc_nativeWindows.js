@@ -284,17 +284,32 @@ export function getWindowsShellMode() {
 export async function configureWindowsAutostart() {
   if (process.platform !== 'win32') return false;
   const args = app.isPackaged ? [] : [`"${app.getAppPath()}"`];
+  const registryPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+  const registryName = 'The_Omniscience';
+  const launchCommand = app.isPackaged
+    ? `"${process.execPath}"`
+    : `"${process.execPath}" "${app.getAppPath()}"`;
   app.setLoginItemSettings({
     openAtLogin: true,
     path: process.execPath,
     args,
-    name: 'The_Omniscience',
+    name: registryName,
     enabled: true,
   });
-  const settings = app.getLoginItemSettings({ path: process.execPath, args });
-  if (!settings.openAtLogin) {
-    throw new Error('Windows did not enable the Omniscience login item');
-  }
+  const encode = (value) => Buffer.from(value, 'utf8').toString('base64');
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'",
+    `$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encode(registryName)}'))`,
+    `$value = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encode(launchCommand)}'))`,
+    'New-Item -Path $key -Force | Out-Null',
+    'New-ItemProperty -Path $key -Name $name -Value $value -PropertyType String -Force | Out-Null',
+    '$actual = (Get-ItemProperty -Path $key -Name $name).PSObject.Properties[$name].Value',
+    "if ($actual -cne $value) { throw 'Windows did not save the expected Omniscience startup command' }",
+  ].join('; ');
+  await execFileAsync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script,
+  ], { windowsHide: true, encoding: 'utf8' });
   return true;
 }
 
