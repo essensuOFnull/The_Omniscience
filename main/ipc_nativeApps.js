@@ -162,15 +162,25 @@ async function collectShortcuts(dir, result, seen) {
     seen.add(key);
 
     let title = path.basename(entry.name, path.extname(entry.name));
-    let icon = null;
+    let shortcut = null;
     try {
-      const shortcut = shell.readShortcutLink(fullPath);
+      shortcut = shell.readShortcutLink(fullPath);
       title = shortcut.description || title;
     } catch { /* malformed or inaccessible shortcut */ }
-    try {
-      const image = await app.getFileIcon(fullPath, { size: 'normal' });
-      if (!image.isEmpty()) icon = image.toDataURL();
-    } catch { /* icon is optional */ }
+
+    let icon = null;
+    const iconCandidates = [...new Set([shortcut?.icon, shortcut?.target, fullPath].filter(Boolean))];
+    for (const candidate of iconCandidates) {
+      try {
+        const image = await app.getFileIcon(candidate, { size: 'normal' });
+        if (!image.isEmpty()) {
+          icon = image.toDataURL();
+          break;
+        }
+      } catch (err) {
+        console.warn('[nativeApps] failed to read shortcut icon:', candidate, err.message);
+      }
+    }
 
     result.push({
       id: `native:${key}`,

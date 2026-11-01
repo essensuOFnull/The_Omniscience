@@ -219,9 +219,11 @@ function buildState() {
   const ourXids = new Set(ourWindows.map((w) => w.xid).filter(Boolean));
 
   const pidToXid = new Map();
-  for (const w of nativeWindows) {
-    const p = Number(w.pid);
-    if (Number.isFinite(p) && p > 0) pidToXid.set(p, normalizeXid(w.id));
+  if (process.platform !== 'win32') {
+    for (const w of nativeWindows) {
+      const p = Number(w.pid);
+      if (Number.isFinite(p) && p > 0) pidToXid.set(p, normalizeXid(w.id));
+    }
   }
   const knownPids = [...pidToXid.keys()];
 
@@ -230,7 +232,7 @@ function buildState() {
     .map((w) => {
       const pidNum = Number(w.pid) || null;
       let parentXid = null;
-      if (pidNum) {
+      if (pidNum && process.platform !== 'win32') {
         const ancestorPid = findAncestorWindowPid(pidNum, knownPids);
         if (ancestorPid) parentXid = pidToXid.get(ancestorPid) || null;
       }

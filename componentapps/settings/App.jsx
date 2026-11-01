@@ -4,9 +4,11 @@ import TabsTab from './TabsTab';
 import BackgroundTab from './BackgroundTab';
 import AnimationTab from './AnimationTab';
 import DesktopTab from './DesktopTab';
+import WindowsTab from './WindowsTab';
 
 export default function App() {
   const [tab, setTab] = useState(0);
+  const isWindows = window.electron_desktop_API?.platform === 'win32';
 
   return (
     <Box sx={{ p: 2, width: '100%', height: '100%', boxSizing: 'border-box' }}>
@@ -22,11 +24,13 @@ export default function App() {
         <Tab label="✨ Анимации" />
         <Tab label="🖼️ Фон" />
         <Tab label="🖥️ Рабочий стол" />
+        {isWindows && <Tab label="🛡️ Windows" />}
       </Tabs>
       {tab === 0 && <TabsTab />}
       {tab === 1 && <AnimationTab />}
       {tab === 2 && <BackgroundTab />}
       {tab === 3 && <DesktopTab />}
+      {isWindows && tab === 4 && <WindowsTab />}
     </Box>
   );
 }

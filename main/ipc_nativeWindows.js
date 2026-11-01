@@ -1,11 +1,15 @@
 import electronPkg from 'electron';
-const { ipcMain } = electronPkg;
+const { app, BrowserWindow, ipcMain, screen } = electronPkg;
 import { spawn, execFile, exec } from 'child_process';
+import net from 'net';
 import { promisify } from 'util';
-import { access, readFile } from 'fs/promises';
+import { access, readFile, writeFile, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
+import readline from 'readline';
 import { getWindowById, getXidForWindow } from './ipc_windowManager.js';
 
 const execFileAsync = promisify(execFile);
@@ -51,11 +55,330 @@ function safe(promise, label) {
 
 const require = createRequire(import.meta.url);
 let x11 = null;
-try {
-  x11 = require('x11');
-  dbg('x11 package loaded');
-} catch {
-  console.error('[nativeWindows] пакет "x11" не установлен. Выполните: npm install x11');
+if (process.platform !== 'win32') {
+  try {
+    x11 = require('x11');
+    dbg('x11 package loaded');
+  } catch {
+    console.error('[nativeWindows] пакет "x11" не установлен. Выполните: npm install x11');
+  }
+}
+
+const WIN32_HOST_PATH = fileURLToPath(new URL('./windowsNativeHost.ps1', import.meta.url));
+const win32Pending = new Map();
+const win32AdminPending = new Map();
+const win32DeferredBounds = new Map();
+const win32IconCache = new Map();
+const win32PendingIcons = new Set();
+let win32Host = null;
+let win32AdminServer = null;
+let win32AdminSocket = null;
+let win32AdminStartPromise = null;
+let win32AdminPromptSuppressedUntil = 0;
+let win32RequestId = 0;
+let win32AdminRequestId = 0;
+let win32RefreshTimer = null;
+let win32RefreshPromise = null;
+let win32Windows = [];
+let win32ActiveHwnd = null;
+let win32LastHash = '';
+
+function failWin32Requests(error) {
+  for (const { reject, timer } of win32Pending.values()) {
+    clearTimeout(timer);
+    reject(error);
+  }
+  win32Pending.clear();
+}
+
+function startWin32Host() {
+  if (win32Host && !win32Host.killed) return win32Host;
+
+  const child = spawn('powershell.exe', [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-File', WIN32_HOST_PATH,
+  ], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  win32Host = child;
+
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (data) => {
+    console.error('[nativeWindows:win32]', data.trimEnd());
+  });
+
+  const output = readline.createInterface({ input: child.stdout });
+  output.on('line', (line) => {
+    let response;
+    try { response = JSON.parse(line); }
+    catch (err) {
+      console.error('[nativeWindows:win32] invalid host response:', err.message, line);
+      return;
+    }
+
+    const pending = win32Pending.get(response.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    win32Pending.delete(response.requestId);
+    if (response.success) pending.resolve(response.result);
+    else pending.reject(new Error(response.error || 'Windows native request failed'));
+  });
+
+  child.on('error', (err) => {
+    console.error('[nativeWindows:win32] host process failed:', err.message);
+    if (win32Host === child) win32Host = null;
+    failWin32Requests(err);
+  });
+  child.on('close', (code) => {
+    output.close();
+    if (win32Host === child) win32Host = null;
+    if (code !== 0) {
+      console.error('[nativeWindows:win32] host exited with code', code);
+    }
+    failWin32Requests(new Error(`Windows native host exited (${code})`));
+  });
+  return child;
+}
+
+function requestWin32(action, payload = {}, timeoutMs = 10000) {
+  const child = startWin32Host();
+  const requestId = ++win32RequestId;
+  const message = JSON.stringify({ requestId, action, ...payload });
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      win32Pending.delete(requestId);
+      reject(new Error(`Windows native request timed out: ${action}`));
+    }, timeoutMs);
+    win32Pending.set(requestId, { resolve, reject, timer });
+    child.stdin.write(message + '\n', (err) => {
+      if (!err) return;
+      clearTimeout(timer);
+      win32Pending.delete(requestId);
+      reject(err);
+    });
+  });
+}
+
+function failWin32AdminRequests(error) {
+  for (const { reject, timer } of win32AdminPending.values()) {
+    clearTimeout(timer);
+    reject(error);
+  }
+  win32AdminPending.clear();
+}
+
+function acceptWin32AdminSocket(socket) {
+  if (win32AdminSocket) {
+    socket.destroy();
+    return;
+  }
+  win32AdminSocket = socket;
+  const output = readline.createInterface({ input: socket });
+  output.on('line', (line) => {
+    let response;
+    try { response = JSON.parse(line); }
+    catch (err) {
+      console.error('[nativeWindows:admin] invalid helper response:', err.message, line);
+      return;
+    }
+    const pending = win32AdminPending.get(response.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    win32AdminPending.delete(response.requestId);
+    if (response.success) pending.resolve(response.result);
+    else pending.reject(new Error(response.error || 'Elevated Windows request failed'));
+  });
+  socket.on('error', (err) => {
+    console.error('[nativeWindows:admin] helper pipe failed:', err.message);
+  });
+  socket.on('close', () => {
+    output.close();
+    if (win32AdminSocket === socket) win32AdminSocket = null;
+    failWin32AdminRequests(new Error('Elevated Windows helper disconnected'));
+  });
+}
+
+function startWin32AdminHost() {
+  if (win32AdminSocket) return Promise.resolve();
+  if (win32AdminStartPromise) return win32AdminStartPromise;
+
+  const pipeName = `Omni-${randomUUID().replace(/-/g, '')}`;
+  const pipePath = `\\\\.\\pipe\\${pipeName}`;
+  const server = net.createServer((socket) => {
+    acceptWin32AdminSocket(socket);
+    connected = true;
+    completeIfReady();
+  });
+  win32AdminServer = server;
+
+  let connected = false;
+  let launched = false;
+  let settled = false;
+  let timer;
+  let resolveStart;
+  let rejectStart;
+  const started = new Promise((resolve, reject) => {
+    resolveStart = resolve;
+    rejectStart = reject;
+  });
+  win32AdminStartPromise = started;
+  started.then(
+    () => { if (win32AdminStartPromise === started) win32AdminStartPromise = null; },
+    () => { if (win32AdminStartPromise === started) win32AdminStartPromise = null; },
+  );
+
+  const completeIfReady = () => {
+    if (settled || !connected || !launched) return;
+    settled = true;
+    clearTimeout(timer);
+    server.close();
+    if (win32AdminServer === server) win32AdminServer = null;
+    resolveStart();
+  };
+  const fail = (error) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    if (server.listening) server.close();
+    if (win32AdminServer === server) win32AdminServer = null;
+    if (win32AdminSocket) {
+      win32AdminSocket.destroy();
+      win32AdminSocket = null;
+    }
+    rejectStart(error);
+  };
+
+  timer = setTimeout(() => fail(new Error('Timed out waiting for administrator approval')), 120000);
+  server.once('error', fail);
+  server.listen(pipePath, () => {
+    const powershellPath = path.join(
+      process.env.SystemRoot || 'C:\\Windows',
+      'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe',
+    );
+    const arguments_ = [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', WIN32_HOST_PATH, '-PipeName', pipeName,
+    ].map(quoteWindowsArgument).join(' ');
+    requestWin32('elevate', {
+      executable: powershellPath,
+      arguments: arguments_,
+      directory: app.getAppPath(),
+    }, 120000).then((result) => {
+      if (!result) return fail(new Error('Administrator approval was cancelled'));
+      launched = true;
+      completeIfReady();
+    }).catch(fail);
+  });
+  return started;
+}
+
+async function requestWin32Admin(action, payload = {}) {
+  await startWin32AdminHost();
+  const socket = win32AdminSocket;
+  if (!socket) throw new Error('Elevated Windows helper is not connected');
+  const requestId = ++win32AdminRequestId;
+  const message = JSON.stringify({ requestId, action, ...payload });
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      win32AdminPending.delete(requestId);
+      reject(new Error(`Elevated Windows request timed out: ${action}`));
+    }, 15000);
+    win32AdminPending.set(requestId, { resolve, reject, timer });
+    socket.write(message + '\n', (err) => {
+      if (!err) return;
+      clearTimeout(timer);
+      win32AdminPending.delete(requestId);
+      reject(err);
+    });
+  });
+}
+
+async function elevateWin32WindowAction(action, payload) {
+  if (Date.now() < win32AdminPromptSuppressedUntil) return false;
+  const start = win32AdminStartPromise || startWin32AdminHost();
+  if (action === 'bounds') win32DeferredBounds.set(payload.hwnd, payload);
+  try {
+    await start;
+  } catch (error) {
+    win32DeferredBounds.delete(payload.hwnd);
+    win32AdminPromptSuppressedUntil = Date.now() + 30000;
+    throw error;
+  }
+  if (action !== 'bounds') return requestWin32Admin(action, payload);
+  const latestBounds = win32DeferredBounds.get(payload.hwnd);
+  if (!latestBounds) return false;
+  win32DeferredBounds.delete(payload.hwnd);
+  return requestWin32Admin(action, latestBounds);
+}
+
+async function requestWin32WindowAction(action, payload, { elevateOnFailure = false } = {}) {
+  let result;
+  try {
+    result = await requestWin32(action, payload);
+  } catch (error) {
+    if (error.message !== 'access_denied') throw error;
+    if (win32AdminSocket) return requestWin32Admin(action, payload);
+    if (!elevateOnFailure) return false;
+    return elevateWin32WindowAction(action, payload);
+  }
+  if (result) return true;
+  if (win32AdminSocket) return requestWin32Admin(action, payload);
+  return false;
+}
+
+function cacheWin32Icon(imagePath) {
+  if (!imagePath || win32IconCache.has(imagePath) || win32PendingIcons.has(imagePath)) return;
+  win32PendingIcons.add(imagePath);
+  app.getFileIcon(imagePath, { size: 'normal' }).then((image) => {
+    const dataUrl = image && !image.isEmpty() ? image.toDataURL() : null;
+    win32IconCache.set(imagePath, dataUrl);
+    if (dataUrl) global.topbarBroadcast?.();
+  }).catch((err) => {
+    console.warn('[nativeWindows:win32] failed to load process icon:', imagePath, err.message);
+    win32IconCache.set(imagePath, null);
+  }).finally(() => {
+    win32PendingIcons.delete(imagePath);
+  });
+}
+
+async function refreshWin32Windows() {
+  if (win32RefreshPromise) return win32RefreshPromise;
+  win32RefreshPromise = (async () => {
+    const [windows, activeHwnd] = await Promise.all([
+      requestWin32('list', { ownPid: process.pid }),
+      requestWin32('active'),
+    ]);
+    const next = Array.isArray(windows) ? windows.map((window) => {
+      const rect = screen.screenToDipRect(null, {
+        x: window.x, y: window.y,
+        width: window.width, height: window.height,
+      });
+      return { ...window, ...rect };
+    }) : [];
+    for (const window of next) cacheWin32Icon(window.imagePath);
+    const hash = JSON.stringify([next, activeHwnd]);
+    if (hash === win32LastHash) return;
+    win32LastHash = hash;
+    win32Windows = next;
+    win32ActiveHwnd = activeHwnd;
+    global.topbarBroadcast?.();
+    if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+      global.mainWindow.webContents.send('shell:native-windows-updated', next);
+    }
+  })().catch((err) => {
+    console.error('[nativeWindows:win32] refresh failed:', err.message);
+  }).finally(() => {
+    win32RefreshPromise = null;
+  });
+  return win32RefreshPromise;
+}
+
+function parseWin32Hwnd(id) {
+  try {
+    const hwnd = BigInt(String(id));
+    return hwnd > 0n ? hwnd.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1144,6 +1467,15 @@ let watcher = null;
 let initialized = false;
 
 export function getNativeState() {
+  if (process.platform === 'win32') {
+    return {
+      windows: win32Windows.map((window) => ({
+        ...window,
+        icon: window.imagePath ? win32IconCache.get(window.imagePath) || null : null,
+      })),
+      activeXid: win32ActiveHwnd,
+    };
+  }
   if (!watcher) return { windows: [], activeXid: null };
   try {
     const all = [...watcher.windows.values()];
@@ -1159,6 +1491,94 @@ export function getNativeState() {
 
 export function isX11Available() { return !!(watcher && watcher.X); }
 
+function quoteWindowsArgument(value) {
+  const text = String(value);
+  let quoted = '"';
+  let backslashes = 0;
+  for (const char of text) {
+    if (char === '\\') {
+      backslashes++;
+    } else if (char === '"') {
+      quoted += '\\'.repeat(backslashes * 2 + 1) + '"';
+      backslashes = 0;
+    } else {
+      quoted += '\\'.repeat(backslashes) + char;
+      backslashes = 0;
+    }
+  }
+  return quoted + '\\'.repeat(backslashes * 2) + '"';
+}
+
+function getWin32ShellCommand() {
+  const command = app.isPackaged
+    ? [process.execPath]
+    : [process.execPath, app.getAppPath()];
+  return command.map(quoteWindowsArgument).join(' ');
+}
+
+function getWin32ShellBackupPath() {
+  return path.join(app.getPath('userData'), 'shell-launcher-backup.json');
+}
+
+async function saveWin32ShellBackup(status) {
+  const backupPath = getWin32ShellBackupPath();
+  if (process.platform !== 'win32') {
+    throw new Error('Shell Launcher is only available on Windows');
+  }
+  try {
+    await access(backupPath);
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+    try {
+      await writeFile(backupPath, JSON.stringify(status, null, 2), { flag: 'wx' });
+    } catch (writeError) {
+      if (writeError.code !== 'EEXIST') throw writeError;
+    }
+  }
+}
+
+async function enableWin32ShellLauncher() {
+  const status = await requestWin32('shell-status');
+  if (!status.supported) return { ok: false, error: 'unsupported_edition', status };
+  if (!status.available) {
+    return { ok: false, error: 'shell_launcher_feature_disabled', status };
+  }
+  await saveWin32ShellBackup(status);
+  const updated = await requestWin32Admin('set-shell', { shell: getWin32ShellCommand() });
+  return { ok: true, status: updated };
+}
+
+async function restoreWin32ShellLauncher() {
+  const backupPath = getWin32ShellBackupPath();
+  let backup;
+  try {
+    backup = JSON.parse(await readFile(backupPath, 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') return { ok: false, error: 'backup_not_found' };
+    throw err;
+  }
+  const status = await requestWin32('shell-status');
+  if (!status.supported || !status.available) {
+    return { ok: false, error: status.supported ? 'shell_launcher_feature_disabled' : 'unsupported_edition', status };
+  }
+  if (backup.sid !== status.sid) {
+    return { ok: false, error: 'backup_user_mismatch', status };
+  }
+  const updated = await requestWin32Admin('restore-shell', { backup });
+  await unlink(backupPath);
+  return { ok: true, status: updated };
+}
+
+async function resetWin32ShellLauncher() {
+  const status = await requestWin32('shell-status');
+  if (!status.supported) return { ok: false, error: 'unsupported_edition', status };
+  if (!status.available) {
+    return { ok: false, error: 'shell_launcher_feature_disabled', status };
+  }
+  const updated = await requestWin32Admin('remove-shell');
+  return { ok: true, status: updated };
+}
+
 function resolveTarget(id) {
   if (id == null) return null;
   try {
@@ -1167,6 +1587,10 @@ function resolveTarget(id) {
       const xidHex = getXidForWindow(id);
       if (!xidHex) return { kind: 'our', xid: null, appId: id };
       return { kind: 'our', xid: parseXid(xidHex), appId: id };
+    }
+    if (process.platform === 'win32') {
+      const hwnd = parseWin32Hwnd(id);
+      return hwnd ? { kind: 'native', hwnd } : null;
     }
     const xid = parseXid(id);
     if (!xid) return null;
@@ -1194,6 +1618,9 @@ export async function focusWindowById(id) {
       watcher.scheduleRefresh();
       return { ok };
     }
+    if (t.kind === 'native' && t.hwnd) {
+      return { ok: await requestWin32WindowAction('focus', { hwnd: t.hwnd }) };
+    }
     return { ok: true };
   } catch (e) {
     if (DEBUG) dbgWarn('focusWindowById error:', e?.message || e);
@@ -1215,6 +1642,9 @@ export async function closeWindowById(id) {
       watcher.scheduleRefresh();
       return { ok };
     }
+    if (t.kind === 'native' && t.hwnd) {
+      return { ok: await requestWin32WindowAction('close', { hwnd: t.hwnd }) };
+    }
     return { ok: false };
   } catch (e) {
     if (DEBUG) dbgWarn('closeWindowById error:', e?.message || e);
@@ -1235,6 +1665,9 @@ export async function minimizeWindowById(id) {
       const ok = await watcher.minimize(t.xid);
       return { ok };
     }
+    if (t.kind === 'native' && t.hwnd) {
+      return { ok: await requestWin32WindowAction('minimize', { hwnd: t.hwnd }) };
+    }
     return { ok: false };
   } catch (e) {
     if (DEBUG) dbgWarn('minimizeWindowById error:', e?.message || e);
@@ -1254,6 +1687,14 @@ export async function maximizeWindowById(id, maximized) {
     if (t.xid != null && watcher) {
       const ok = await watcher.maximize(t.xid, maximized);
       return { ok };
+    }
+    if (t.kind === 'native' && t.hwnd) {
+      return {
+        ok: await requestWin32WindowAction('maximize', {
+          hwnd: t.hwnd,
+          maximize: !maximized,
+        }),
+      };
     }
     return { ok: false };
   } catch (e) {
@@ -1289,6 +1730,7 @@ export async function setWindowOpacityById(id, opacity) {
 
   // Native — через xprop. Не трогаем сам процесс, только WM.
   if (t.xid != null) {
+    if (process.platform === 'win32') return { ok: false };
     const hex = xidToHex(t.xid);
     const value = Math.round(clamped * OPACITY_MAX);
     const valueStr = '0x' + value.toString(16);
@@ -1347,7 +1789,71 @@ export default async function () {
   if (initialized) return;
   initialized = true;
 
-  if (process.platform !== 'win32') {
+  if (process.platform === 'win32') {
+    startWin32Host();
+    refreshWin32Windows();
+    win32RefreshTimer = setInterval(refreshWin32Windows, 500);
+    ipcMain.handle('windows:shell-launcher-status', async () => {
+      try {
+        const status = await requestWin32('shell-status');
+        let backupAvailable = false;
+        try {
+          await access(getWin32ShellBackupPath());
+          backupAvailable = true;
+        } catch (err) {
+          if (err.code !== 'ENOENT') throw err;
+        }
+        return { ...status, backupAvailable, adminHelperActive: !!win32AdminSocket };
+      } catch (err) {
+        console.error('[nativeWindows:win32] Shell Launcher status failed:', err.message);
+        return { available: false, error: err.message, adminHelperActive: !!win32AdminSocket };
+      }
+    });
+    ipcMain.handle('windows:request-admin', async () => {
+      try {
+        await startWin32AdminHost();
+        return { ok: true };
+      } catch (err) {
+        console.error('[nativeWindows:admin] helper startup failed:', err.message);
+        return { ok: false, error: err.message };
+      }
+    });
+    ipcMain.handle('windows:shell-launcher-enable', async () => {
+      try {
+        return await enableWin32ShellLauncher();
+      } catch (err) {
+        console.error('[nativeWindows:win32] Shell Launcher configuration failed:', err.message);
+        return { ok: false, error: err.message };
+      }
+    });
+    ipcMain.handle('windows:shell-launcher-restore', async () => {
+      try {
+        return await restoreWin32ShellLauncher();
+      } catch (err) {
+        console.error('[nativeWindows:win32] Shell Launcher restore failed:', err.message);
+        return { ok: false, error: err.message };
+      }
+    });
+    ipcMain.handle('windows:shell-launcher-reset', async () => {
+      try {
+        return await resetWin32ShellLauncher();
+      } catch (err) {
+        console.error('[nativeWindows:win32] Shell Launcher reset failed:', err.message);
+        return { ok: false, error: err.message };
+      }
+    });
+    app.once('before-quit', () => {
+      if (win32RefreshTimer) clearInterval(win32RefreshTimer);
+      win32RefreshTimer = null;
+      if (win32Host && !win32Host.killed) win32Host.kill();
+      win32Host = null;
+      if (win32AdminSocket) win32AdminSocket.end();
+      win32AdminSocket = null;
+      if (win32AdminServer) win32AdminServer.close();
+      win32AdminServer = null;
+      failWin32AdminRequests(new Error('Application is shutting down'));
+    });
+  } else {
     try { await detectXdotool(); } catch { /* ignore */ }
     try { await detectWmctrl(); } catch { /* ignore */ }
 
@@ -1377,6 +1883,19 @@ export default async function () {
       const t = resolveTarget(id);
       if (!t) return { ok: false };
 
+      if (process.platform === 'win32' && t.kind === 'native' && t.hwnd) {
+        const native = win32Windows.find((window) => window.id === t.hwnd);
+        if (!native) return { ok: false };
+        const bounds = {
+          x: native.x, y: native.y,
+          width: native.width, height: native.height,
+        };
+        const target = computeDragTarget(mode, direction, bounds, bounds);
+        const point = screen.dipToScreenPoint(target);
+        const moved = await requestWin32('cursor', { x: point.x, y: point.y });
+        return moved ? { ok: true, kind: 'native', cursor: target, bounds } : { ok: false };
+      }
+
       if (t.kind === 'our') {
         const w = getWindowById(t.appId);
         if (!w) return { ok: false };
@@ -1386,6 +1905,11 @@ export default async function () {
           width: num(b.width), height: num(b.height),
         };
         const target = computeDragTarget(mode, direction, bounds, bounds);
+        if (process.platform === 'win32') {
+          const point = screen.dipToScreenPoint(target);
+          const moved = await requestWin32('cursor', { x: point.x, y: point.y });
+          return moved ? { ok: true, kind: 'our', cursor: target, bounds } : { ok: false };
+        }
         if (watcher?.X) {
           await warpPointer(watcher.X, watcher.root, target.x, target.y);
           return { ok: true, kind: 'our', cursor: target, bounds };
@@ -1431,6 +1955,17 @@ export default async function () {
         }
         return;
       }
+      if (process.platform === 'win32' && t.kind === 'native' && t.hwnd) {
+        if (!win32Windows.some((window) => window.id === t.hwnd)) return;
+        const rect = screen.dipToScreenRect(null, bounds);
+        const ok = await requestWin32WindowAction('bounds', {
+          hwnd: t.hwnd,
+          x: rect.x, y: rect.y,
+          width: rect.width, height: rect.height,
+        }, { elevateOnFailure: true });
+        if (!ok) console.warn('[nativeWindows:win32] SetWindowPos was denied for window', t.hwnd);
+        return;
+      }
       if (t.xid != null && watcher) {
         watcher.suppressEmit = true;
         await watcher.setBounds(t.xid, bounds);
@@ -1445,7 +1980,11 @@ export default async function () {
       }
     } catch (e) {
       if (watcher) watcher.suppressEmit = false;
-      if (DEBUG) dbgWarn('set-bounds error:', e?.message || e);
+      if (process.platform === 'win32') {
+        console.warn('[nativeWindows:win32] privileged window move failed:', e?.message || e);
+      } else if (DEBUG) {
+        dbgWarn('set-bounds error:', e?.message || e);
+      }
     }
   });
 
@@ -1463,11 +2002,21 @@ export default async function () {
   ipcMain.handle('native-window:get-bounds', async (_e, { id }) => {
     try {
       const t = resolveTarget(id);
-      if (!t || t.xid == null) return null;
+      if (!t) return null;
       if (t.kind === 'our') {
         const w = getWindowById(t.appId);
         if (w) { const b = w.getBounds(); return { x: b.x, y: b.y, width: b.width, height: b.height }; }
       }
+      if (process.platform === 'win32' && t.kind === 'native' && t.hwnd) {
+        const native = win32Windows.find((window) => window.id === t.hwnd);
+        if (!native) return null;
+        const rect = screen.screenToDipRect(null, {
+          x: native.x, y: native.y,
+          width: native.width, height: native.height,
+        });
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      }
+      if (t.xid == null) return null;
       if (!watcher || !watcher.X) return null;
       return await getGeometry(watcher.X, t.xid, watcher.root);
     } catch {

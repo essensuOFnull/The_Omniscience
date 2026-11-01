@@ -2,6 +2,7 @@
 	if (process.contextIsolated) {
 		try {
 			contextBridge.exposeInMainWorld('electron_desktop_API', {
+				platform: process.platform,
 				getConfig: () => ipcRenderer.invoke('get-config'),
 				getAppsList: () => ipcRenderer.invoke('get-apps-list'),
 				registerWebview: (webContentsId, appId, windowId) =>

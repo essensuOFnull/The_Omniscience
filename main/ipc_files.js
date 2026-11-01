@@ -891,6 +891,38 @@ async function readDesktopIconName(desktopPath) {
 
 async function getFileIcon(filePath) {
     try {
+        if (process.platform === 'win32') {
+            const cacheKey = path.normalize(filePath);
+            if (iconLookupCache.has(cacheKey)) {
+                const cached = iconLookupCache.get(cacheKey);
+                return cached ? { success: true, fileUrl: cached } : { success: false };
+            }
+
+            const candidates = [filePath];
+            if (path.extname(filePath).toLowerCase() === '.lnk') {
+                try {
+                    const shortcut = shell.readShortcutLink(filePath);
+                    candidates.unshift(shortcut.icon, shortcut.target);
+                } catch (err) {
+                    console.warn('[icon] failed to read Windows shortcut:', filePath, err.message);
+                }
+            }
+            for (const candidate of new Set(candidates.filter(Boolean))) {
+                try {
+                    const image = await app.getFileIcon(candidate, { size: 'large' });
+                    if (image && !image.isEmpty()) {
+                        const fileUrl = image.toDataURL();
+                        iconLookupCache.set(cacheKey, fileUrl);
+                        return { success: true, fileUrl };
+                    }
+                } catch (err) {
+                    console.warn('[icon] Windows icon lookup failed:', candidate, err.message);
+                }
+            }
+            iconLookupCache.set(cacheKey, null);
+            return { success: false };
+        }
+
         if (filePath.endsWith('.desktop')) {
             if (iconLookupCache.has(filePath)) {
                 const cached = iconLookupCache.get(filePath);
