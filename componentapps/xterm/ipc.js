@@ -25,7 +25,7 @@ export default function () {
       name: 'xterm-color',
       cols: 80,
       rows: 30,
-      cwd: process.env.HOME || process.cwd(),
+      cwd: process.env.USERPROFILE || process.env.HOME || process.cwd(),
       env: process.env,
       useConpty: true, // <-- добавьте для Windows
     });

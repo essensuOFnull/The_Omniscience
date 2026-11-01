@@ -49,7 +49,7 @@ function App() {
   const subtitle = paths.length === 0
     ? '—'
     : paths.length === 1
-      ? paths[0].split('/').pop()
+      ? paths[0].split(/[\\/]/).pop()
       : `Файлов: ${paths.length}`;
 
   return (

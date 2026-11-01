@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const{ipcMain}=electronPkg;
+const { app, ipcMain, shell } = electronPkg;
 import { readdir, readFile, access } from 'fs/promises';
 import { spawn } from 'child_process';
 import path from 'path';
@@ -138,7 +138,69 @@ function cleanExec(exec) {
 
 let cachedNativeApps = null;
 
+async function collectShortcuts(dir, result, seen) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (err) {
+    if (err.code !== 'ENOENT' && err.code !== 'ENOTDIR') {
+      console.warn('[nativeApps] cannot read Start Menu directory:', dir, err.message);
+    }
+    return;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await collectShortcuts(fullPath, result, seen);
+      continue;
+    }
+    if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== '.lnk') continue;
+
+    const key = fullPath.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    let title = path.basename(entry.name, path.extname(entry.name));
+    let icon = null;
+    try {
+      const shortcut = shell.readShortcutLink(fullPath);
+      title = shortcut.description || title;
+    } catch { /* malformed or inaccessible shortcut */ }
+    try {
+      const image = await app.getFileIcon(fullPath, { size: 'normal' });
+      if (!image.isEmpty()) icon = image.toDataURL();
+    } catch { /* icon is optional */ }
+
+    result.push({
+      id: `native:${key}`,
+      nativeId: fullPath,
+      title,
+      icon,
+      kind: 'native',
+      exec: fullPath,
+      terminal: false,
+      comment: '',
+      categories: '',
+    });
+  }
+}
+
+async function scanWindowsShortcuts() {
+  const result = [];
+  const seen = new Set();
+  const startMenu = path.join('Microsoft', 'Windows', 'Start Menu', 'Programs');
+  const dirs = [
+    path.join(app.getPath('appData'), startMenu),
+    path.join(process.env.ProgramData || 'C:\\ProgramData', startMenu),
+  ];
+  for (const dir of dirs) await collectShortcuts(dir, result, seen);
+  return result;
+}
+
 async function scanDesktopFiles() {
+  if (process.platform === 'win32') return scanWindowsShortcuts();
+
   const seen = new Set();
   const result = [];
 
@@ -203,8 +265,13 @@ export default function () {
     return cachedNativeApps;
   });
 
-  ipcMain.on('launch-native-app', (_e, { exec, terminal }) => {
+  ipcMain.on('launch-native-app', async (_e, { exec, terminal }) => {
     try {
+      if (process.platform === 'win32') {
+        const error = await shell.openPath(exec);
+        if (error) console.error('[launch-native-app]', error);
+        return;
+      }
       let cmd = exec;
 
       // Если приложение требует терминал — оборачиваем в xterm

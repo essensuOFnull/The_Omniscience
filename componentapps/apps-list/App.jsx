@@ -222,7 +222,7 @@ export default function App({ desktopId }) {
   const handleClick = useCallback((app) => {
     const desktopApi = window.electron_desktop_API;
 
-    // Нативные программы Linux (не наши окна)
+    // Нативные программы системы (не наши окна)
     if (app.kind === 'native') {
       desktopApi?.send('launch-native-app', {
         exec: app.exec,

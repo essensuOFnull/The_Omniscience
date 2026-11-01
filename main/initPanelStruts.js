@@ -141,6 +141,7 @@ function strutsToXpropArgs(s) {
 /* ------------------------------------------------------------------ */
 
 export async function applyPanelStruts() {
+  if (process.platform === 'win32') return false;
   const tb = global.topbarWindow;
   if (!tb || tb.isDestroyed()) {
     console.warn('[panelStruts] нет topbarWindow');

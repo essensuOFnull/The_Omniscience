@@ -1,18 +1,18 @@
 import electronPkg from 'electron';
-const { ipcMain, app, nativeImage, clipboard, webContents, ClipboardItem } = electronPkg;
+const { ipcMain, app, shell, nativeImage, clipboard, webContents, ClipboardItem } = electronPkg;
 import {
     readdir, stat, rename as fsRename, unlink, readFile, rm,
     mkdir, writeFile, copyFile, access, open, cp,
 } from 'fs/promises';
 import { constants as fsConstants } from 'fs';
 import { watch } from 'fs';
-import { exec } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { pathToFileURL, fileURLToPath } from 'url';
 import path from 'path';
 import os from 'os';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const yieldToEventLoop = () => new Promise((r) => setImmediate(r));
 
 /* ------------------------------------------------------------------ */
@@ -73,6 +73,18 @@ async function getUserDirs() {
         templates: path.join(home, 'Templates'),
         home,
     };
+    if (process.platform === 'win32') {
+        return {
+            desktop: app.getPath('desktop'),
+            download: app.getPath('downloads'),
+            documents: app.getPath('documents'),
+            pictures: app.getPath('pictures'),
+            music: app.getPath('music'),
+            videos: app.getPath('videos'),
+            templates: path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Templates'),
+            home,
+        };
+    }
     try {
         const configPath = path.join(home, '.config', 'user-dirs.dirs');
         const content = await readFile(configPath, 'utf8');
@@ -179,20 +191,24 @@ async function getFileInfo(filePath) {
 
 export async function openPath(filePath) {
     try {
+        if (process.platform === 'win32') {
+            const error = await shell.openPath(filePath);
+            return error ? { success: false, error } : { success: true };
+        }
         const ext = path.extname(filePath).toLowerCase();
         if (ext === '.desktop') {
-            await execAsync(`gio launch "${filePath.replace(/"/g, '\\"')}"`);
+            await execFileAsync('gio', ['launch', filePath]);
             return { success: true };
         }
         try {
             const stats = await stat(filePath);
             const isExecutable = (stats.mode & 0o111) !== 0;
             if (isExecutable && !stats.isDirectory()) {
-                await execAsync(`"${filePath.replace(/"/g, '\\"')}"`);
+                await execFileAsync(filePath);
                 return { success: true };
             }
         } catch (_) { }
-        await execAsync(`xdg-open "${filePath.replace(/"/g, '\\"')}"`);
+        await execFileAsync('xdg-open', [filePath]);
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
 }
@@ -216,7 +232,11 @@ export async function revealPath(filePath) {
 
 export async function trashPath(filePath) {
     try {
-        await execAsync(`gio trash "${filePath.replace(/"/g, '\\"')}"`);
+        if (process.platform === 'win32') {
+            await shell.trashItem(filePath);
+        } else {
+            await execFileAsync('gio', ['trash', filePath]);
+        }
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
 }
@@ -230,7 +250,7 @@ export async function deletePath(filePath) {
 
 export async function renamePath(oldPath, newName) {
     try {
-        if (!newName || newName.includes('/')) return { success: false, error: 'invalid_name' };
+        if (!newName || /[\\/]/.test(newName)) return { success: false, error: 'invalid_name' };
         const dir = path.dirname(oldPath);
         const newPath = path.join(dir, newName);
         await fsRename(oldPath, newPath);
@@ -671,7 +691,9 @@ function getCurrentIconTheme() {
     themePromise = (async () => {
         let theme = null;
         try {
-            const { stdout } = await execAsync('gsettings get org.gnome.desktop.interface icon-theme');
+            const { stdout } = await execFileAsync('gsettings', [
+                'get', 'org.gnome.desktop.interface', 'icon-theme',
+            ]);
             theme = stdout.trim().replace(/^'|'$/g, '') || null;
             if (theme) console.log('[icon] theme via gsettings:', theme);
         } catch (_) { }
@@ -937,7 +959,7 @@ async function getFileIcon(filePath) {
 
 async function getMimeType(filePath) {
     try {
-        const { stdout } = await execAsync(`xdg-mime query filetype "${filePath.replace(/"/g, '\\"')}"`);
+        const { stdout } = await execFileAsync('xdg-mime', ['query', 'filetype', filePath]);
         return stdout.trim();
     } catch (_) { return null; }
 }
@@ -969,10 +991,17 @@ async function readDesktopEntry(id) {
 }
 
 async function getAppsForFile(filePath) {
+    if (process.platform === 'win32') {
+        return {
+            success: true,
+            apps: [{ id: 'windows:choose-app', name: 'Выбрать приложение Windows...' }],
+            mime: path.extname(filePath).toLowerCase() || null,
+        };
+    }
     try {
         const mime = await getMimeType(filePath);
         if (!mime) return { success: true, apps: [], mime: null };
-        const { stdout } = await execAsync(`gio mime ${mime}`);
+        const { stdout } = await execFileAsync('gio', ['mime', mime]);
         const ids = new Set();
         let inSection = false;
         for (const rawLine of stdout.split('\n')) {
@@ -997,8 +1026,20 @@ async function getAppsForFile(filePath) {
 
 async function openWith(filePath, desktopId) {
     try {
+        if (process.platform === 'win32') {
+            if (desktopId !== 'windows:choose-app') {
+                return { success: false, error: 'unsupported_application' };
+            }
+            const child = spawn('rundll32.exe', ['shell32.dll,OpenAs_RunDLL', filePath], {
+                detached: true,
+                stdio: 'ignore',
+            });
+            child.once('error', (err) => console.error('[fs:open-with] Windows chooser failed:', err.message));
+            child.unref();
+            return { success: true };
+        }
         const appName = desktopId.replace(/\.desktop$/, '');
-        await execAsync(`gtk-launch "${appName}" "${filePath.replace(/"/g, '\\"')}"`);
+        await execFileAsync('gtk-launch', [appName, filePath]);
         return { success: true };
     } catch (err) { return { success: false, error: err.message }; }
 }

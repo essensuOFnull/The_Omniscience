@@ -1,5 +1,5 @@
 import electronPkg from 'electron';
-const { ipcMain, BrowserWindow, screen } = electronPkg;
+const { app, ipcMain, BrowserWindow, screen, shell } = electronPkg;
 import { spawn, exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync, readlinkSync, existsSync } from 'fs';
@@ -179,7 +179,7 @@ function buildState() {
       title: w.title || '', icon: w.icon || null,
       maximized: !!w.maximized, minimized: !!w.minimized,
       isHidden: !!w.minimized,
-      focused: !!(activeNorm && xid && xid === activeNorm),
+      focused: !!w.focused || !!(activeNorm && xid && xid === activeNorm),
       wmClass: null,
       x: b.x, y: b.y, width: b.width, height: b.height,
       isBridgeOverlay: !!w.isBridgeOverlay,
@@ -483,6 +483,10 @@ export default function () {
   // Если overlay уже есть — фокус на него.
   // Если нет — перезапуск приложения через launch.sh с хуком.
   ipcMain.on('topbar:open-overlay', async (_e, { id }) => {
+    if (process.platform === 'win32') {
+      console.warn('[overlay] GTK overlay is not supported on Windows');
+      return;
+    }
     try {
       const norm = normalizeXid(id);
       if (!norm) return;
@@ -507,6 +511,11 @@ export default function () {
   });
 
   ipcMain.on('topbar:open-search', async () => {
+    if (process.platform === 'win32') {
+      try { toggleOverview(); }
+      catch (err) { console.error('[topbar:open-search]', err.message); }
+      return;
+    }
     try {
       try { await execAsync('qdbus org.kde.krunner /App display'); }
       catch { spawn('krunner', [], { detached: true, stdio: 'ignore' }).unref(); }
@@ -516,11 +525,20 @@ export default function () {
   });
 
   ipcMain.on('topbar:open-settings', () => {
+    if (process.platform === 'win32') {
+      shell.openExternal('ms-settings:')
+        .catch((err) => console.error('[topbar:open-settings]', err.message));
+      return;
+    }
     try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); }
     catch (err) { console.error('[topbar:open-settings]', err.message); }
   });
 
   ipcMain.on('topbar:logout', () => {
+    if (process.platform === 'win32') {
+      app.quit();
+      return;
+    }
     try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll')}
     catch (err) { console.error('[topbar:logout]', err.message); }
   });

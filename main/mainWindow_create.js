@@ -124,7 +124,7 @@ export default async function () {
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width, height } = primaryDisplay.workAreaSize;
 
-    const isSession = process.env.OMNISCIENCE_SESSION === '1';
+    const isSession = process.env.OMNISCIENCE_SESSION === '1' && process.platform !== 'win32';
 
     global.mainWindow = new BrowserWindow({
         x: 0,

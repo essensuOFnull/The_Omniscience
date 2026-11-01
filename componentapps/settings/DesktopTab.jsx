@@ -32,7 +32,7 @@ export default function DesktopTab() {
             severity="info"
             sx={{ bgcolor: 'rgba(168,85,247,0.1)', color: '#fff' }}
           >
-            По умолчанию используется системная папка Desktop (из XDG user-dirs).
+            По умолчанию используется системная папка рабочего стола.
             Оставьте поле пустым, чтобы использовать её.
           </Alert>
 
@@ -41,7 +41,7 @@ export default function DesktopTab() {
             value={path || ''}
             onChange={(e) => settingsStore.update('desktopFiles.path', e.target.value || null)}
             size="small"
-            placeholder="/home/user/Desktop"
+            placeholder="C:\\Users\\user\\Desktop"
             sx={{
               '& input': { color: '#fff', fontFamily: 'monospace', fontSize: 13 },
               '& label': { color: '#aaa' },

@@ -1347,33 +1347,35 @@ export default async function () {
   if (initialized) return;
   initialized = true;
 
-  try { await detectXdotool(); } catch { /* ignore */ }
-  try { await detectWmctrl(); } catch { /* ignore */ }
+  if (process.platform !== 'win32') {
+    try { await detectXdotool(); } catch { /* ignore */ }
+    try { await detectWmctrl(); } catch { /* ignore */ }
 
-  registerShellWindow(global.topbarWindow, 'topbar');
-  registerShellWindow(global.mainWindow, 'main');
+    registerShellWindow(global.topbarWindow, 'topbar');
+    registerShellWindow(global.mainWindow, 'main');
 
-  watcher = new X11Watcher({
-    onUpdate: (windows, activeXid) => {
-      try {
-        global.__lastNativeWindows = windows;
-        global.__activeXid = activeXid;
-        global.topbarBroadcast?.();
-        if (global.mainWindow && !global.mainWindow.isDestroyed()) {
-          global.mainWindow.webContents.send('shell:native-windows-updated', windows);
+    watcher = new X11Watcher({
+      onUpdate: (windows, activeXid) => {
+        try {
+          global.__lastNativeWindows = windows;
+          global.__activeXid = activeXid;
+          global.topbarBroadcast?.();
+          if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+            global.mainWindow.webContents.send('shell:native-windows-updated', windows);
+          }
+        } catch (e) {
+          if (DEBUG) dbgWarn('onUpdate error:', e?.message || e);
         }
-      } catch (e) {
-        if (DEBUG) dbgWarn('onUpdate error:', e?.message || e);
-      }
-    },
-  });
-  watcher.start();
+      },
+    });
+    watcher.start();
+  }
 
   /* -------- prepare-drag -------- */
   ipcMain.handle('native-window:prepare-drag', async (_e, { id, mode, direction }) => {
     try {
       const t = resolveTarget(id);
-      if (!t || !watcher || !watcher.X) return { ok: false };
+      if (!t) return { ok: false };
 
       if (t.kind === 'our') {
         const w = getWindowById(t.appId);
@@ -1384,10 +1386,14 @@ export default async function () {
           width: num(b.width), height: num(b.height),
         };
         const target = computeDragTarget(mode, direction, bounds, bounds);
-        const warped = await warpPointer(watcher.X, watcher.root, target.x, target.y);
-        return { ok: true, kind: 'our', cursor: target, bounds };
+        if (watcher?.X) {
+          await warpPointer(watcher.X, watcher.root, target.x, target.y);
+          return { ok: true, kind: 'our', cursor: target, bounds };
+        }
+        return { ok: true, kind: 'our', bounds };
       }
 
+      if (!watcher || !watcher.X) return { ok: false };
       const clientGeo = await getGeometry(watcher.X, t.xid, watcher.root);
       if (!clientGeo) return { ok: false };
 
@@ -1471,14 +1477,27 @@ export default async function () {
 
   /* -------- KRunner / Systemsettings -------- */
   ipcMain.handle('shell:run-krunner', async () => {
+    if (process.platform === 'win32') return { ok: false, error: 'unsupported_on_windows' };
     try { spawn('lxqt-runner', [], { detached: true, stdio: 'ignore' }).unref(); return { ok: true }; }
     catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('shell:systemsettings', async () => {
+    if (process.platform === 'win32') {
+      try {
+        await electronPkg.shell.openExternal('ms-settings:');
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    }
     try { spawn('lxqt-config', [], { detached: true, stdio: 'ignore' }).unref(); return { ok: true }; }
     catch (err) { return { ok: false, error: err.message }; }
   });
   ipcMain.handle('shell:logout', async () => {
+    if (process.platform === 'win32') {
+      electronPkg.app.quit();
+      return { ok: true };
+    }
     try { exec('lxqt-leave') }
     catch (err) { return { ok: false, error: err.message }; }
   });
