@@ -886,12 +886,62 @@ function Invoke-MachineShellPolicyAction($request) {
             if (-not $machineBefore.exists -or $machineBefore.value -cne [string]$request.expectedCommand) {
                 throw 'The machine-wide shell policy changed; refusing to restore over another shell'
             }
+            if (-not $backupExisted) {
+                throw 'The shared machine shell backup is missing'
+            }
+            $savedBackup = [System.Text.Encoding]::UTF8.GetString($previousBackupBytes) | ConvertFrom-Json
+            $backupIsValid = ($savedBackup.schemaVersion -eq 3) -and
+                ($savedBackup.scope -eq 'machine') -and
+                ($savedBackup.command -ceq [string]$request.expectedCommand) -and
+                (Test-UserRegistrySnapshot $savedBackup.machinePolicyShell $request.machinePolicyShell)
+            if (-not $backupIsValid) {
+                throw 'The shared machine shell backup does not match the requested restore'
+            }
             Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $request.machinePolicyShell
             $restoreVerified = Test-UserRegistrySnapshot `
                 (Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell') `
                 $request.machinePolicyShell
             if (-not $restoreVerified) {
                 throw 'Machine shell policy restoration did not verify'
+            }
+        } elseif ($request.action -eq 'machine-shell-update') {
+            if (-not $machineBefore.exists -or $machineBefore.value -cne [string]$request.expectedCommand) {
+                throw 'The machine shell policy changed; refusing to update another shell'
+            }
+            if (-not $backupExisted) {
+                throw 'The shared machine shell backup is missing'
+            }
+            $savedBackup = [System.Text.Encoding]::UTF8.GetString($previousBackupBytes) | ConvertFrom-Json
+            $backupIsValid = ($savedBackup.schemaVersion -eq 3) -and
+                ($savedBackup.scope -eq 'machine') -and
+                ($savedBackup.command -ceq [string]$request.expectedCommand) -and
+                ($savedBackup.machinePolicyShell -ne $null) -and
+                (-not [string]::IsNullOrWhiteSpace([string]$request.command))
+            if (-not $backupIsValid) {
+                throw 'The shared machine shell backup does not match the current shell'
+            }
+            $savedBackup.command = [string]$request.command
+            $backupJson = ConvertTo-Json -InputObject $savedBackup -Compress -Depth 10
+            $backupTemporaryPath = "$backupPath.$PID.tmp"
+            [System.IO.File]::WriteAllText(
+                $backupTemporaryPath, $backupJson, [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $backupTemporaryPath -Destination $backupPath -Force
+            $backupWritten = $true
+
+            $machineKey = $machineHive.CreateSubKey($machinePolicyPath)
+            if ($null -eq $machineKey) {
+                throw 'Could not open machine shell policy registry key'
+            }
+            try {
+                $machineKey.SetValue(
+                    'Shell', [string]$request.command, [Microsoft.Win32.RegistryValueKind]::String
+                )
+            } finally {
+                $machineKey.Dispose()
+            }
+            if ((Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell').value -cne [string]$request.command) {
+                throw 'Native shell host update did not verify'
             }
         } else {
             throw "Unsupported machine shell policy action: $($request.action)"
@@ -962,7 +1012,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
                 )
             }
             'shell-status' { Get-ShellLauncherStatus }
-            { $_ -in 'machine-shell-apply', 'machine-shell-restore' } { Invoke-MachineShellPolicyAction $request }
+            { $_ -in 'machine-shell-apply', 'machine-shell-restore', 'machine-shell-update' } { Invoke-MachineShellPolicyAction $request }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
             'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }

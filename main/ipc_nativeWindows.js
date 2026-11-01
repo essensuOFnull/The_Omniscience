@@ -75,6 +75,7 @@ if (process.platform !== 'win32') {
 }
 
 const WIN32_HOST_PATH = fileURLToPath(new URL('./windowsNativeHost.ps1', import.meta.url));
+const WIN32_SHELL_HOST_PATH = fileURLToPath(new URL('./OmniShellHost.exe', import.meta.url));
 const win32Pending = new Map();
 const win32AdminPending = new Map();
 const win32DeferredBounds = new Map();
@@ -342,18 +343,12 @@ function sameRegistrySnapshot(left, right) {
 }
 
 async function getWindowsUserShellCommand() {
-  const launcherPath = path.join(path.dirname(WIN32_HOST_PATH), 'windowsShellLauncher.ps1');
-  const powershellPath = path.join(
-    process.env.SystemRoot || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe',
-  );
   const args = [
-    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-WindowStyle', 'Hidden', '-File', launcherPath,
-    '-Executable', process.execPath,
+    WIN32_SHELL_HOST_PATH,
+    '--executable', process.execPath,
   ];
-  if (!app.isPackaged) args.push('-AppPath', app.getAppPath());
-  return [powershellPath, ...args].map(quoteWindowsArgument).join(' ');
+  if (!app.isPackaged) args.push('--app-path', app.getAppPath());
+  return args.map(quoteWindowsArgument).join(' ');
 }
 
 async function writeWindowsMachineShellPolicy(command, backup, expectedMachinePolicyShell) {
@@ -375,6 +370,40 @@ async function writeWindowsMachineShellPolicy(command, backup, expectedMachinePo
       throw error;
     }
   }
+}
+
+function isMachineShellBackup(backup) {
+  return backup?.schemaVersion === 3
+    && backup.scope === 'machine'
+    && typeof backup.command === 'string'
+    && backup.machinePolicyShell
+    && typeof backup.machinePolicyShell.exists === 'boolean';
+}
+
+async function updateWindowsMachineShellPolicy(command, backup) {
+  try {
+    await requestWin32Admin('machine-shell-update', {
+      expectedCommand: backup.command,
+      command,
+      backupPath: getWindowsUserShellBackupPath(),
+    });
+  } catch (error) {
+    const [current, savedBackup] = await Promise.all([
+      readWindowsUserShellRegistry().catch(() => null),
+      readWindowsUserShellBackup().catch(() => null),
+    ]);
+    if (current?.machinePolicyShell?.value !== command
+      || savedBackup?.command !== command
+      || !sameRegistrySnapshot(savedBackup.machinePolicyShell, backup.machinePolicyShell)) {
+      throw error;
+    }
+  }
+  const updated = await readWindowsUserShellRegistry();
+  if (updated.machinePolicyShell?.value !== command) {
+    throw new Error('Native shell host update did not verify');
+  }
+  win32UserShellEnabled = true;
+  return { ok: true, shellMode: true, restartRequired: true, updated: true };
 }
 
 async function enableWindowsUserShell() {
@@ -443,28 +472,47 @@ export async function toggleWindowsUserShell() {
   win32ShellTransition = (async () => {
     const command = await getWindowsUserShellCommand();
     const registry = await readWindowsUserShellRegistry();
-    const enabled = registry.machinePolicyShell?.value === command;
+    const backup = await readWindowsUserShellBackup();
+    const currentCommand = registry.machinePolicyShell?.value;
+    const managedLegacyShell = currentCommand !== command
+      && isMachineShellBackup(backup)
+      && backup.command === currentCommand;
+    const enabled = currentCommand === command || managedLegacyShell;
     const confirmation = await dialog.showMessageBox(global.topbarWindow, {
       type: 'warning',
       title: 'Системная оболочка Windows',
-      message: enabled
-        ? 'Вернуть Explorer как оболочку при следующем входе?'
-        : 'Назначить Omniscience оболочкой при следующем входе?',
-      detail: enabled
-        ? 'Будет восстановлено прежнее значение системной политики HKLM. Текущая сессия не изменится.'
-        : 'Это системная политика HKLM и она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При выходе или сбое Omniscience launcher запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
-      buttons: [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
-      defaultId: 1,
-      cancelId: 1,
+      message: managedLegacyShell
+        ? 'Обновить shell launcher или вернуть Explorer?'
+        : enabled
+          ? 'Вернуть Explorer как оболочку при следующем входе?'
+          : 'Назначить Omniscience оболочкой при следующем входе?',
+      detail: managedLegacyShell
+        ? 'Обновление заменит старый PowerShell launcher на быстрый нативный host и отключит дублирующую автозагрузку. Можно также восстановить Explorer. Изменение затрагивает всех пользователей и требует UAC.'
+        : enabled
+          ? 'Будет восстановлено прежнее значение системной политики HKLM. Текущая сессия не изменится.'
+          : 'Это системная политика HKLM и она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При выходе или сбое Omniscience нативный host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
+      buttons: managedLegacyShell
+        ? ['Обновить launcher', 'Вернуть Explorer', 'Отмена']
+        : [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
+      defaultId: managedLegacyShell ? 2 : 1,
+      cancelId: managedLegacyShell ? 2 : 1,
       noLink: true,
     });
-    if (confirmation.response !== 0) return { ok: false, cancelled: true, shellMode: enabled };
-    const result = enabled ? await restoreWindowsUserShell() : await enableWindowsUserShell();
+    if (confirmation.response !== 0 && !(managedLegacyShell && confirmation.response === 1)) {
+      return { ok: false, cancelled: true, shellMode: enabled };
+    }
+    const result = managedLegacyShell && confirmation.response === 0
+      ? await updateWindowsMachineShellPolicy(command, backup)
+      : enabled ? await restoreWindowsUserShell() : await enableWindowsUserShell();
     global.topbarBroadcast?.();
     await dialog.showMessageBox(global.topbarWindow, {
       type: 'info',
       title: 'Оболочка Windows',
-      message: enabled ? 'Explorer восстановлен для следующего входа.' : 'Omniscience назначена оболочкой для следующего входа.',
+      message: result.updated
+        ? 'Нативный shell launcher настроен.'
+        : result.shellMode
+          ? 'Omniscience назначена оболочкой для следующего входа.'
+          : 'Explorer восстановлен для следующего входа.',
       detail: 'Системная политика применяется ко всем пользователям после выхода из Windows и повторного входа.',
       buttons: ['OK'],
     });
@@ -483,13 +531,12 @@ export async function configureWindowsAutostart() {
   if (process.platform !== 'win32') return false;
   const registry = await readWindowsUserShellRegistry();
   const shellCommand = await getWindowsUserShellCommand();
-  const shellEnabled = registry.machinePolicyShell?.value === shellCommand;
+  const backup = await readWindowsUserShellBackup();
+  const shellEnabled = registry.machinePolicyShell?.value === shellCommand
+    || (isMachineShellBackup(backup) && backup.command === registry.machinePolicyShell?.value);
   if (shellEnabled) {
     win32UserShellEnabled = true;
-    const launchCommand = app.isPackaged
-      ? quoteWindowsArgument(process.execPath)
-      : `${quoteWindowsArgument(process.execPath)} ${quoteWindowsArgument(app.getAppPath())}`;
-    if (registry.run?.value === launchCommand) {
+    if (registry.run?.exists) {
       const script = [
         "$ErrorActionPreference = 'Stop'",
         `$runKey = '${WINDOWS_RUN_KEY}'`,
