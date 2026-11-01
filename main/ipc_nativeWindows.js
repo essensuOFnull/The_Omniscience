@@ -407,11 +407,14 @@ async function enableWindowsUserShell() {
   let run = registry.run;
   let legacyShellCommandToRemove = null;
   if (previousBackup) {
-    if (previousBackup.schemaVersion === 1
-      && typeof previousBackup.command === 'string'
-      && registry.shell?.value === previousBackup.command) {
+    if (previousBackup.schemaVersion === 1 && typeof previousBackup.command === 'string') {
+      const oldShellStillPresent = registry.shell?.value === previousBackup.command;
+      const oldShellAlreadyRestored = sameRegistrySnapshot(registry.shell, previousBackup.shell);
+      if (!oldShellStillPresent && !oldShellAlreadyRestored) {
+        throw new Error('A previous shell backup exists but the current shell values do not match it; restore manually before continuing');
+      }
       legacyShell = previousBackup.shell;
-      legacyShellCommandToRemove = previousBackup.command;
+      if (oldShellStillPresent) legacyShellCommandToRemove = previousBackup.command;
     } else if (previousBackup.schemaVersion === 2
       && typeof previousBackup.command === 'string'
       && sameRegistrySnapshot(registry.policyShell, previousBackup.policyShell)
