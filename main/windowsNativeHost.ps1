@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public sealed class OmniWindowInfo
 {
@@ -40,6 +41,7 @@ public static class OmniWin32
     private const int WM_APP = 0x8000;
     private static readonly HashSet<IntPtr> AppBars = new HashSet<IntPtr>();
     private static readonly EnumWindowsProc WindowEnumerator = EnumerateWindow;
+    private static readonly Dictionary<IntPtr, Thread> ActiveDrags = new Dictionary<IntPtr, Thread>();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -48,6 +50,13 @@ public static class OmniWin32
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -117,6 +126,12 @@ public static class OmniWin32
     private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "ShellExecuteW")]
     private static extern IntPtr ShellExecute(IntPtr hwnd, string operation, string file, string parameters, string directory, int showCommand);
     [DllImport("shell32.dll")]
@@ -305,6 +320,17 @@ public static class OmniWin32
         );
     }
 
+    public static bool ResetDock(long hwnd)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        if (!IsWindow(window)) return false;
+        bool wasRegistered = AppBars.Contains(window);
+        APPBARDATA data = NewAppBarData(window, new RECT());
+        UIntPtr removed = SHAppBarMessage(ABM_REMOVE, ref data);
+        AppBars.Remove(window);
+        return !wasRegistered || removed != UIntPtr.Zero;
+    }
+
     public static bool RemoveDock(long hwnd)
     {
         IntPtr window = new IntPtr(hwnd);
@@ -355,6 +381,10 @@ public static class OmniWin32
     {
         IntPtr window = new IntPtr(hwnd);
         if (!IsWindow(window)) return null;
+        lock (ActiveDrags)
+        {
+            if (ActiveDrags.ContainsKey(window)) return null;
+        }
         Focus(hwnd);
         RECT rect;
         if (!GetWindowRect(window, out rect)) return null;
@@ -378,9 +408,97 @@ public static class OmniWin32
             }
         }
         if (!SetCursorPos(x, y)) return null;
+
+        POINT cursor;
+        if (!GetCursorPos(out cursor)) return null;
+        uint dpi = GetDpiForWindow(window);
+        if (dpi == 0) dpi = 96;
+        int minWidth = Math.Max(1, (int)Math.Round(120.0 * dpi / 96.0));
+        int minHeight = Math.Max(1, (int)Math.Round(80.0 * dpi / 96.0));
+        int initialX = rect.Left;
+        int initialY = rect.Top;
+        int initialWidth = width;
+        int initialHeight = height;
+        int lastX = initialX;
+        int lastY = initialY;
+        int lastWidth = initialWidth;
+        int lastHeight = initialHeight;
+        int startX = cursor.X;
+        int startY = cursor.Y;
+        string dragMode = mode;
+        string resizeDirection = direction;
+        Thread dragThread = null;
+        dragThread = new Thread(() =>
+        {
+            try
+            {
+                while ((GetAsyncKeyState(0x01) & 0x8000) != 0 && IsWindow(window))
+                {
+                    POINT current;
+                    if (GetCursorPos(out current))
+                    {
+                        int dx = current.X - startX;
+                        int dy = current.Y - startY;
+                        int nextX = initialX;
+                        int nextY = initialY;
+                        int nextWidth = initialWidth;
+                        int nextHeight = initialHeight;
+
+                        if (dragMode == "move")
+                        {
+                            nextX += dx;
+                            nextY += dy;
+                        }
+                        else if (dragMode == "resize")
+                        {
+                            if (resizeDirection.IndexOf('n') >= 0)
+                            {
+                                nextHeight = Math.Max(minHeight, initialHeight - dy);
+                                nextY = initialY + initialHeight - nextHeight;
+                            }
+                            if (resizeDirection.IndexOf('s') >= 0)
+                                nextHeight = Math.Max(minHeight, initialHeight + dy);
+                            if (resizeDirection.IndexOf('w') >= 0)
+                            {
+                                nextWidth = Math.Max(minWidth, initialWidth - dx);
+                                nextX = initialX + initialWidth - nextWidth;
+                            }
+                            if (resizeDirection.IndexOf('e') >= 0)
+                                nextWidth = Math.Max(minWidth, initialWidth + dx);
+                        }
+
+                        if (nextX != lastX || nextY != lastY ||
+                            nextWidth != lastWidth || nextHeight != lastHeight)
+                        {
+                            if (SetWindowPos(
+                                window, IntPtr.Zero, nextX, nextY, nextWidth, nextHeight,
+                                0x0014))
+                            {
+                                lastX = nextX;
+                                lastY = nextY;
+                                lastWidth = nextWidth;
+                                lastHeight = nextHeight;
+                            }
+                        }
+                    }
+                    Thread.Sleep(10);
+                }
+            }
+            finally
+            {
+                lock (ActiveDrags) ActiveDrags.Remove(window);
+            }
+        });
+        dragThread.IsBackground = true;
+        lock (ActiveDrags)
+        {
+            if (ActiveDrags.ContainsKey(window)) return null;
+            ActiveDrags[window] = dragThread;
+        }
+        dragThread.Start();
         return new {
             x = rect.Left, y = rect.Top, width, height,
-            cursorX = x, cursorY = y
+            cursorX = cursor.X, cursorY = cursor.Y, nativeDrag = true
         };
     }
 
@@ -544,6 +662,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
                     [int]$request.width, [int]$request.height
                 )
             }
+            'dock-reset' { [OmniWin32]::ResetDock([long]$request.hwnd) }
             'dock-remove' { [OmniWin32]::RemoveDock([long]$request.hwnd) }
             'cursor' { [OmniWin32]::SetCursor([int]$request.x, [int]$request.y) }
             'focus' { [OmniWin32]::Focus([long]$request.hwnd) }

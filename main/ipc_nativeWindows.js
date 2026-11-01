@@ -71,6 +71,8 @@ const win32DeferredBounds = new Map();
 const win32IconCache = new Map();
 const win32PendingIcons = new Set();
 const win32DockSuppressed = new WeakSet();
+const win32DockInitialized = new WeakSet();
+let win32DockQueue = Promise.resolve();
 let win32Host = null;
 let win32AdminServer = null;
 let win32AdminSocket = null;
@@ -191,43 +193,67 @@ export async function setWindowsDesktopWindow(win) {
   }
 }
 
-export async function updateWindowsDock(win) {
-  if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
-  const hwnd = getWin32Hwnd(win);
-  if (!hwnd) return false;
-  if (!win.isVisible() || win32DockSuppressed.has(win)) {
+function enqueueWindowsDockOperation(operation) {
+  const result = win32DockQueue.then(operation, operation);
+  win32DockQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+export function resetWindowsDock(win) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return Promise.resolve(false);
+  win32DockInitialized.delete(win);
+  return enqueueWindowsDockOperation(async () => {
+    if (win.isDestroyed()) return false;
+    const hwnd = getWin32Hwnd(win);
+    if (!hwnd) return false;
     try {
-      const removed = await requestWin32('dock-remove', { hwnd });
-      return removed;
+      const reset = await requestWin32('dock-reset', { hwnd });
+      if (reset) win32DockInitialized.add(win);
+      return reset;
     } catch (error) {
-      console.error('[nativeWindows:win32] failed to release dock reservation:', error.message);
+      console.error('[nativeWindows:win32] failed to reset dock reservation:', error.message);
       return false;
     }
-  }
-  const rect = screen.dipToScreenRect(null, win.getBounds());
-  try {
-    const registered = await requestWin32('dock', {
-      hwnd, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
-    });
-    if (!registered) console.warn('[nativeWindows:win32] failed to register dock appbar:', hwnd);
-    return registered;
-  } catch (error) {
-    console.error('[nativeWindows:win32] failed to register dock appbar:', error.message);
-    return false;
-  }
+  });
+}
+
+export async function updateWindowsDock(win) {
+  if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
+  return enqueueWindowsDockOperation(async () => {
+    if (win.isDestroyed()) return false;
+    if (!win32DockInitialized.has(win)) return false;
+    const hwnd = getWin32Hwnd(win);
+    if (!hwnd) return false;
+    try {
+      if (!win.isVisible() || win32DockSuppressed.has(win)) {
+        return await requestWin32('dock-remove', { hwnd });
+      }
+      const rect = screen.dipToScreenRect(null, win.getBounds());
+      const registered = await requestWin32('dock', {
+        hwnd, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+      });
+      if (!registered) console.warn('[nativeWindows:win32] failed to register dock appbar:', hwnd);
+      return registered;
+    } catch (error) {
+      console.error('[nativeWindows:win32] failed to update dock appbar:', error.message);
+      return false;
+    }
+  });
 }
 
 export async function removeWindowsDock(win) {
   if (process.platform !== 'win32' || !win) return false;
-  const hwnd = getWin32Hwnd(win);
-  if (!hwnd) return false;
-  try {
-    const removed = await requestWin32('dock-remove', { hwnd });
-    return removed;
-  } catch (error) {
-    console.error('[nativeWindows:win32] failed to release dock reservation:', error.message);
-    return false;
-  }
+  win32DockInitialized.delete(win);
+  return enqueueWindowsDockOperation(async () => {
+    const hwnd = getWin32Hwnd(win);
+    if (!hwnd) return false;
+    try {
+      return await requestWin32('dock-remove', { hwnd });
+    } catch (error) {
+      console.error('[nativeWindows:win32] failed to release dock reservation:', error.message);
+      return false;
+    }
+  });
 }
 
 export async function setWindowsDockSuppressed(win, suppressed) {
@@ -1964,14 +1990,21 @@ export default async function () {
       const t = resolveTarget(id);
       if (!t) return { ok: false };
 
-      if (process.platform === 'win32' && t.kind === 'native' && t.hwnd) {
-        const native = win32Windows.find((window) => window.id === t.hwnd);
-        if (!native) return { ok: false };
+      if (process.platform === 'win32' && (t.kind === 'native' || t.kind === 'our')) {
+        let hwnd = t.hwnd;
+        if (t.kind === 'native' && !win32Windows.some((window) => window.id === hwnd)) {
+          return { ok: false, abort: true };
+        }
+        if (t.kind === 'our') {
+          const targetWindow = getWindowById(t.appId);
+          if (!targetWindow) return { ok: false, abort: true };
+          hwnd = getWin32Hwnd(targetWindow);
+        }
+        if (!hwnd) return { ok: false, abort: true };
         const prepared = await requestWin32('prepare-drag', {
-          hwnd: t.hwnd, mode, direction,
+          hwnd, mode, direction,
         });
-        if (!prepared) return { ok: false };
-        await refreshWin32Windows();
+        if (!prepared) return { ok: false, abort: true };
         const bounds = screen.screenToDipRect(null, {
           x: prepared.x, y: prepared.y,
           width: prepared.width, height: prepared.height,
@@ -1979,7 +2012,7 @@ export default async function () {
         const cursor = screen.screenToDipPoint({
           x: prepared.cursorX, y: prepared.cursorY,
         });
-        return { ok: true, kind: 'native', cursor, bounds };
+        return { ok: true, kind: 'native', nativeDrag: prepared.nativeDrag, cursor, bounds };
       }
 
       if (t.kind === 'our') {
@@ -2019,7 +2052,9 @@ export default async function () {
       return { ok: true, kind: 'native', cursor: target, bounds: clientGeo };
     } catch (e) {
       if (DEBUG) dbgWarn('prepare-drag error:', e?.message || e);
-      return { ok: false };
+      return process.platform === 'win32'
+        ? { ok: false, abort: true }
+        : { ok: false };
     }
   });
 

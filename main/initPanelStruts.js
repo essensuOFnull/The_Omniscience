@@ -2,12 +2,15 @@ import electronPkg from 'electron';
 const { screen } = electronPkg;
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { removeWindowsDock, updateWindowsDock } from './ipc_nativeWindows.js';
+import {
+  removeWindowsDock, resetWindowsDock, updateWindowsDock,
+} from './ipc_nativeWindows.js';
 
 const execFileAsync = promisify(execFile);
 
 let applied = false;
 let applyTimer = null;
+let windowsDockReady = false;
 
 /* ------------------------------------------------------------------ */
 /* XID                                                                 */
@@ -142,7 +145,9 @@ function strutsToXpropArgs(s) {
 /* ------------------------------------------------------------------ */
 
 export async function applyPanelStruts() {
-  if (process.platform === 'win32') return updateWindowsDock(global.topbarWindow);
+  if (process.platform === 'win32') {
+    return windowsDockReady ? updateWindowsDock(global.topbarWindow) : false;
+  }
   const tb = global.topbarWindow;
   if (!tb || tb.isDestroyed()) {
     console.warn('[panelStruts] нет topbarWindow');
@@ -197,12 +202,27 @@ export default function ({ show = true } = {}) {
     console.warn('[panelStruts] init: нет topbarWindow');
     return;
   }
+  if (process.platform === 'win32') windowsDockReady = false;
 
   tb.once('ready-to-show', () => {
+    if (process.platform === 'win32') {
+      (async () => {
+        const reset = await resetWindowsDock(tb);
+        if (!reset) {
+          tb.show();
+          console.error('[panelStruts] Windows dock reservation reset failed; skipping registration');
+          return;
+        }
+        windowsDockReady = true;
+        tb.show();
+        await updateWindowsDock(tb);
+      })();
+      return;
+    }
+
     // Уже наверняка применяем и показываем
     applyPanelStruts().finally(() => {
       tb.show();
-      if (process.platform === 'win32') updateWindowsDock(tb);
     });
   });
 
@@ -211,6 +231,9 @@ export default function ({ show = true } = {}) {
   tb.on('show', () => scheduleApplyPanelStruts(50));
   tb.on('hide', () => scheduleApplyPanelStruts(50));
   tb.on('close', () => {
-    if (process.platform === 'win32') removeWindowsDock(tb);
+    if (process.platform === 'win32') {
+      windowsDockReady = false;
+      removeWindowsDock(tb);
+    }
   });
 }

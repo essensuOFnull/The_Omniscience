@@ -39,7 +39,10 @@ function callNative(channel, payload) {
   const a = api();
   if (!a) return Promise.resolve({ ok: false });
   if (typeof a.invoke === 'function') {
-    return a.invoke(channel, payload).catch(() => ({ ok: false }));
+    return a.invoke(channel, payload).catch(() => ({
+      ok: false,
+      abort: channel === 'native-window:prepare-drag',
+    }));
   }
   if (typeof a.send === 'function') { a.send(channel, payload); return Promise.resolve({ ok: true }); }
   return Promise.resolve({ ok: false });
@@ -116,6 +119,7 @@ export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
     const onMove = (ev) => {
       const d = dragRef.current;
       if (!d || !d.ready) return;
+      if (d.nativeDrag) return;
 
       if (!d.synced) {
         // Первое движение после WarpPointer — только синхронизация.
@@ -174,12 +178,23 @@ export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
       const d = dragRef.current;
       if (!d || d !== session) return;   // сессия уже завершена (быстрый клик)
       if (!res || !res.ok) {
+        if (res?.abort) {
+          dragRef.current = null;
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          return;
+        }
         // main не смог — откатываемся на обычный flow
         d.ready = true;
         d.synced = true;
         return;
       }
       if (res.bounds) d.startBounds = res.bounds;
+      if (res.nativeDrag) {
+        d.nativeDrag = true;
+        d.ready = true;
+        return;
+      }
       if (res.cursor) {
         d.startX = res.cursor.x;
         d.startY = res.cursor.y;
