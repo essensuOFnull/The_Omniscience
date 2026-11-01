@@ -403,6 +403,7 @@ async function updateWindowsMachineShellPolicy(command, backup) {
     throw new Error('Native shell host update did not verify');
   }
   win32UserShellEnabled = true;
+  await configureWindowsAutostart();
   return { ok: true, shellMode: true, restartRequired: true, updated: true };
 }
 
@@ -411,6 +412,7 @@ async function enableWindowsUserShell() {
   const registry = await readWindowsUserShellRegistry();
   if (registry.machinePolicyShell?.value === command) {
     win32UserShellEnabled = true;
+    await configureWindowsAutostart();
     return { ok: true, shellMode: true, alreadyEnabled: true };
   }
   if (registry.machinePolicyShell?.exists) {
@@ -433,6 +435,7 @@ async function enableWindowsUserShell() {
   };
   await writeWindowsMachineShellPolicy(command, backup, registry.machinePolicyShell);
   win32UserShellEnabled = true;
+  await configureWindowsAutostart();
   return { ok: true, shellMode: true, restartRequired: true };
 }
 
