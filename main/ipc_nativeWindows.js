@@ -96,6 +96,7 @@ let win32Windows = [];
 let win32ActiveHwnd = null;
 let win32LastHash = '';
 let win32ShellMode = false;
+let win32UserShellEnabled = false;
 let win32ShellTransition = null;
 let win32ShellRecovery = null;
 let win32ShellFailureSuppressedUntil = 0;
@@ -278,38 +279,250 @@ export async function setWindowsDockSuppressed(win, suppressed) {
 }
 
 export function getWindowsShellMode() {
-  return win32ShellMode;
+  return win32UserShellEnabled;
+}
+
+const WINDOWS_USER_SHELL_KEY = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
+const WINDOWS_RUN_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const WINDOWS_RUN_NAME = 'The_Omniscience';
+
+function encodePowerShellValue(value) {
+  return `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(value, 'utf8').toString('base64')}'))`;
+}
+
+async function runWindowsPowerShell(script) {
+  const { stdout } = await execFileAsync('powershell.exe', [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script,
+  ], { windowsHide: true, encoding: 'utf8' });
+  return stdout.trim();
+}
+
+async function readWindowsUserShellRegistry() {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$shellKey = '${WINDOWS_USER_SHELL_KEY}'`,
+    `$runKey = '${WINDOWS_RUN_KEY}'`,
+    'function Read-RegistryValue($key, $name) {',
+    '  if (Test-Path -LiteralPath $key) {',
+    '    $item = Get-Item -LiteralPath $key',
+    '    if ($item.GetValueNames() -contains $name) {',
+    '      return @{ exists = $true; value = [string]$item.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); kind = $item.GetValueKind($name).ToString() }',
+    '    }',
+    '  }',
+    '  return @{ exists = $false; value = $null; kind = $null }',
+    '}',
+    '$result = @{ shell = (Read-RegistryValue $shellKey "Shell"); run = (Read-RegistryValue $runKey "The_Omniscience") }',
+    '$result | ConvertTo-Json -Compress -Depth 4',
+  ].join('\n');
+  return JSON.parse(await runWindowsPowerShell(script));
+}
+
+function getWindowsUserShellLauncherPath() {
+  return path.join(app.getPath('userData'), 'windowsShellLauncher.ps1');
+}
+
+function getWindowsUserShellBackupPath() {
+  return path.join(app.getPath('userData'), 'windows-user-shell-backup.json');
+}
+
+async function readWindowsUserShellBackup() {
+  try {
+    return JSON.parse(await readFile(getWindowsUserShellBackupPath(), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function getWindowsUserShellCommand() {
+  const launcherPath = getWindowsUserShellLauncherPath();
+  const sourcePath = path.join(path.dirname(WIN32_HOST_PATH), 'windowsShellLauncher.ps1');
+  await writeFile(launcherPath, await readFile(sourcePath));
+  const powershellPath = path.join(
+    process.env.SystemRoot || 'C:\\Windows',
+    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe',
+  );
+  const args = [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-WindowStyle', 'Hidden', '-File', launcherPath,
+    '-Executable', process.execPath,
+  ];
+  if (!app.isPackaged) args.push('-AppPath', app.getAppPath());
+  return [powershellPath, ...args].map(quoteWindowsArgument).join(' ');
+}
+
+function restoreRegistryValueScript(key, name, value) {
+  const keyExpression = `'${key}'`;
+  const nameExpression = `'${name}'`;
+  if (!value?.exists) {
+    return `if (Test-Path -LiteralPath ${keyExpression}) { Remove-ItemProperty -LiteralPath ${keyExpression} -Name ${nameExpression} -ErrorAction SilentlyContinue }`;
+  }
+  const encodedValue = encodePowerShellValue(value.value);
+  const kind = value.kind === 'ExpandString' ? 'ExpandString' : 'String';
+  return [
+    `New-Item -Path ${keyExpression} -Force | Out-Null`,
+    `New-ItemProperty -LiteralPath ${keyExpression} -Name ${nameExpression} -Value (${encodedValue}) -PropertyType ${kind} -Force | Out-Null`,
+  ].join('\n');
+}
+
+async function writeWindowsUserShell(command, backup) {
+  const backupPath = getWindowsUserShellBackupPath();
+  await writeFile(backupPath, JSON.stringify(backup, null, 2), { flag: 'wx' });
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$shellKey = '${WINDOWS_USER_SHELL_KEY}'`,
+    `$runKey = '${WINDOWS_RUN_KEY}'`,
+    `$shellName = 'Shell'`,
+    `$runName = '${WINDOWS_RUN_NAME}'`,
+    `$shellCommand = ${encodePowerShellValue(command)}`,
+    'try {',
+    '  New-Item -Path $shellKey -Force | Out-Null',
+    '  New-ItemProperty -LiteralPath $shellKey -Name $shellName -Value $shellCommand -PropertyType String -Force | Out-Null',
+    '  if (Test-Path -LiteralPath $runKey) { Remove-ItemProperty -LiteralPath $runKey -Name $runName -ErrorAction SilentlyContinue }',
+    '  if ((Test-Path -LiteralPath $runKey) -and ((Get-Item -LiteralPath $runKey).GetValueNames() -contains $runName)) { throw "Could not remove duplicate startup entry" }',
+    '  $actual = (Get-Item -LiteralPath $shellKey).GetValue($shellName)',
+    "  if ($actual -cne $shellCommand) { throw 'Per-user shell value did not verify' }",
+    '} catch {',
+    `  ${restoreRegistryValueScript(WINDOWS_USER_SHELL_KEY, 'Shell', backup.shell)}`,
+    `  ${restoreRegistryValueScript(WINDOWS_RUN_KEY, WINDOWS_RUN_NAME, backup.run)}`,
+    '  throw',
+    '}',
+  ].join('\n');
+  await runWindowsPowerShell(script);
+}
+
+async function enableWindowsUserShell() {
+  const command = await getWindowsUserShellCommand();
+  const registry = await readWindowsUserShellRegistry();
+  if (registry.shell?.value === command) {
+    win32UserShellEnabled = true;
+    return { ok: true, shellMode: true, alreadyEnabled: true };
+  }
+  const backupPath = getWindowsUserShellBackupPath();
+  try {
+    await access(backupPath);
+    throw new Error('A previous shell backup already exists; restore Explorer before changing the shell again');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const backup = {
+    schemaVersion: 1,
+    shell: registry.shell,
+    run: registry.run,
+    command,
+  };
+  try {
+    await writeWindowsUserShell(command, backup);
+  } catch (error) {
+    try {
+      const current = await readWindowsUserShellRegistry();
+      if (current.shell?.value !== command) await unlink(backupPath);
+    } catch (rollbackError) {
+      console.error('[windows-shell] failed to verify shell rollback:', rollbackError.message);
+    }
+    throw error;
+  }
+  win32UserShellEnabled = true;
+  return { ok: true, shellMode: true, restartRequired: true };
+}
+
+async function restoreWindowsUserShell() {
+  const backupPath = getWindowsUserShellBackupPath();
+  const backup = JSON.parse(await readFile(backupPath, 'utf8'));
+  if (backup.schemaVersion !== 1 || typeof backup.command !== 'string') {
+    throw new Error('Windows shell backup has an unsupported format');
+  }
+  const registry = await readWindowsUserShellRegistry();
+  if (registry.shell?.value !== backup.command) {
+    throw new Error('The per-user shell value changed outside Omniscience; refusing to overwrite it');
+  }
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    restoreRegistryValueScript(WINDOWS_USER_SHELL_KEY, 'Shell', backup.shell),
+    restoreRegistryValueScript(WINDOWS_RUN_KEY, WINDOWS_RUN_NAME, backup.run),
+  ].join('\n');
+  await runWindowsPowerShell(script);
+  const restored = await readWindowsUserShellRegistry();
+  if (restored.shell?.value !== (backup.shell?.exists ? backup.shell.value : null)) {
+    throw new Error('Explorer shell registry restoration did not verify');
+  }
+  if (restored.run?.value !== (backup.run?.exists ? backup.run.value : null)) {
+    throw new Error('Autostart registry restoration did not verify');
+  }
+  await unlink(backupPath);
+  win32UserShellEnabled = false;
+  return { ok: true, shellMode: false, restartRequired: true };
+}
+
+export async function toggleWindowsUserShell() {
+  if (process.platform !== 'win32') return { ok: false, error: 'Windows only' };
+  if (win32ShellTransition) return win32ShellTransition;
+  win32ShellTransition = (async () => {
+    const command = await getWindowsUserShellCommand();
+    const registry = await readWindowsUserShellRegistry();
+    const backup = await readWindowsUserShellBackup();
+    const enabled = registry.shell?.value === command
+      || (typeof backup?.command === 'string' && registry.shell?.value === backup.command);
+    const confirmation = await dialog.showMessageBox(global.topbarWindow, {
+      type: 'warning',
+      title: 'Постоянная оболочка Windows',
+      message: enabled
+        ? 'Вернуть Explorer как оболочку при следующем входе?'
+        : 'Назначить Omniscience оболочкой при следующем входе?',
+      detail: enabled
+        ? 'Будут восстановлены прежние значения реестра пользователя. Текущая сессия не изменится.'
+        : 'Изменится только оболочка текущего пользователя. При выходе или сбое Omniscience launcher запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
+      buttons: [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (confirmation.response !== 0) return { ok: false, cancelled: true, shellMode: enabled };
+    const result = enabled ? await restoreWindowsUserShell() : await enableWindowsUserShell();
+    global.topbarBroadcast?.();
+    await dialog.showMessageBox(global.topbarWindow, {
+      type: 'info',
+      title: 'Оболочка Windows',
+      message: enabled ? 'Explorer восстановлен для следующего входа.' : 'Omniscience назначена оболочкой для следующего входа.',
+      detail: 'Изменение применяется после выхода из учётной записи Windows и повторного входа.',
+      buttons: ['OK'],
+    });
+    return result;
+  })().catch(async (error) => {
+    console.error('[windows-shell] per-user shell update failed:', error.message);
+    await dialog.showErrorBox('Оболочка Windows', `Не удалось изменить оболочку текущего пользователя.\n\n${error.message}`);
+    return { ok: false, shellMode: win32UserShellEnabled, error: error.message };
+  }).finally(() => {
+    win32ShellTransition = null;
+  });
+  return win32ShellTransition;
 }
 
 export async function configureWindowsAutostart() {
   if (process.platform !== 'win32') return false;
+  const registry = await readWindowsUserShellRegistry();
+  const shellCommand = await getWindowsUserShellCommand();
+  const backup = await readWindowsUserShellBackup();
+  const shellEnabled = registry.shell?.value === shellCommand
+    || (typeof backup?.command === 'string' && registry.shell?.value === backup.command);
+  if (shellEnabled) {
+    const script = `if (Test-Path -LiteralPath '${WINDOWS_RUN_KEY}') { Remove-ItemProperty -LiteralPath '${WINDOWS_RUN_KEY}' -Name '${WINDOWS_RUN_NAME}' -ErrorAction SilentlyContinue }`;
+    await runWindowsPowerShell(script);
+    const updatedRegistry = await readWindowsUserShellRegistry();
+    if (updatedRegistry.run?.exists) {
+      throw new Error('Could not remove the duplicate Run-key startup entry while the shell replacement is enabled');
+    }
+    win32UserShellEnabled = true;
+    return false;
+  }
   const args = app.isPackaged ? [] : [`"${app.getAppPath()}"`];
-  const registryPath = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-  const registryName = 'The_Omniscience';
-  const launchCommand = app.isPackaged
-    ? `"${process.execPath}"`
-    : `"${process.execPath}" "${app.getAppPath()}"`;
   app.setLoginItemSettings({
     openAtLogin: true,
     path: process.execPath,
     args,
-    name: registryName,
+    name: WINDOWS_RUN_NAME,
     enabled: true,
   });
-  const encode = (value) => Buffer.from(value, 'utf8').toString('base64');
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    "$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'",
-    `$name = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encode(registryName)}'))`,
-    `$value = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encode(launchCommand)}'))`,
-    'New-Item -Path $key -Force | Out-Null',
-    'New-ItemProperty -Path $key -Name $name -Value $value -PropertyType String -Force | Out-Null',
-    '$actual = (Get-ItemProperty -Path $key -Name $name).PSObject.Properties[$name].Value',
-    "if ($actual -cne $value) { throw 'Windows did not save the expected Omniscience startup command' }",
-  ].join('; ');
-  await execFileAsync('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script,
-  ], { windowsHide: true, encoding: 'utf8' });
   return true;
 }
 
@@ -384,59 +597,6 @@ export async function restoreWindowsExplorerForShutdown() {
     await showWindowsShellError(error.message, false);
     return false;
   }
-}
-
-export async function toggleWindowsShellMode() {
-  if (process.platform !== 'win32') return { ok: false, error: 'Windows only' };
-  if (win32ShellTransition) return win32ShellTransition;
-  win32ShellTransition = (async () => {
-    const shellStatus = await requestWin32('explorer-shell-status');
-    win32ShellMode = !(shellStatus?.taskbar && shellStatus?.desktop);
-    if (win32ShellMode) {
-      try {
-        await ensureExplorerShell();
-        return { ok: true, shellMode: false };
-      } catch (error) {
-        console.error('[windows-shell] failed to restore Explorer:', error.message);
-        await showWindowsShellError(error.message, false);
-        return { ok: false, shellMode: true, error: error.message };
-      }
-    }
-
-    const confirmation = await dialog.showMessageBox(global.topbarWindow, {
-      type: 'warning',
-      title: 'Переключение оболочки Windows',
-      message: 'Завершить процессы Explorer, обслуживающие рабочий стол и панель задач?',
-      detail: 'Открытые окна Проводника, принадлежащие этим процессам, тоже могут закрыться. Изменение действует только до возврата в Explorer или выхода из Omniscience.',
-      buttons: ['Переключить оболочку', 'Отмена'],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-    });
-    if (confirmation.response !== 0) return { ok: false, cancelled: true, shellMode: false };
-
-    try {
-      const stopped = await requestWin32('explorer-shell-stop');
-      if (!stopped) throw new Error('Не удалось завершить процессы Explorer оболочки');
-      win32ShellMode = true;
-      global.topbarBroadcast?.();
-      return { ok: true, shellMode: true };
-    } catch (error) {
-      console.error('[windows-shell] failed to switch from Explorer:', error.message);
-      let restored = false;
-      try {
-        await ensureExplorerShell();
-        restored = true;
-      } catch (restoreError) {
-        console.error('[windows-shell] rollback failed:', restoreError.message);
-      }
-      await showWindowsShellError(error.message, restored);
-      return { ok: false, shellMode: false, error: error.message };
-    }
-  })().finally(() => {
-    win32ShellTransition = null;
-  });
-  return win32ShellTransition;
 }
 
 function failWin32AdminRequests(error) {
@@ -596,7 +756,7 @@ async function requestWin32WindowAction(action, payload, { elevateOnFailure = fa
   try {
     result = await requestWin32(action, payload);
   } catch (error) {
-    if (error.message !== 'access_denied') throw error;
+    if (!/\baccess_denied\b/i.test(error?.message || '')) throw error;
     if (win32AdminSocket) return requestWin32Admin(action, payload);
     if (!elevateOnFailure) return false;
     return elevateWin32WindowAction(action, payload);

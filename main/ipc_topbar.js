@@ -19,7 +19,7 @@ import {
   maximizeWindowById,
   getWindowsShellMode,
   recoverWindowsShell,
-  toggleWindowsShellMode,
+  toggleWindowsUserShell,
 } from './ipc_nativeWindows.js';
 import { findAncestorWindowPid } from './ipc_pidTree.js';
 import {
@@ -435,11 +435,11 @@ export default function () {
   global.topbarBroadcast = broadcastTopbarState;
 
   ipcMain.handle('topbar:get-state', () => buildState());
-  ipcMain.handle('topbar:toggle-shell-session', (event) => {
+  ipcMain.handle('topbar:toggle-user-shell', (event) => {
     if (event.sender !== global.topbarWindow?.webContents) {
       return { ok: false, error: 'unauthorized' };
     }
-    return toggleWindowsShellMode();
+    return toggleWindowsUserShell();
   });
   ipcMain.on('shell-session:renderer-error', (event, payload) => {
     if (process.platform !== 'win32') return;

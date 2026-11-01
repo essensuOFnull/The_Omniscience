@@ -36,10 +36,10 @@ export default function TopBarContainer() {
     [],
   );
 
-  const toggleShellSession = useCallback(async () => {
+  const toggleWindowsShell = useCallback(async () => {
     const api = window.electron_topbar_API;
     try {
-      const result = await api?.invoke('topbar:toggle-shell-session');
+      const result = await api?.invoke('topbar:toggle-user-shell');
       if (typeof result?.shellMode === 'boolean') {
         setState((previous) => ({ ...previous, windowsShellMode: result.shellMode }));
       }
@@ -63,7 +63,7 @@ export default function TopBarContainer() {
         onRequestSearch={() => send('topbar:open-search')}
         onRequestSettings={() => send('topbar:open-settings')}
         onRequestLogout={() => send('topbar:logout')}
-        onToggleShellSession={toggleShellSession}
+        onToggleWindowsShell={toggleWindowsShell}
       />
     </Box>
   );

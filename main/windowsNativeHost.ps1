@@ -319,33 +319,6 @@ public static class OmniWin32
         };
     }
 
-    public static bool StopExplorerShell()
-    {
-        for (int attempt = 0; attempt < 5; attempt++)
-        {
-            ShellWindowState state = GetExplorerShellState();
-            if (state.ProcessIds.Count == 0) return true;
-            foreach (int pid in state.ProcessIds)
-            {
-                try
-                {
-                    using (Process process = Process.GetProcessById(pid))
-                    {
-                        if (!string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        process.Kill();
-                        process.WaitForExit(5000);
-                    }
-                }
-                catch (ArgumentException) { }
-                catch (InvalidOperationException) { }
-            }
-            Thread.Sleep(300);
-        }
-
-        return GetExplorerShellState().ProcessIds.Count == 0;
-    }
-
     public static bool StartExplorerShell()
     {
         ShellWindowState state = GetExplorerShellState();
@@ -807,7 +780,6 @@ while ($null -ne ($line = $reader.ReadLine())) {
             }
             'shell-status' { Get-ShellLauncherStatus }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
-            'explorer-shell-stop' { [OmniWin32]::StopExplorerShell() }
             'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
             default { throw "Unsupported native action: $($request.action)" }

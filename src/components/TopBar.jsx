@@ -24,7 +24,7 @@ export default function TopBar({
   shellSwitchAvailable = false,
   windowsShellMode = false,
   onToggleOverview,
-  onToggleShellSession,
+  onToggleWindowsShell,
   onOpenWindowSettings,
   onFocusWindow,
   onCloseWindow,
@@ -83,9 +83,13 @@ export default function TopBar({
             <ShellErrorBoundary fallback={null}>
               <IconButton
                 size="small"
-                onClick={onToggleShellSession}
-                title={windowsShellMode ? 'Вернуть оболочку Explorer' : 'Переключиться на Omniscience'}
-                aria-label={windowsShellMode ? 'Вернуть оболочку Explorer' : 'Переключиться на Omniscience'}
+                onClick={onToggleWindowsShell}
+                title={windowsShellMode
+                  ? 'Назначена оболочка Omniscience — нажмите, чтобы вернуть Explorer'
+                  : 'Назначить Omniscience оболочкой при следующем входе'}
+                aria-label={windowsShellMode
+                  ? 'Вернуть Explorer оболочкой при следующем входе'
+                  : 'Назначить Omniscience оболочкой при следующем входе'}
                 sx={{
                   color: windowsShellMode ? '#fbbf24' : '#fff',
                   WebkitAppRegion: 'no-drag',
