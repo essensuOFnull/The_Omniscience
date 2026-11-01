@@ -313,7 +313,8 @@ async function readWindowsUserShellRegistry() {
     '  }',
     '  return @{ exists = $false; value = $null; kind = $null }',
     '}',
-    '$result = @{ shell = (Read-RegistryValue $shellKey "Shell"); policyShell = (Read-RegistryValue $policyKey "Shell"); run = (Read-RegistryValue $runKey "The_Omniscience") }',
+    '$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+    '$result = @{ sid = $sid; shell = (Read-RegistryValue $shellKey "Shell"); policyShell = (Read-RegistryValue $policyKey "Shell"); run = (Read-RegistryValue $runKey "The_Omniscience") }',
     '$result | ConvertTo-Json -Compress -Depth 4',
   ].join('\n');
   return JSON.parse(await runWindowsPowerShell(script));
@@ -334,6 +335,12 @@ async function readWindowsUserShellBackup() {
     if (error.code === 'ENOENT') return null;
     throw error;
   }
+}
+
+function sameRegistrySnapshot(left, right) {
+  if (!!left?.exists !== !!right?.exists) return false;
+  if (!left?.exists) return true;
+  return left.value === right.value && left.kind === right.kind;
 }
 
 async function getWindowsUserShellCommand() {
@@ -367,33 +374,25 @@ function restoreRegistryValueScript(key, name, value) {
   ].join('\n');
 }
 
-async function writeWindowsUserShell(command, backup) {
+async function writeWindowsUserShell(command, backup, expectedLegacyCommand) {
   const backupPath = getWindowsUserShellBackupPath();
   await writeFile(backupPath, JSON.stringify(backup, null, 2));
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    `$shellKey = '${WINDOWS_USER_SHELL_KEY}'`,
-    `$policyKey = '${WINDOWS_USER_SHELL_POLICY_KEY}'`,
-    `$runKey = '${WINDOWS_RUN_KEY}'`,
-    `$shellName = 'Shell'`,
-    `$runName = '${WINDOWS_RUN_NAME}'`,
-    `$shellCommand = ${encodePowerShellValue(command)}`,
-    'try {',
-    '  New-Item -Path $policyKey -Force | Out-Null',
-    '  New-ItemProperty -LiteralPath $policyKey -Name $shellName -Value $shellCommand -PropertyType String -Force | Out-Null',
-    `  ${restoreRegistryValueScript(WINDOWS_USER_SHELL_KEY, 'Shell', backup.legacyShell)}`,
-    '  if (Test-Path -LiteralPath $runKey) { Remove-ItemProperty -LiteralPath $runKey -Name $runName -ErrorAction SilentlyContinue }',
-    '  if ((Test-Path -LiteralPath $runKey) -and ((Get-Item -LiteralPath $runKey).GetValueNames() -contains $runName)) { throw "Could not remove duplicate startup entry" }',
-    '  $actual = (Get-Item -LiteralPath $policyKey).GetValue($shellName)',
-    "  if ($actual -cne $shellCommand) { throw 'Per-user custom interface policy did not verify' }",
-    '} catch {',
-    `  ${restoreRegistryValueScript(WINDOWS_USER_SHELL_POLICY_KEY, 'Shell', backup.policyShell)}`,
-    `  ${restoreRegistryValueScript(WINDOWS_USER_SHELL_KEY, 'Shell', backup.legacyShell)}`,
-    `  ${restoreRegistryValueScript(WINDOWS_RUN_KEY, WINDOWS_RUN_NAME, backup.run)}`,
-    '  throw',
-    '}',
-  ].join('\n');
-  await runWindowsPowerShell(script);
+  const registry = await readWindowsUserShellRegistry();
+  const removeLegacyShell = typeof expectedLegacyCommand === 'string'
+    && registry.shell?.value === expectedLegacyCommand;
+  try {
+    await requestWin32Admin('user-shell-apply', {
+      sid: registry.sid,
+      command,
+      expectedPolicyShell: registry.policyShell,
+      expectedLegacyShell: registry.shell,
+      expectedRun: registry.run,
+      removeLegacyShell,
+    });
+  } catch (error) {
+    const current = await readWindowsUserShellRegistry().catch(() => null);
+    if (current?.policyShell?.value !== command) throw error;
+  }
 }
 
 async function enableWindowsUserShell() {
@@ -406,14 +405,24 @@ async function enableWindowsUserShell() {
   const previousBackup = await readWindowsUserShellBackup();
   let legacyShell = registry.shell;
   let run = registry.run;
+  let legacyShellCommandToRemove = null;
   if (previousBackup) {
-    if (previousBackup.schemaVersion !== 1
-      || typeof previousBackup.command !== 'string'
-      || registry.shell?.value !== previousBackup.command) {
+    if (previousBackup.schemaVersion === 1
+      && typeof previousBackup.command === 'string'
+      && registry.shell?.value === previousBackup.command) {
+      legacyShell = previousBackup.shell;
+      legacyShellCommandToRemove = previousBackup.command;
+    } else if (previousBackup.schemaVersion === 2
+      && typeof previousBackup.command === 'string'
+      && sameRegistrySnapshot(registry.policyShell, previousBackup.policyShell)
+      && (sameRegistrySnapshot(registry.shell, previousBackup.legacyShell)
+        || (typeof previousBackup.legacyShellCommandToRemove === 'string'
+          && registry.shell?.value === previousBackup.legacyShellCommandToRemove))) {
+      legacyShell = previousBackup.legacyShell;
+      legacyShellCommandToRemove = previousBackup.legacyShellCommandToRemove;
+    } else {
       throw new Error('A previous shell backup exists but the current shell values do not match it; restore manually before continuing');
     }
-    legacyShell = previousBackup.shell;
-    run = previousBackup.run;
   }
   const backup = {
     schemaVersion: 2,
@@ -421,9 +430,10 @@ async function enableWindowsUserShell() {
     policyShell: registry.policyShell,
     run,
     command,
+    legacyShellCommandToRemove,
   };
   try {
-    await writeWindowsUserShell(command, backup);
+    await writeWindowsUserShell(command, backup, legacyShellCommandToRemove);
   } catch (error) {
     try {
       const current = await readWindowsUserShellRegistry();
@@ -453,13 +463,18 @@ async function restoreWindowsUserShell() {
   if (registry.policyShell?.value !== backup.command) {
     throw new Error('The per-user shell value changed outside Omniscience; refusing to overwrite it');
   }
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    restoreRegistryValueScript(WINDOWS_USER_SHELL_POLICY_KEY, 'Shell', backup.policyShell),
-    restoreRegistryValueScript(WINDOWS_USER_SHELL_KEY, 'Shell', backup.legacyShell),
-    restoreRegistryValueScript(WINDOWS_RUN_KEY, WINDOWS_RUN_NAME, backup.run),
-  ].join('\n');
-  await runWindowsPowerShell(script);
+  try {
+    await requestWin32Admin('user-shell-restore', {
+      sid: registry.sid,
+      expectedCommand: backup.command,
+      policyShell: backup.policyShell,
+      legacyShell: backup.legacyShell,
+      run: backup.run,
+    });
+  } catch (error) {
+    const current = await readWindowsUserShellRegistry().catch(() => null);
+    if (current?.policyShell?.value === backup.command) throw error;
+  }
   const restored = await readWindowsUserShellRegistry();
   if (restored.policyShell?.value !== (backup.policyShell?.exists ? backup.policyShell.value : null)) {
     throw new Error('Custom interface policy restoration did not verify');
@@ -491,7 +506,7 @@ export async function toggleWindowsUserShell() {
         : 'Назначить Omniscience оболочкой при следующем входе?',
       detail: enabled
         ? 'Будут восстановлены прежние значения реестра пользователя. Текущая сессия не изменится.'
-        : 'Изменится только оболочка текущего пользователя. При выходе или сбое Omniscience launcher запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
+        : 'Windows защищает ключ политики оболочки. После подтверждения действия появится отдельный запрос UAC. Изменится только оболочка текущего пользователя. При выходе или сбое Omniscience launcher запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
       buttons: [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
       defaultId: 1,
       cancelId: 1,
@@ -522,45 +537,25 @@ export async function configureWindowsAutostart() {
   if (process.platform !== 'win32') return false;
   const registry = await readWindowsUserShellRegistry();
   const shellCommand = await getWindowsUserShellCommand();
-  const backup = await readWindowsUserShellBackup();
   const shellEnabled = registry.policyShell?.value === shellCommand;
   if (shellEnabled) {
-    const script = `if (Test-Path -LiteralPath '${WINDOWS_RUN_KEY}') { Remove-ItemProperty -LiteralPath '${WINDOWS_RUN_KEY}' -Name '${WINDOWS_RUN_NAME}' -ErrorAction SilentlyContinue }`;
-    await runWindowsPowerShell(script);
-    const updatedRegistry = await readWindowsUserShellRegistry();
-    if (updatedRegistry.run?.exists) {
-      throw new Error('Could not remove the duplicate Run-key startup entry while the shell replacement is enabled');
-    }
     win32UserShellEnabled = true;
     return false;
   }
-  if (backup?.schemaVersion === 1
-    && typeof backup.command === 'string'
-    && registry.shell?.value === backup.command) {
-    const migratedBackup = {
-      schemaVersion: 2,
-      legacyShell: backup.shell,
-      policyShell: registry.policyShell,
-      run: backup.run,
-      command: shellCommand,
-    };
-    try {
-      await writeWindowsUserShell(shellCommand, migratedBackup);
-    } catch (error) {
-      await writeFile(getWindowsUserShellBackupPath(), JSON.stringify(backup, null, 2));
-      throw error;
-    }
-    win32UserShellEnabled = true;
-    return false;
-  }
-  const args = app.isPackaged ? [] : [`"${app.getAppPath()}"`];
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    path: process.execPath,
-    args,
-    name: WINDOWS_RUN_NAME,
-    enabled: true,
-  });
+  const launchCommand = app.isPackaged
+    ? quoteWindowsArgument(process.execPath)
+    : `${quoteWindowsArgument(process.execPath)} ${quoteWindowsArgument(app.getAppPath())}`;
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$runKey = '${WINDOWS_RUN_KEY}'`,
+    `$name = '${WINDOWS_RUN_NAME}'`,
+    `$value = ${encodePowerShellValue(launchCommand)}`,
+    'New-Item -Path $runKey -Force | Out-Null',
+    'New-ItemProperty -LiteralPath $runKey -Name $name -Value $value -PropertyType String -Force | Out-Null',
+    '$actual = (Get-Item -LiteralPath $runKey).GetValue($name)',
+    "if ($actual -cne $value) { throw 'Windows startup command did not verify' }",
+  ].join('\n');
+  await runWindowsPowerShell(script);
   return true;
 }
 

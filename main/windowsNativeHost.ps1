@@ -736,6 +736,176 @@ function Invoke-ShellLauncherAction($request) {
     return Get-ShellLauncherStatus
 }
 
+function Get-UserRegistrySnapshot($hive, $keyPath, $name) {
+    $key = $hive.OpenSubKey($keyPath, $false)
+    if ($null -eq $key) {
+        return @{ exists = $false; value = $null; kind = $null }
+    }
+    try {
+        if ($key.GetValueNames() -notcontains $name) {
+            return @{ exists = $false; value = $null; kind = $null }
+        }
+        $kind = $key.GetValueKind($name)
+        if ($kind -notin @(
+            [Microsoft.Win32.RegistryValueKind]::String,
+            [Microsoft.Win32.RegistryValueKind]::ExpandString
+        )) {
+            throw "Unsupported registry value kind for $name`: $kind"
+        }
+        return @{
+            exists = $true
+            value = [string]$key.GetValue(
+                $name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+            )
+            kind = $kind.ToString()
+        }
+    } finally {
+        $key.Dispose()
+    }
+}
+
+function Test-UserRegistrySnapshot($actual, $expected) {
+    if ([bool]$actual.exists -ne [bool]$expected.exists) {
+        return $false
+    }
+    if (-not $actual.exists) {
+        return $true
+    }
+    return ([string]$actual.value -ceq [string]$expected.value) `
+        -and ([string]$actual.kind -ceq [string]$expected.kind)
+}
+
+function Set-UserRegistrySnapshot($hive, $keyPath, $name, $snapshot) {
+    $key = $hive.OpenSubKey($keyPath, $true)
+    if (-not $snapshot.exists) {
+        if ($null -eq $key) {
+            return
+        }
+        try {
+            if ($key.GetValueNames() -contains $name) {
+                $key.DeleteValue($name, $false)
+            }
+        } finally {
+            $key.Dispose()
+        }
+        return
+    }
+
+    if ($null -eq $key) {
+        $key = $hive.CreateSubKey($keyPath)
+    }
+    if ($null -eq $key) {
+        throw "Could not open registry key $keyPath for writing"
+    }
+    try {
+        $kind = switch ([string]$snapshot.kind) {
+            'String' { [Microsoft.Win32.RegistryValueKind]::String }
+            'ExpandString' { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+            default { throw "Unsupported registry value kind for $name`: $($snapshot.kind)" }
+        }
+        $key.SetValue($name, [string]$snapshot.value, $kind)
+    } finally {
+        $key.Dispose()
+    }
+}
+
+function Invoke-UserShellRegistryAction($request) {
+    if (-not $PipeName) {
+        throw 'User shell registry changes require the elevated helper'
+    }
+    $principal = [Security.Principal.WindowsPrincipal]::new(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Administrator approval is required to change the user shell policy'
+    }
+
+    $sid = [Security.Principal.SecurityIdentifier]::new([string]$request.sid).Value
+    if ($sid -notmatch '^S-1-5-21-(\d+-){3}\d+$') {
+        throw 'Invalid user SID for shell configuration'
+    }
+    $hive = [Microsoft.Win32.Registry]::Users.OpenSubKey($sid, $true)
+    if ($null -eq $hive) {
+        throw 'The target user registry hive is not loaded'
+    }
+
+    $policyPath = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'
+    $shellPath = 'Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    $runPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
+    $policyBefore = Get-UserRegistrySnapshot $hive $policyPath 'Shell'
+    $shellBefore = Get-UserRegistrySnapshot $hive $shellPath 'Shell'
+    $runBefore = Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience'
+    try {
+        if ($request.action -eq 'user-shell-apply') {
+            $expectedStateMatches = (Test-UserRegistrySnapshot $policyBefore $request.expectedPolicyShell) `
+                -and (Test-UserRegistrySnapshot $shellBefore $request.expectedLegacyShell) `
+                -and (Test-UserRegistrySnapshot $runBefore $request.expectedRun)
+            if (-not $expectedStateMatches) {
+                throw 'User shell registry values changed during approval; no changes were made'
+            }
+            $policyKey = $hive.CreateSubKey($policyPath)
+            try {
+                $policyKey.SetValue('Shell', [string]$request.command, [Microsoft.Win32.RegistryValueKind]::String)
+            } finally {
+                $policyKey.Dispose()
+            }
+            if ($request.removeLegacyShell -and $shellBefore.exists) {
+                $shellKey = $hive.OpenSubKey($shellPath, $true)
+                if ($null -eq $shellKey) {
+                    throw 'Could not open the legacy shell registry key'
+                }
+                try { $shellKey.DeleteValue('Shell', $false) }
+                finally { $shellKey.Dispose() }
+            }
+            if ($runBefore.exists) {
+                $runKey = $hive.OpenSubKey($runPath, $true)
+                if ($null -eq $runKey) {
+                    throw 'Could not open the user startup registry key'
+                }
+                try { $runKey.DeleteValue('The_Omniscience', $false) }
+                finally { $runKey.Dispose() }
+            }
+            $policyAfter = Get-UserRegistrySnapshot $hive $policyPath 'Shell'
+            $shellAfter = Get-UserRegistrySnapshot $hive $shellPath 'Shell'
+            $runAfter = Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience'
+            $applyVerified = $policyAfter.value -ceq [string]$request.command `
+                -and (-not $request.removeLegacyShell -or -not $shellAfter.exists) `
+                -and (-not $runAfter.exists)
+            if (-not $applyVerified) {
+                throw 'User shell registry update did not verify'
+            }
+        } elseif ($request.action -eq 'user-shell-restore') {
+            if (-not $policyBefore.exists -or $policyBefore.value -cne [string]$request.expectedCommand) {
+                throw 'The active user shell changed; refusing to restore over another shell'
+            }
+            Set-UserRegistrySnapshot $hive $policyPath 'Shell' $request.policyShell
+            Set-UserRegistrySnapshot $hive $shellPath 'Shell' $request.legacyShell
+            Set-UserRegistrySnapshot $hive $runPath 'The_Omniscience' $request.run
+            $restoreVerified = (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $policyPath 'Shell') $request.policyShell) `
+                -and (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $shellPath 'Shell') $request.legacyShell) `
+                -and (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience') $request.run)
+            if (-not $restoreVerified) {
+                throw 'User shell restoration did not verify'
+            }
+        } else {
+            throw "Unsupported user shell registry action: $($request.action)"
+        }
+        return $true
+    } catch {
+        $failure = $_
+        try {
+            Set-UserRegistrySnapshot $hive $policyPath 'Shell' $policyBefore
+            Set-UserRegistrySnapshot $hive $shellPath 'Shell' $shellBefore
+            Set-UserRegistrySnapshot $hive $runPath 'The_Omniscience' $runBefore
+        } catch {
+            throw "Shell update failed and rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+        }
+        throw $failure
+    } finally {
+        $hive.Dispose()
+    }
+}
+
 while ($null -ne ($line = $reader.ReadLine())) {
     try {
         $request = ConvertFrom-Json -InputObject $line
@@ -779,6 +949,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
                 )
             }
             'shell-status' { Get-ShellLauncherStatus }
+            { $_ -in 'user-shell-apply', 'user-shell-restore' } { Invoke-UserShellRegistryAction $request }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
             'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
