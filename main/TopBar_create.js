@@ -6,11 +6,11 @@ const TOPBAR_H = 72;
 
 export default async function () {
   const display = screen.getPrimaryDisplay();
-  const { width, height } = display.size;
+  const { x, y, width, height } = display.bounds;
 
   global.topbarWindow = new BrowserWindow({
     title: 'The_Omniscience_panel',
-    x: 0, y: 0, width, height: TOPBAR_H,
+    x, y, width, height: TOPBAR_H,
     frame: false,
     resizable: false,
     movable: false,
@@ -41,6 +41,6 @@ export default async function () {
     if (process.platform === 'win32') {
       setWindowsDockSuppressed(w, mode === 'overview');
     }
-    w.setBounds({ x: 0, y: 0, width: width, height: h });
+    w.setBounds({ x, y, width, height: h });
   });
 }

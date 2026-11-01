@@ -1698,7 +1698,9 @@ export async function focusWindowById(id) {
       return { ok };
     }
     if (t.kind === 'native' && t.hwnd) {
-      return { ok: await requestWin32WindowAction('focus', { hwnd: t.hwnd }) };
+      const ok = await requestWin32WindowAction('focus', { hwnd: t.hwnd });
+      await refreshWin32Windows();
+      return { ok };
     }
     return { ok: true };
   } catch (e) {
@@ -1965,14 +1967,19 @@ export default async function () {
       if (process.platform === 'win32' && t.kind === 'native' && t.hwnd) {
         const native = win32Windows.find((window) => window.id === t.hwnd);
         if (!native) return { ok: false };
-        const bounds = {
-          x: native.x, y: native.y,
-          width: native.width, height: native.height,
-        };
-        const target = computeDragTarget(mode, direction, bounds, bounds);
-        const point = screen.dipToScreenPoint(target);
-        const moved = await requestWin32('cursor', { x: point.x, y: point.y });
-        return moved ? { ok: true, kind: 'native', cursor: target, bounds } : { ok: false };
+        const prepared = await requestWin32('prepare-drag', {
+          hwnd: t.hwnd, mode, direction,
+        });
+        if (!prepared) return { ok: false };
+        await refreshWin32Windows();
+        const bounds = screen.screenToDipRect(null, {
+          x: prepared.x, y: prepared.y,
+          width: prepared.width, height: prepared.height,
+        });
+        const cursor = screen.screenToDipPoint({
+          x: prepared.cursorX, y: prepared.cursorY,
+        });
+        return { ok: true, kind: 'native', cursor, bounds };
       }
 
       if (t.kind === 'our') {

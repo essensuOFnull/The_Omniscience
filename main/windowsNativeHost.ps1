@@ -25,7 +25,6 @@ public sealed class OmniWindowInfo
     public bool maximized { get; set; }
     public bool focused { get; set; }
 }
-
 public static class OmniWin32
 {
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
@@ -40,6 +39,7 @@ public static class OmniWin32
     private const uint SWP_NOACTIVATE = 0x0010;
     private const int WM_APP = 0x8000;
     private static readonly HashSet<IntPtr> AppBars = new HashSet<IntPtr>();
+    private static readonly EnumWindowsProc WindowEnumerator = EnumerateWindow;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -94,11 +94,23 @@ public static class OmniWin32
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint attach, uint attachTo, bool attachFlag);
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hwnd);
+    [DllImport("user32.dll", EntryPoint = "SetThreadDpiAwarenessContext", SetLastError = true)]
+    private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr dpiContext);
+    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")]
     private static extern bool ShowWindowAsync(IntPtr hwnd, int command);
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hwnd, int command);
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
@@ -115,6 +127,54 @@ public static class OmniWin32
     private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder imageName, ref int size);
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    private static OmniWindowInfo ReadWindow(IntPtr hwnd, IntPtr foreground, int ownPid)
+    {
+        if (!IsWindowVisible(hwnd)) return null;
+        uint pid;
+        GetWindowThreadProcessId(hwnd, out pid);
+        if (pid == ownPid) return null;
+        if ((((long)GetWindowLongPtr(hwnd, -20)) & 0x80L) != 0) return null;
+
+        var title = new StringBuilder(2048);
+        if (GetWindowText(hwnd, title, title.Capacity) <= 0) return null;
+        RECT rect;
+        if (!GetWindowRect(hwnd, out rect)) return null;
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0) return null;
+
+        return new OmniWindowInfo {
+            id = hwnd.ToInt64().ToString(CultureInfo.InvariantCulture),
+            title = title.ToString(),
+            pid = (int)pid,
+            imagePath = GetImagePath(pid),
+            x = rect.Left,
+            y = rect.Top,
+            width = width,
+            height = height,
+            minimized = IsIconic(hwnd),
+            maximized = IsZoomed(hwnd),
+            focused = hwnd == foreground
+        };
+    }
+
+    private static bool EnumerateWindow(IntPtr hwnd, IntPtr lParam)
+    {
+        var state = (EnumerationState)GCHandle.FromIntPtr(lParam).Target;
+        OmniWindowInfo window = ReadWindow(hwnd, state.Foreground, state.OwnPid);
+        if (window != null) state.Windows.Add(window);
+        return true;
+    }
+
+    private sealed class EnumerationState
+    {
+        public readonly List<OmniWindowInfo> Windows = new List<OmniWindowInfo>();
+        public IntPtr Foreground;
+        public int OwnPid;
+    }
 
     private static IntPtr GetWindowLongPtr(IntPtr hwnd, int index)
     {
@@ -156,45 +216,32 @@ public static class OmniWin32
 
     public static object[] ListWindows(int ownPid)
     {
-        var result = new List<OmniWindowInfo>();
-        IntPtr foreground = GetForegroundWindow();
-        EnumWindows((hwnd, _) =>
+        var state = new EnumerationState {
+            Foreground = GetAncestor(GetForegroundWindow(), 2),
+            OwnPid = ownPid,
+        };
+        if (state.Foreground == IntPtr.Zero) state.Foreground = GetForegroundWindow();
+        GCHandle handle = GCHandle.Alloc(state);
+        try { EnumWindows(WindowEnumerator, GCHandle.ToIntPtr(handle)); }
+        finally { handle.Free(); }
+        return state.Windows.ToArray();
+    }
+
+    public static void EnablePerMonitorDpiAwareness()
+    {
+        if (SetThreadDpiAwarenessContext(new IntPtr(-3)) == IntPtr.Zero)
         {
-            if (!IsWindowVisible(hwnd)) return true;
-            uint pid;
-            GetWindowThreadProcessId(hwnd, out pid);
-            if (pid == ownPid) return true;
-            if ((((long)GetWindowLongPtr(hwnd, -20)) & 0x80L) != 0) return true;
-
-            var title = new StringBuilder(2048);
-            if (GetWindowText(hwnd, title, title.Capacity) <= 0) return true;
-            RECT rect;
-            if (!GetWindowRect(hwnd, out rect)) return true;
-            int width = rect.Right - rect.Left;
-            int height = rect.Bottom - rect.Top;
-            if (width <= 0 || height <= 0) return true;
-
-            result.Add(new OmniWindowInfo {
-                id = hwnd.ToInt64().ToString(CultureInfo.InvariantCulture),
-                title = title.ToString(),
-                pid = (int)pid,
-                imagePath = GetImagePath(pid),
-                x = rect.Left,
-                y = rect.Top,
-                width = width,
-                height = height,
-                minimized = IsIconic(hwnd),
-                maximized = IsZoomed(hwnd),
-                focused = hwnd == foreground
-            });
-            return true;
-        }, IntPtr.Zero);
-        return result.ToArray();
+            throw new InvalidOperationException(
+                "SetThreadDpiAwarenessContext failed: " +
+                Marshal.GetLastWin32Error().ToString(CultureInfo.InvariantCulture)
+            );
+        }
     }
 
     public static object GetActiveWindow()
     {
         IntPtr hwnd = GetForegroundWindow();
+        hwnd = GetAncestor(hwnd, 2);
         return hwnd == IntPtr.Zero ? null : hwnd.ToInt64().ToString(CultureInfo.InvariantCulture);
     }
 
@@ -249,12 +296,11 @@ public static class OmniWin32
 
         data = NewAppBarData(window, requested);
         SHAppBarMessage(ABM_QUERYPOS, ref data);
-        data.rc.Bottom = data.rc.Top + Math.Max(1, height);
+        data.rc = requested;
         SHAppBarMessage(ABM_SETPOS, ref data);
         return SetWindowPos(
-            window, new IntPtr(-1), data.rc.Left, data.rc.Top,
-            Math.Max(1, data.rc.Right - data.rc.Left),
-            Math.Max(1, data.rc.Bottom - data.rc.Top),
+            window, new IntPtr(-1), x, y,
+            Math.Max(1, width), Math.Max(1, height),
             SWP_NOACTIVATE
         );
     }
@@ -272,8 +318,70 @@ public static class OmniWin32
     public static bool Focus(long hwnd)
     {
         IntPtr window = new IntPtr(hwnd);
-        ShowWindowAsync(window, 9);
-        return SetForegroundWindow(window);
+        if (!IsWindow(window)) return false;
+        IntPtr foreground = GetForegroundWindow();
+        if (foreground == window) return true;
+        uint currentThread = GetCurrentThreadId();
+        uint ignoredPid;
+        uint foregroundThread = foreground == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foreground, out ignoredPid);
+        uint targetThread = GetWindowThreadProcessId(window, out ignoredPid);
+        ShowWindow(window, 9);
+        bool attachedForeground = false;
+        bool attachedTarget = false;
+        try
+        {
+            if (foregroundThread != 0 && currentThread != foregroundThread)
+                attachedForeground = AttachThreadInput(currentThread, foregroundThread, true);
+            if (targetThread != 0 && currentThread != targetThread)
+                attachedTarget = AttachThreadInput(currentThread, targetThread, true);
+            SetForegroundWindow(window);
+            BringWindowToTop(window);
+            SetFocus(window);
+            IntPtr active = GetForegroundWindow();
+            IntPtr activeRoot = GetAncestor(active, 2);
+            IntPtr targetRoot = GetAncestor(window, 2);
+            return active == window || activeRoot == targetRoot;
+        }
+        finally
+        {
+            if (attachedTarget) AttachThreadInput(currentThread, targetThread, false);
+            if (attachedForeground) AttachThreadInput(currentThread, foregroundThread, false);
+        }
+    }
+
+    public static object PrepareDrag(long hwnd, string mode, string direction)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        if (!IsWindow(window)) return null;
+        Focus(hwnd);
+        RECT rect;
+        if (!GetWindowRect(window, out rect)) return null;
+        int width = rect.Right - rect.Left;
+        int height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0) return null;
+        int x = rect.Left + width / 2;
+        int y = rect.Top + Math.Min(20, Math.Max(1, height / 3));
+        if (mode == "resize")
+        {
+            switch (direction)
+            {
+                case "nw": x = rect.Left; y = rect.Top; break;
+                case "n": y = rect.Top; break;
+                case "ne": x = rect.Right - 1; y = rect.Top; break;
+                case "e": x = rect.Right - 1; y = rect.Top + height / 2; break;
+                case "se": x = rect.Right - 1; y = rect.Bottom - 1; break;
+                case "s": y = rect.Bottom - 1; break;
+                case "sw": x = rect.Left; y = rect.Bottom - 1; break;
+                case "w": x = rect.Left; y = rect.Top + height / 2; break;
+            }
+        }
+        if (!SetCursorPos(x, y)) return null;
+        return new {
+            x = rect.Left, y = rect.Top, width, height,
+            cursorX = x, cursorY = y
+        };
     }
 
     public static bool Minimize(long hwnd)
@@ -299,6 +407,7 @@ public static class OmniWin32
 '@
 
 [void](Add-Type -TypeDefinition $nativeSource -Language CSharp)
+[OmniWin32]::EnablePerMonitorDpiAwareness()
 
 if ($PipeName) {
     $pipe = New-Object System.IO.Pipes.NamedPipeClientStream(
@@ -416,6 +525,11 @@ while ($null -ne ($line = $reader.ReadLine())) {
                 [OmniWin32]::SetBounds(
                     [long]$request.hwnd, [int]$request.x, [int]$request.y,
                     [int]$request.width, [int]$request.height
+                )
+            }
+            'prepare-drag' {
+                [OmniWin32]::PrepareDrag(
+                    [long]$request.hwnd, [string]$request.mode, [string]$request.direction
                 )
             }
             'desktop' {
