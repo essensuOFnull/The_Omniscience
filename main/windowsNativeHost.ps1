@@ -809,100 +809,113 @@ function Set-UserRegistrySnapshot($hive, $keyPath, $name, $snapshot) {
     }
 }
 
-function Invoke-UserShellRegistryAction($request) {
+function Invoke-MachineShellPolicyAction($request) {
     if (-not $PipeName) {
-        throw 'User shell registry changes require the elevated helper'
+        throw 'Machine shell policy changes require the elevated helper'
     }
     $principal = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
     )
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Administrator approval is required to change the user shell policy'
+        throw 'Administrator approval is required to change the machine shell policy'
     }
 
-    $sid = [Security.Principal.SecurityIdentifier]::new([string]$request.sid).Value
-    if ($sid -notmatch '^S-1-5-21-(\d+-){3}\d+$') {
-        throw 'Invalid user SID for shell configuration'
-    }
-    $hive = [Microsoft.Win32.Registry]::Users.OpenSubKey($sid, $true)
-    if ($null -eq $hive) {
-        throw 'The target user registry hive is not loaded'
+    $machinePolicyPath = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'
+    $machineHive = [Microsoft.Win32.Registry]::LocalMachine
+    $machineBefore = Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell'
+    $backupPath = [System.IO.Path]::GetFullPath([string]$request.backupPath)
+    $expectedBackupPath = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $env:ProgramData 'The_Omniscience') 'windows-shell-backup.json')
+    )
+    if (-not [string]::Equals(
+        $backupPath, $expectedBackupPath, [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'Invalid shared shell backup path'
     }
 
-    $policyPath = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'
-    $shellPath = 'Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
-    $runPath = 'Software\Microsoft\Windows\CurrentVersion\Run'
-    $policyBefore = Get-UserRegistrySnapshot $hive $policyPath 'Shell'
-    $shellBefore = Get-UserRegistrySnapshot $hive $shellPath 'Shell'
-    $runBefore = Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience'
+    $backupDirectory = [System.IO.Path]::GetDirectoryName($backupPath)
+    $previousBackupBytes = $null
+    $backupExisted = [System.IO.File]::Exists($backupPath)
+    if ($backupExisted) {
+        $previousBackupBytes = [System.IO.File]::ReadAllBytes($backupPath)
+    }
+    $backupWritten = $false
     try {
-        if ($request.action -eq 'user-shell-apply') {
-            $expectedStateMatches = (Test-UserRegistrySnapshot $policyBefore $request.expectedPolicyShell) `
-                -and (Test-UserRegistrySnapshot $shellBefore $request.expectedLegacyShell) `
-                -and (Test-UserRegistrySnapshot $runBefore $request.expectedRun)
-            if (-not $expectedStateMatches) {
-                throw 'User shell registry values changed during approval; no changes were made'
+        if ($request.action -eq 'machine-shell-apply') {
+            if (-not (Test-UserRegistrySnapshot $machineBefore $request.expectedMachinePolicyShell)) {
+                throw 'Machine shell policy changed during approval; no changes were made'
             }
-            $policyKey = $hive.CreateSubKey($policyPath)
+            if ($machineBefore.exists -and $machineBefore.value -cne [string]$request.command) {
+                throw 'A different machine shell policy is already configured'
+            }
+            $backupIsValid = ($request.backup.schemaVersion -eq 3) -and
+                ($request.backup.scope -eq 'machine') -and
+                ($request.backup.command -ceq [string]$request.command) -and
+                (Test-UserRegistrySnapshot $machineBefore $request.backup.machinePolicyShell)
+            if (-not $backupIsValid) {
+                throw 'Invalid machine shell backup data'
+            }
+
+            [System.IO.Directory]::CreateDirectory($backupDirectory) | Out-Null
+            $backupTemporaryPath = "$backupPath.$PID.tmp"
+            $backupJson = ConvertTo-Json -InputObject $request.backup -Compress -Depth 10
+            [System.IO.File]::WriteAllText(
+                $backupTemporaryPath, $backupJson, [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $backupTemporaryPath -Destination $backupPath -Force
+            $backupWritten = $true
+
+            $machineKey = $machineHive.CreateSubKey($machinePolicyPath)
+            if ($null -eq $machineKey) {
+                throw 'Could not open machine shell policy registry key'
+            }
             try {
-                $policyKey.SetValue('Shell', [string]$request.command, [Microsoft.Win32.RegistryValueKind]::String)
+                $machineKey.SetValue(
+                    'Shell', [string]$request.command, [Microsoft.Win32.RegistryValueKind]::String
+                )
             } finally {
-                $policyKey.Dispose()
+                $machineKey.Dispose()
             }
-            if ($request.removeLegacyShell -and $shellBefore.exists) {
-                $shellKey = $hive.OpenSubKey($shellPath, $true)
-                if ($null -eq $shellKey) {
-                    throw 'Could not open the legacy shell registry key'
-                }
-                try { $shellKey.DeleteValue('Shell', $false) }
-                finally { $shellKey.Dispose() }
-            }
-            if ($runBefore.exists) {
-                $runKey = $hive.OpenSubKey($runPath, $true)
-                if ($null -eq $runKey) {
-                    throw 'Could not open the user startup registry key'
-                }
-                try { $runKey.DeleteValue('The_Omniscience', $false) }
-                finally { $runKey.Dispose() }
-            }
-            $policyAfter = Get-UserRegistrySnapshot $hive $policyPath 'Shell'
-            $shellAfter = Get-UserRegistrySnapshot $hive $shellPath 'Shell'
-            $runAfter = Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience'
-            $applyVerified = $policyAfter.value -ceq [string]$request.command `
-                -and (-not $request.removeLegacyShell -or -not $shellAfter.exists) `
-                -and (-not $runAfter.exists)
+
+            $machineAfter = Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell'
+            $applyVerified = $machineAfter.value -ceq [string]$request.command
             if (-not $applyVerified) {
-                throw 'User shell registry update did not verify'
+                throw 'Machine shell policy update did not verify'
             }
-        } elseif ($request.action -eq 'user-shell-restore') {
-            if (-not $policyBefore.exists -or $policyBefore.value -cne [string]$request.expectedCommand) {
-                throw 'The active user shell changed; refusing to restore over another shell'
+        } elseif ($request.action -eq 'machine-shell-restore') {
+            if (-not $machineBefore.exists -or $machineBefore.value -cne [string]$request.expectedCommand) {
+                throw 'The machine-wide shell policy changed; refusing to restore over another shell'
             }
-            Set-UserRegistrySnapshot $hive $policyPath 'Shell' $request.policyShell
-            Set-UserRegistrySnapshot $hive $shellPath 'Shell' $request.legacyShell
-            Set-UserRegistrySnapshot $hive $runPath 'The_Omniscience' $request.run
-            $restoreVerified = (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $policyPath 'Shell') $request.policyShell) `
-                -and (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $shellPath 'Shell') $request.legacyShell) `
-                -and (Test-UserRegistrySnapshot (Get-UserRegistrySnapshot $hive $runPath 'The_Omniscience') $request.run)
+            Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $request.machinePolicyShell
+            $restoreVerified = Test-UserRegistrySnapshot `
+                (Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell') `
+                $request.machinePolicyShell
             if (-not $restoreVerified) {
-                throw 'User shell restoration did not verify'
+                throw 'Machine shell policy restoration did not verify'
             }
         } else {
-            throw "Unsupported user shell registry action: $($request.action)"
+            throw "Unsupported machine shell policy action: $($request.action)"
         }
         return $true
     } catch {
         $failure = $_
         try {
-            Set-UserRegistrySnapshot $hive $policyPath 'Shell' $policyBefore
-            Set-UserRegistrySnapshot $hive $shellPath 'Shell' $shellBefore
-            Set-UserRegistrySnapshot $hive $runPath 'The_Omniscience' $runBefore
+            Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $machineBefore
         } catch {
-            throw "Shell update failed and rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+            throw "Shell update failed and machine registry rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+        }
+        if ($backupWritten) {
+            try {
+                if ($backupExisted) {
+                    [System.IO.File]::WriteAllBytes($backupPath, $previousBackupBytes)
+                } else {
+                    [System.IO.File]::Delete($backupPath)
+                }
+            } catch {
+                throw "Shell update failed and backup rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+            }
         }
         throw $failure
-    } finally {
-        $hive.Dispose()
     }
 }
 
@@ -949,7 +962,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
                 )
             }
             'shell-status' { Get-ShellLauncherStatus }
-            { $_ -in 'user-shell-apply', 'user-shell-restore' } { Invoke-UserShellRegistryAction $request }
+            { $_ -in 'machine-shell-apply', 'machine-shell-restore' } { Invoke-MachineShellPolicyAction $request }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
             'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
