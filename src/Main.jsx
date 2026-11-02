@@ -6,6 +6,18 @@ import FileView from './components/FileView';
 import FrameHandler from './components/FrameHandler';
 import BackgroundRenderer from './components/BackgroundRenderer';
 import ThemeApplier from './components/ThemeApplier';
+import useViewStateBridge from './hooks/useViewStateBridge';
+
+const EMPTY_VIEW_STATE = {};
+
+function handleUnsupportedViewAction({ type }) {
+  console.error(`[viewStore] unsupported action: ${type}`);
+}
+
+function ViewStateBridge() {
+  useViewStateBridge(EMPTY_VIEW_STATE, handleUnsupportedViewAction);
+  return null;
+}
 
 const darkTheme = createTheme({
   palette: {
@@ -30,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <React.StrictMode>
       <div className="ignore_The_Omniscience_Theme_recursive" style={{display:'contents'}}>
         <ThemeProvider theme={darkTheme}>
+          <ViewStateBridge />
           <ThemeApplier />
           <BackgroundRenderer />
         </ThemeProvider>

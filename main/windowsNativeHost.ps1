@@ -12,6 +12,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32;
 
 public sealed class OmniWindowInfo
 {
@@ -57,6 +58,7 @@ public static class OmniWin32
     private const uint SPI_GETWORKAREA = 0x0030;
     private const uint SPI_SETDESKWALLPAPER = 0x0014;
     private const uint SPI_GETDESKWALLPAPER = 0x0073;
+    private const uint SPIF_UPDATEINIFILE = 0x0001;
     private const uint SPIF_SENDCHANGE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const int WM_APP = 0x8000;
@@ -67,6 +69,9 @@ public static class OmniWin32
     private static readonly Dictionary<IntPtr, bool> ExplorerDesktopIconVisibility = new Dictionary<IntPtr, bool>();
     private static string OriginalDesktopWallpaper;
     private static bool HasOriginalDesktopWallpaper;
+    private static bool OriginalWallpaperRegistryValueExists;
+    private static string OriginalWallpaperRegistryValue;
+    private static RegistryValueKind OriginalWallpaperRegistryValueKind;
     private static uint OriginalTaskbarAppBarState;
     private static bool HasOriginalTaskbarAppBarState;
     private static RECT OriginalWorkArea;
@@ -451,31 +456,142 @@ public static class OmniWin32
         return wallpaper.ToString();
     }
 
+    private static string FindWallpaperRegistryValueName(RegistryKey key)
+    {
+        foreach (string name in key.GetValueNames())
+            if (string.Equals(name, "Wallpaper", StringComparison.OrdinalIgnoreCase))
+                return name;
+        return null;
+    }
+
+    private static bool TryGetWallpaperRegistryValue(out string value, out RegistryValueKind kind)
+    {
+        using (RegistryKey key = Registry.CurrentUser.OpenSubKey("Control Panel\\Desktop", false))
+        {
+            string name = key == null ? null : FindWallpaperRegistryValueName(key);
+            if (name == null)
+            {
+                value = null;
+                kind = RegistryValueKind.String;
+                return false;
+            }
+            kind = key.GetValueKind(name);
+            if (kind != RegistryValueKind.String && kind != RegistryValueKind.ExpandString)
+                throw new InvalidOperationException("Unsupported registry type for the Windows wallpaper value: " + kind);
+            value = Convert.ToString(key.GetValue(
+                name, null, RegistryValueOptions.DoNotExpandEnvironmentNames
+            ));
+            return true;
+        }
+    }
+
+    private static void SetWallpaperRegistryValue(string value, RegistryValueKind kind)
+    {
+        using (RegistryKey key = Registry.CurrentUser.CreateSubKey("Control Panel\\Desktop"))
+        {
+            if (key == null)
+                throw new InvalidOperationException("Could not open the current-user desktop registry key");
+            string name = FindWallpaperRegistryValueName(key) ?? "WallPaper";
+            key.SetValue(name, value ?? string.Empty, kind);
+        }
+    }
+
+    private static void RestoreWallpaperRegistryValue()
+    {
+        if (OriginalWallpaperRegistryValueExists)
+        {
+            SetWallpaperRegistryValue(
+                OriginalWallpaperRegistryValue, OriginalWallpaperRegistryValueKind
+            );
+            return;
+        }
+        using (RegistryKey key = Registry.CurrentUser.OpenSubKey("Control Panel\\Desktop", true))
+        {
+            if (key != null)
+            {
+                string name = FindWallpaperRegistryValueName(key);
+                if (name != null) key.DeleteValue(name, false);
+            }
+        }
+    }
+
+    private static bool IsWallpaperRegistryValueCleared()
+    {
+        string value;
+        RegistryValueKind kind;
+        return TryGetWallpaperRegistryValue(out value, out kind)
+            && string.IsNullOrEmpty(value);
+    }
+
     public static bool HideExplorerWallpaper()
     {
         if (!HasOriginalDesktopWallpaper)
         {
             OriginalDesktopWallpaper = GetDesktopWallpaper();
+            OriginalWallpaperRegistryValueExists = TryGetWallpaperRegistryValue(
+                out OriginalWallpaperRegistryValue, out OriginalWallpaperRegistryValueKind
+            );
             HasOriginalDesktopWallpaper = true;
         }
-        if (string.IsNullOrEmpty(OriginalDesktopWallpaper)) return true;
-        if (!SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, string.Empty, SPIF_SENDCHANGE))
-            throw new InvalidOperationException("Could not disable the Windows desktop wallpaper: " + Marshal.GetLastWin32Error());
-        if (string.IsNullOrEmpty(GetDesktopWallpaper())) return true;
-        RestoreExplorerWallpaper();
-        return false;
+        try
+        {
+            RegistryValueKind kind = OriginalWallpaperRegistryValueExists
+                ? OriginalWallpaperRegistryValueKind
+                : RegistryValueKind.String;
+            SetWallpaperRegistryValue(string.Empty, kind);
+            if (!SystemParametersInfo(
+                SPI_SETDESKWALLPAPER, 0, string.Empty, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+            ))
+                throw new InvalidOperationException("Could not disable the Windows desktop wallpaper: " + Marshal.GetLastWin32Error());
+            SetWallpaperRegistryValue(string.Empty, kind);
+            if (IsWallpaperRegistryValueCleared())
+                return true;
+            throw new InvalidOperationException("Windows did not apply the cleared desktop wallpaper setting");
+        }
+        catch
+        {
+            if (!RestoreExplorerWallpaper())
+                throw new InvalidOperationException("Wallpaper disable failed and the original wallpaper could not be restored");
+            throw;
+        }
     }
 
     public static bool RestoreExplorerWallpaper()
     {
         if (!HasOriginalDesktopWallpaper) return true;
+        if (!IsWallpaperRegistryValueCleared())
+        {
+            OriginalDesktopWallpaper = null;
+            OriginalWallpaperRegistryValue = null;
+            HasOriginalDesktopWallpaper = false;
+            return true;
+        }
+        string wallpaperToRestore = OriginalWallpaperRegistryValueExists
+            ? OriginalWallpaperRegistryValueKind == RegistryValueKind.ExpandString
+                ? Environment.ExpandEnvironmentVariables(OriginalWallpaperRegistryValue)
+                : OriginalWallpaperRegistryValue
+            : OriginalDesktopWallpaper;
+        RestoreWallpaperRegistryValue();
         if (!SystemParametersInfo(
-            SPI_SETDESKWALLPAPER, 0, OriginalDesktopWallpaper ?? string.Empty, SPIF_SENDCHANGE
+            SPI_SETDESKWALLPAPER, 0, wallpaperToRestore ?? string.Empty, SPIF_SENDCHANGE
         ))
             return false;
-        if (!string.Equals(GetDesktopWallpaper(), OriginalDesktopWallpaper, StringComparison.OrdinalIgnoreCase))
+        RestoreWallpaperRegistryValue();
+        string registryValue;
+        RegistryValueKind registryKind;
+        bool registryValueExists = TryGetWallpaperRegistryValue(out registryValue, out registryKind);
+        if (registryValueExists != OriginalWallpaperRegistryValueExists
+            || (registryValueExists
+                && (!string.Equals(registryValue, OriginalWallpaperRegistryValue, StringComparison.Ordinal)
+                    || registryKind != OriginalWallpaperRegistryValueKind)))
+            return false;
+        if (!string.IsNullOrEmpty(wallpaperToRestore)
+            && !string.Equals(
+                GetDesktopWallpaper(), wallpaperToRestore, StringComparison.OrdinalIgnoreCase
+            ))
             return false;
         OriginalDesktopWallpaper = null;
+        OriginalWallpaperRegistryValue = null;
         HasOriginalDesktopWallpaper = false;
         return true;
     }
@@ -725,6 +841,7 @@ public static class OmniWin32
                 && (GetTaskbarAppBarState(state.Taskbars[0]) & ABS_AUTOHIDE) != 0,
             desktopIconsVisible = IsAnyWindowVisible(state.DesktopViews),
             wallpaperEnabled = IsExplorerWallpaperEnabled(),
+            wallpaperRegistryDisabled = IsWallpaperRegistryValueCleared(),
             workArea = new {
                 x = workArea.Left,
                 y = workArea.Top,

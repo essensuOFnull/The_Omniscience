@@ -105,10 +105,10 @@ export default function useViewStateBridge(state, dispatch) {
 		});
 
 		return () => {
-			offDispatch?.();
-			offSubscribe?.();
-			offUnsubscribe?.();
-			offGone?.();
+			api.removeListener('shell:view-dispatch', offDispatch);
+			api.removeListener('shell:view-subscribe', offSubscribe);
+			api.removeListener('shell:view-unsubscribe', offUnsubscribe);
+			api.removeListener('shell:view-gone', offGone);
 		};
 	}, [dispatch]);
 
