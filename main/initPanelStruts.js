@@ -3,7 +3,8 @@ const { screen } = electronPkg;
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
-  removeWindowsDock, resetWindowsDock, updateWindowsDock,
+  hideWindowsTaskbar, removeWindowsDock, resetWindowsDock, restoreWindowsTaskbar,
+  setWindowsDesktopWindow, updateWindowsDock,
 } from './ipc_nativeWindows.js';
 
 const execFileAsync = promisify(execFile);
@@ -215,7 +216,19 @@ export default function ({ show = true } = {}) {
         }
         windowsDockReady = true;
         tb.show();
-        await updateWindowsDock(tb);
+        try {
+          const registered = await updateWindowsDock(tb);
+          if (!registered) {
+            console.error('[panelStruts] Windows dock registration failed; Explorer taskbar remains visible');
+            return;
+          }
+          await hideWindowsTaskbar();
+          if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+            await setWindowsDesktopWindow(global.mainWindow);
+          }
+        } catch (error) {
+          console.error('[panelStruts] failed to hide Explorer taskbar:', error.message);
+        }
       })();
       return;
     }
@@ -233,6 +246,9 @@ export default function ({ show = true } = {}) {
   tb.on('close', () => {
     if (process.platform === 'win32') {
       windowsDockReady = false;
+      restoreWindowsTaskbar().catch((error) => {
+        console.error('[panelStruts] failed to restore Explorer taskbar:', error.message);
+      });
       removeWindowsDock(tb);
     }
   });

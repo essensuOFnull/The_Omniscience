@@ -39,7 +39,12 @@ public static class OmniWin32
     private const int WS_MINIMIZEBOX = 0x00020000;
     private const int WS_MAXIMIZEBOX = 0x00010000;
     private const int WS_POPUP = unchecked((int)0x80000000);
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOPMOST = 0x00000008;
     private const uint GW_OWNER = 4;
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+    private const int SW_HIDE = 0;
+    private const int SW_SHOWNOACTIVATE = 4;
     private const uint ABM_NEW = 0x00000000;
     private const uint ABM_REMOVE = 0x00000001;
     private const uint ABM_QUERYPOS = 0x00000002;
@@ -53,6 +58,7 @@ public static class OmniWin32
     private static readonly HashSet<IntPtr> AppBars = new HashSet<IntPtr>();
     private static readonly EnumWindowsProc WindowEnumerator = EnumerateWindow;
     private static readonly Dictionary<IntPtr, Thread> ActiveDrags = new Dictionary<IntPtr, Thread>();
+    private static readonly Dictionary<IntPtr, bool> ExplorerTaskbarVisibility = new Dictionary<IntPtr, bool>();
     private static RECT OriginalWorkArea;
     private static bool HasOriginalWorkArea;
     private static bool WorkAreaReserved;
@@ -73,9 +79,20 @@ public static class OmniWin32
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
+    }
+
     private sealed class ShellWindowState
     {
         public readonly HashSet<int> ProcessIds = new HashSet<int>();
+        public readonly List<IntPtr> Taskbars = new List<IntPtr>();
+        public readonly List<IntPtr> DesktopViews = new List<IntPtr>();
         public bool HasTaskbar;
         public bool HasDesktop;
     }
@@ -123,6 +140,10 @@ public static class OmniWin32
     private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
     [DllImport("user32.dll")]
     private static extern IntPtr GetParent(IntPtr child);
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
     [DllImport("user32.dll", SetLastError = true)]
@@ -244,8 +265,17 @@ public static class OmniWin32
         catch (InvalidOperationException) { return true; }
 
         state.ProcessIds.Add((int)pid);
-        state.HasTaskbar |= isTaskbar;
-        state.HasDesktop |= isDesktop;
+        if (isTaskbar)
+        {
+            state.Taskbars.Add(hwnd);
+            state.HasTaskbar = true;
+        }
+        if (isDesktop)
+        {
+            state.HasDesktop = true;
+            IntPtr desktopView = FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
+            if (desktopView != IntPtr.Zero) state.DesktopViews.Add(desktopView);
+        }
         return true;
     }
 
@@ -256,6 +286,64 @@ public static class OmniWin32
         try { EnumWindows(EnumerateShellWindow, GCHandle.ToIntPtr(handle)); }
         finally { handle.Free(); }
         return state;
+    }
+
+    private static bool IsAnyWindowVisible(List<IntPtr> windows)
+    {
+        foreach (IntPtr window in windows)
+            if (IsWindow(window) && IsWindowVisible(window)) return true;
+        return false;
+    }
+
+    private static bool ShowExplorerShellUi()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        if (!state.HasTaskbar || !state.HasDesktop || state.DesktopViews.Count == 0) return false;
+
+        var windows = new List<IntPtr>(state.Taskbars);
+        windows.AddRange(state.DesktopViews);
+        foreach (IntPtr window in windows)
+        {
+            if (!IsWindow(window)) continue;
+            ShowWindow(window, SW_SHOWNOACTIVATE);
+            if (!IsWindowVisible(window)) return false;
+        }
+        return true;
+    }
+
+    public static bool HideExplorerTaskbar()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        if (state.Taskbars.Count == 0) return false;
+
+        foreach (IntPtr taskbar in state.Taskbars)
+        {
+            if (!IsWindow(taskbar)) continue;
+            if (!ExplorerTaskbarVisibility.ContainsKey(taskbar))
+                ExplorerTaskbarVisibility.Add(taskbar, IsWindowVisible(taskbar));
+            ShowWindow(taskbar, SW_HIDE);
+            if (IsWindowVisible(taskbar))
+            {
+                RestoreExplorerTaskbar();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static bool RestoreExplorerTaskbar()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        foreach (IntPtr taskbar in state.Taskbars)
+        {
+            if (!IsWindow(taskbar)) continue;
+            bool originalVisibility;
+            if (!ExplorerTaskbarVisibility.TryGetValue(taskbar, out originalVisibility)) continue;
+            ShowWindow(taskbar, originalVisibility ? SW_SHOWNOACTIVATE : SW_HIDE);
+            if (IsWindowVisible(taskbar) != originalVisibility) return false;
+            ExplorerTaskbarVisibility.Remove(taskbar);
+        }
+        return true;
     }
 
     private sealed class EnumerationState
@@ -297,7 +385,9 @@ public static class OmniWin32
         int topLevelStyle = (style & ~(WS_CHILD | windowControls)) | WS_POPUP;
         SetLastError(0);
         IntPtr previousStyle = SetWindowLongPtr(window, GWL_STYLE, new IntPtr(topLevelStyle));
-        if (previousStyle == IntPtr.Zero && Marshal.GetLastWin32Error() != 0) return false;
+        int styleError = Marshal.GetLastWin32Error();
+        if (previousStyle == IntPtr.Zero && styleError != 0)
+            throw new InvalidOperationException("SetWindowLongPtr(GWL_STYLE) failed: " + styleError);
 
         SetLastError(0);
         IntPtr previousParent = SetParent(window, IntPtr.Zero);
@@ -305,7 +395,7 @@ public static class OmniWin32
         if (previousParent == IntPtr.Zero && parentError != 0)
         {
             SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
-            return false;
+            throw new InvalidOperationException("SetParent(NULL) failed: " + parentError);
         }
 
         IntPtr previousOwner = GetWindow(window, GW_OWNER);
@@ -319,20 +409,55 @@ public static class OmniWin32
             SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
             if (previousOwner != IntPtr.Zero)
                 SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
-            return false;
+            throw new InvalidOperationException("Clearing the desktop window owner failed: " + ownerError);
+        }
+
+        SetLastError(0);
+        IntPtr extendedStyle = GetWindowLongPtr(window, GWL_EXSTYLE);
+        if ((extendedStyle.ToInt64() & WS_EX_TOPMOST) != 0)
+        {
+            SetLastError(0);
+            IntPtr previousExtendedStyle = SetWindowLongPtr(
+                window, GWL_EXSTYLE, new IntPtr(extendedStyle.ToInt64() & ~WS_EX_TOPMOST)
+            );
+            int extendedStyleError = Marshal.GetLastWin32Error();
+            if (previousExtendedStyle == IntPtr.Zero && extendedStyleError != 0)
+            {
+                SetParent(window, previousParent);
+                SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+                if (previousOwner != IntPtr.Zero)
+                    SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
+                throw new InvalidOperationException("Clearing WS_EX_TOPMOST failed: " + extendedStyleError);
+            }
         }
 
         bool positioned = SetWindowPos(
             window, new IntPtr(1), x, y, Math.Max(1, width), Math.Max(1, height),
             SWP_NOACTIVATE | 0x0020
         );
-        if (positioned) return true;
+        if (!positioned)
+        {
+            int positionError = Marshal.GetLastWin32Error();
+            SetParent(window, previousParent);
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            if (previousOwner != IntPtr.Zero)
+                SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
+            throw new InvalidOperationException("SetWindowPos(HWND_BOTTOM) failed: " + positionError);
+        }
 
-        SetParent(window, previousParent);
-        SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
-        if (previousOwner != IntPtr.Zero)
-            SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
-        return false;
+        RECT actual = new RECT();
+        if (!GetWindowRect(window, out actual)
+            || actual.Left != x || actual.Top != y
+            || actual.Right - actual.Left != width
+            || actual.Bottom - actual.Top != height)
+        {
+            throw new InvalidOperationException(
+                "Desktop window bounds did not match the monitor: " +
+                actual.Left + "," + actual.Top + " " +
+                (actual.Right - actual.Left) + "x" + (actual.Bottom - actual.Top)
+            );
+        }
+        return true;
     }
 
     private static bool ReserveWorkArea(RECT requested)
@@ -452,6 +577,8 @@ public static class OmniWin32
             running = state.ProcessIds.Count > 0,
             taskbar = state.HasTaskbar,
             desktop = state.HasDesktop,
+            taskbarVisible = IsAnyWindowVisible(state.Taskbars),
+            desktopIconsVisible = IsAnyWindowVisible(state.DesktopViews),
             processIds = new List<int>(state.ProcessIds).ToArray()
         };
     }
@@ -479,6 +606,12 @@ public static class OmniWin32
         return false;
     }
 
+    public static bool StartExplorerShellVisible()
+    {
+        if (!StartExplorerShell()) return false;
+        return ShowExplorerShellUi();
+    }
+
     public static bool SetBounds(long hwnd, int x, int y, int width, int height)
     {
         bool updated = SetWindowPos(
@@ -494,7 +627,40 @@ public static class OmniWin32
 
     public static bool SetDesktop(long hwnd, int x, int y, int width, int height)
     {
+        IntPtr previousDpiContext = SetThreadDpiAwarenessContext(new IntPtr(-3));
+        if (previousDpiContext == IntPtr.Zero)
+        {
+            throw new InvalidOperationException(
+                "SetThreadDpiAwarenessContext failed: " +
+                Marshal.GetLastWin32Error().ToString(CultureInfo.InvariantCulture)
+            );
+        }
+        try
+        {
+            return SetDesktopWithMonitorBounds(hwnd, x, y, width, height);
+        }
+        finally
+        {
+            SetThreadDpiAwarenessContext(previousDpiContext);
+        }
+    }
+
+    private static bool SetDesktopWithMonitorBounds(long hwnd, int x, int y, int width, int height)
+    {
         IntPtr window = new IntPtr(hwnd);
+        IntPtr monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        if (monitor == IntPtr.Zero)
+            throw new InvalidOperationException("Could not locate the desktop window's monitor");
+        MONITORINFO monitorInfo = new MONITORINFO {
+            cbSize = Marshal.SizeOf(typeof(MONITORINFO))
+        };
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+            throw new InvalidOperationException("GetMonitorInfo failed: " + Marshal.GetLastWin32Error());
+        x = monitorInfo.rcMonitor.Left;
+        y = monitorInfo.rcMonitor.Top;
+        width = monitorInfo.rcMonitor.Right - x;
+        height = monitorInfo.rcMonitor.Bottom - y;
+
         IntPtr progman = FindWindow("Progman", null);
         if (progman == IntPtr.Zero)
         {
@@ -1394,12 +1560,12 @@ while ($null -ne ($line = $reader.ReadLine())) {
                     [string]$request.executable, [string]$request.arguments, [string]$request.directory
                 )
             }
-            'shell-status' { Get-ShellLauncherStatus }
-            { $_ -in 'machine-shell-apply', 'machine-shell-restore', 'machine-shell-update' } { Invoke-MachineShellPolicyAction $request }
-            { $_ -in 'machine-winlogon-apply', 'machine-winlogon-restore' } { Invoke-MachineWinlogonShellAction $request }
+            'machine-shell-restore' { Invoke-MachineShellPolicyAction $request }
+            'machine-winlogon-restore' { Invoke-MachineWinlogonShellAction $request }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
-            'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
-            { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
+            'explorer-shell-start' { [OmniWin32]::StartExplorerShellVisible() }
+            'taskbar-hide' { [OmniWin32]::HideExplorerTaskbar() }
+            'taskbar-restore' { [OmniWin32]::RestoreExplorerTaskbar() }
             default { throw "Unsupported native action: $($request.action)" }
         }
         $response = @{ requestId = $request.requestId; success = $true; result = $result }
@@ -1415,4 +1581,5 @@ if ($PipeName) {
     $pipe.Dispose()
 } else {
     [OmniWin32]::ResetAllDockReservations() | Out-Null
+    [OmniWin32]::RestoreExplorerTaskbar() | Out-Null
 }

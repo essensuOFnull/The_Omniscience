@@ -159,10 +159,26 @@ export default async function () {
     });
 
     if (process.platform === 'win32') {
+        const applyDesktopRole = async () => {
+            if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
+            await setWindowsDesktopWindow(global.mainWindow);
+        };
+        const handleDisplayMetricsChanged = (_event, _display, changedMetrics) => {
+            if (changedMetrics.includes('bounds') || changedMetrics.includes('workArea')) {
+                applyDesktopRole().catch((error) => {
+                    console.error('[desktop] failed to reapply desktop bounds:', error.message);
+                });
+            }
+        };
+
+        screen.on('display-metrics-changed', handleDisplayMetricsChanged);
+        global.mainWindow.once('closed', () => {
+            screen.removeListener('display-metrics-changed', handleDisplayMetricsChanged);
+        });
         global.mainWindow.once('ready-to-show', async () => {
             if (global.mainWindow.isDestroyed()) return;
             global.mainWindow.showInactive();
-            await setWindowsDesktopWindow(global.mainWindow);
+            await applyDesktopRole();
         });
     }
 

@@ -1,17 +1,18 @@
 import electronPkg from 'electron';
 const { app, dialog, session } = electronPkg;
-import { configureWindowsAutostart } from './ipc_nativeWindows.js';
+import { configureWindowsAutostart, restoreWindowsShellForAutostart } from './ipc_nativeWindows.js';
 
 export default async function () {
   await app.whenReady();
   if (process.platform === 'win32') {
     try {
+      await restoreWindowsShellForAutostart();
       await configureWindowsAutostart();
     } catch (error) {
       console.error('[windows-startup] configuration failed:', error.message);
       dialog.showErrorBox(
-        'Запуск Omniscience в Windows',
-        `Не удалось настроить автозапуск или оболочку текущего пользователя.\n\n${error.message}`
+        'Восстановление обычной оболочки Windows',
+        `Не удалось восстановить Explorer и обычную автозагрузку Omniscience.\n\n${error.message}`
       );
     }
   }

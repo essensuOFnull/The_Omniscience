@@ -3,7 +3,7 @@ const { app, BrowserWindow, dialog, ipcMain, screen } = electronPkg;
 import { spawn, execFile, exec } from 'child_process';
 import net from 'net';
 import { promisify } from 'util';
-import { access, readFile, writeFile, unlink } from 'fs/promises';
+import { access, readFile, unlink } from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
@@ -22,7 +22,7 @@ const execFileAsync = promisify(execFile);
 // потому что X11 работает асинхронно, и окно может исчезнуть в любой момент.
 process.on('unhandledRejection', (reason) => {
   if (DEBUG) console.warn('[nativeWindows] unhandledRejection:', reason?.message || reason);
-  if (process.platform === 'win32' && win32ShellMode) {
+  if (process.platform === 'win32' && win32TaskbarHidden) {
     recoverWindowsShell(reason?.stack || reason?.message || String(reason)).catch((error) => {
       console.error('[windows-shell] recovery after unhandled rejection failed:', error.message);
     });
@@ -34,7 +34,7 @@ process.on('uncaughtException', (err) => {
     return;
   }
   console.error('[nativeWindows] uncaughtException:', err);
-  if (process.platform === 'win32' && win32ShellMode) {
+  if (process.platform === 'win32' && win32TaskbarHidden) {
     recoverWindowsShell(err?.stack || err?.message || String(err)).catch((error) => {
       console.error('[windows-shell] recovery after uncaught exception failed:', error.message);
     });
@@ -75,7 +75,6 @@ if (process.platform !== 'win32') {
 }
 
 const WIN32_HOST_PATH = fileURLToPath(new URL('./windowsNativeHost.ps1', import.meta.url));
-const WIN32_SHELL_HOST_PATH = fileURLToPath(new URL('./OmniShellHost.exe', import.meta.url));
 const win32Pending = new Map();
 const win32AdminPending = new Map();
 const win32DeferredBounds = new Map();
@@ -96,9 +95,7 @@ let win32RefreshPromise = null;
 let win32Windows = [];
 let win32ActiveHwnd = null;
 let win32LastHash = '';
-let win32ShellMode = false;
-let win32UserShellEnabled = false;
-let win32ShellTransition = null;
+let win32TaskbarHidden = false;
 let win32ShellRecovery = null;
 let win32ShellFailureSuppressedUntil = 0;
 
@@ -190,19 +187,16 @@ function getWin32Hwnd(win) {
 
 export async function setWindowsDesktopWindow(win) {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return false;
-  const hwnd = getWin32Hwnd(win);
-  if (!hwnd) return false;
-  const bounds = screen.getPrimaryDisplay().bounds;
-  const rect = screen.dipToScreenRect(null, bounds);
   try {
+    const hwnd = getWin32Hwnd(win);
+    if (!hwnd) throw new Error('could not read desktop window handle');
+    const bounds = screen.getPrimaryDisplay().bounds;
+    const rect = screen.dipToScreenRect(null, bounds);
     const attached = await requestWin32('desktop', {
       hwnd, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
     });
-    if (!attached) {
-      console.warn('[nativeWindows:win32] Progman desktop host unavailable; using a regular window');
-      win.setBounds(bounds);
-    }
-    return attached;
+    if (!attached) throw new Error('native host did not attach the desktop window');
+    return true;
   } catch (error) {
     console.error('[nativeWindows:win32] failed to set desktop window role:', error.message);
     return false;
@@ -279,8 +273,20 @@ export async function setWindowsDockSuppressed(win, suppressed) {
   return updateWindowsDock(win);
 }
 
-export function getWindowsShellMode() {
-  return win32UserShellEnabled;
+export async function hideWindowsTaskbar() {
+  if (process.platform !== 'win32') return false;
+  const hidden = await requestWin32('taskbar-hide');
+  if (!hidden) throw new Error('Windows taskbar could not be hidden');
+  win32TaskbarHidden = true;
+  return true;
+}
+
+export async function restoreWindowsTaskbar() {
+  if (process.platform !== 'win32') return true;
+  const restored = await requestWin32('taskbar-restore');
+  if (!restored) throw new Error('Windows taskbar could not be restored');
+  win32TaskbarHidden = false;
+  return true;
 }
 
 const WINDOWS_USER_SHELL_KEY = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
@@ -344,15 +350,6 @@ function sameRegistrySnapshot(left, right) {
   return left.value === right.value && left.kind === right.kind;
 }
 
-async function getWindowsUserShellCommand() {
-  const args = [
-    WIN32_SHELL_HOST_PATH,
-    '--executable', process.execPath,
-  ];
-  if (!app.isPackaged) args.push('--app-path', app.getAppPath());
-  return args.map(quoteWindowsArgument).join(' ');
-}
-
 function isLegacyMachineShellBackup(backup, registry) {
   return backup?.schemaVersion === 3
     && backup.scope === 'machine'
@@ -370,84 +367,6 @@ function isWinlogonMachineShellBackup(backup) {
     && typeof backup.machinePolicyShell.exists === 'boolean'
     && backup.machineWinlogonShell
     && typeof backup.machineWinlogonShell.exists === 'boolean';
-}
-
-function isManagedWinlogonShell(backup, registry) {
-  if (!isWinlogonMachineShellBackup(backup)
-    || !sameRegistrySnapshot(registry.machinePolicyShell, backup.machinePolicyShell)) {
-    return false;
-  }
-  return registry.machineWinlogonShell?.value === backup.command
-    || sameRegistrySnapshot(registry.machineWinlogonShell, backup.machineWinlogonShell);
-}
-
-async function writeWindowsWinlogonShell(command, registry, previousBackup) {
-  const policySnapshot = isLegacyMachineShellBackup(previousBackup, registry)
-    ? previousBackup.machinePolicyShell
-    : isWinlogonMachineShellBackup(previousBackup)
-      ? previousBackup.machinePolicyShell
-      : registry.machinePolicyShell;
-  const winlogonSnapshot = isWinlogonMachineShellBackup(previousBackup)
-    ? previousBackup.machineWinlogonShell
-    : registry.machineWinlogonShell;
-  const backup = {
-    schemaVersion: 4,
-    scope: 'machine',
-    machinePolicyShell: policySnapshot,
-    machineWinlogonShell: winlogonSnapshot,
-    command,
-  };
-  try {
-    await requestWin32Admin('machine-winlogon-apply', {
-      command,
-      backup,
-      backupPath: getWindowsUserShellBackupPath(),
-      expectedMachinePolicyShell: registry.machinePolicyShell,
-      expectedMachineWinlogonShell: registry.machineWinlogonShell,
-      expectedPreviousBackup: previousBackup,
-    });
-  } catch (error) {
-    const [current, savedBackup] = await Promise.all([
-      readWindowsUserShellRegistry().catch(() => null),
-      readWindowsUserShellBackup().catch(() => null),
-    ]);
-    if (current?.machineWinlogonShell?.value !== command
-      || !sameRegistrySnapshot(current?.machinePolicyShell, policySnapshot)
-      || savedBackup?.command !== command
-      || !isWinlogonMachineShellBackup(savedBackup)
-      || !sameRegistrySnapshot(savedBackup.machinePolicyShell, backup.machinePolicyShell)
-      || !sameRegistrySnapshot(savedBackup.machineWinlogonShell, backup.machineWinlogonShell)) {
-      throw error;
-    }
-  }
-  const updated = await readWindowsUserShellRegistry();
-  if (updated.machineWinlogonShell?.value !== command
-    || !sameRegistrySnapshot(updated.machinePolicyShell, policySnapshot)) {
-    throw new Error('Winlogon shell update did not verify');
-  }
-  win32UserShellEnabled = true;
-  await configureWindowsAutostart();
-  return { ok: true, shellMode: true, restartRequired: true, migrated: true };
-}
-
-async function enableWindowsUserShell() {
-  const command = await getWindowsUserShellCommand();
-  const registry = await readWindowsUserShellRegistry();
-  if (registry.machineWinlogonShell?.value === command) {
-    win32UserShellEnabled = true;
-    await configureWindowsAutostart();
-    return { ok: true, shellMode: true, alreadyEnabled: true };
-  }
-  const previousBackup = await readWindowsUserShellBackup();
-  const legacyPolicyShell = isLegacyMachineShellBackup(previousBackup, registry);
-  const managedWinlogonShell = isManagedWinlogonShell(previousBackup, registry);
-  if (registry.machinePolicyShell?.exists && !legacyPolicyShell) {
-    throw new Error('A different machine-wide shell policy is already configured; refusing to overwrite it');
-  }
-  if (previousBackup && !legacyPolicyShell && !managedWinlogonShell) {
-    throw new Error('A previous machine shell backup exists but does not match current registry values; restore manually before continuing');
-  }
-  return writeWindowsWinlogonShell(command, registry, previousBackup);
 }
 
 async function restoreWindowsUserShell() {
@@ -498,97 +417,40 @@ async function restoreWindowsUserShell() {
   }
   await unlink(backupPath);
   await configureWindowsAutostart();
-  win32UserShellEnabled = false;
-  return { ok: true, shellMode: false, restartRequired: true };
+  return { ok: true, restartRequired: true };
 }
 
-export async function toggleWindowsUserShell() {
-  if (process.platform !== 'win32') return { ok: false, error: 'Windows only' };
-  if (win32ShellTransition) return win32ShellTransition;
-  win32ShellTransition = (async () => {
-    const command = await getWindowsUserShellCommand();
+export async function restoreWindowsShellForAutostart() {
+  if (process.platform !== 'win32') return false;
+  const backup = await readWindowsUserShellBackup();
+  if (!backup) {
     const registry = await readWindowsUserShellRegistry();
-    const backup = await readWindowsUserShellBackup();
-    const legacyPolicyShell = isLegacyMachineShellBackup(backup, registry);
-    const activeManagedWinlogonShell = isWinlogonMachineShellBackup(backup)
-      && registry.machineWinlogonShell?.value === backup.command;
-    const enabled = registry.machineWinlogonShell?.value === command
-      || legacyPolicyShell
-      || activeManagedWinlogonShell;
-    const needsMigration = legacyPolicyShell
-      || (activeManagedWinlogonShell && registry.machineWinlogonShell?.value !== command);
-    const confirmation = await dialog.showMessageBox(global.topbarWindow, {
-      type: 'warning',
-      title: 'Системная оболочка Windows',
-      message: needsMigration
-        ? 'Обновить системную оболочку или вернуть Explorer?'
-        : enabled
-          ? 'Вернуть Explorer как оболочку при следующем входе?'
-          : 'Назначить Omniscience оболочкой при следующем входе?',
-      detail: needsMigration
-        ? 'Обновление сохранит исходные значения в общем бэкапе и назначит актуальный host через HKLM Winlogon. Изменение затрагивает всех пользователей и требует UAC. При каждом входе потребуется подтвердить запуск повышенного Electron; при отмене host вернёт Explorer.'
-        : enabled
-          ? 'Будут восстановлены прежние значения HKLM Winlogon и политики оболочки. Текущая сессия не изменится.'
-          : 'Это системная настройка HKLM Winlogon, она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При каждом входе также потребуется подтвердить запуск повышенного Electron; при отмене или сбое host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
-      buttons: needsMigration
-        ? ['Обновить оболочку', 'Вернуть Explorer', 'Отмена']
-        : [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
-      defaultId: needsMigration ? 2 : 1,
-      cancelId: needsMigration ? 2 : 1,
-      noLink: true,
-    });
-    if (confirmation.response !== 0 && !(needsMigration && confirmation.response === 1)) {
-      return { ok: false, cancelled: true, shellMode: enabled };
+    if (/OmniShellHost\.exe/i.test(registry.machineWinlogonShell?.value || '')) {
+      throw new Error('Omniscience is still configured as the machine shell, but its recovery backup is missing');
     }
-    const result = needsMigration && confirmation.response === 1
-      ? await restoreWindowsUserShell()
-      : enabled && !needsMigration
-        ? await restoreWindowsUserShell()
-        : await enableWindowsUserShell();
-    global.topbarBroadcast?.();
-    await dialog.showMessageBox(global.topbarWindow, {
-      type: 'info',
-      title: 'Оболочка Windows',
-      message: result.migrated
-        ? 'Нативная оболочка Winlogon настроена.'
-        : result.shellMode
-          ? 'Omniscience назначена оболочкой для следующего входа.'
-          : 'Explorer восстановлен для следующего входа.',
-      detail: 'Настройка HKLM применяется ко всем пользователям после выхода из Windows и повторного входа. Для shell-режима Windows будет запрашивать подтверждение UAC при каждом входе.',
-      buttons: ['OK'],
-    });
-    return result;
-  })().catch(async (error) => {
-    console.error('[windows-shell] machine-wide shell update failed:', error.message);
-    await dialog.showErrorBox('Оболочка Windows', `Не удалось изменить системную оболочку.\n\n${error.message}`);
-    return { ok: false, shellMode: win32UserShellEnabled, error: error.message };
-  }).finally(() => {
-    win32ShellTransition = null;
-  });
-  return win32ShellTransition;
+    return false;
+  }
+
+  const registry = await readWindowsUserShellRegistry();
+  const managedShellIsActive = isLegacyMachineShellBackup(backup, registry)
+    || (isWinlogonMachineShellBackup(backup)
+      && registry.machineWinlogonShell?.value === backup.command);
+  if (!managedShellIsActive) return false;
+
+  await restoreWindowsUserShell();
+  return true;
 }
 
 export async function configureWindowsAutostart() {
   if (process.platform !== 'win32') return false;
   const registry = await readWindowsUserShellRegistry();
-  const shellCommand = await getWindowsUserShellCommand();
   const backup = await readWindowsUserShellBackup();
-  const shellEnabled = registry.machineWinlogonShell?.value === shellCommand
+  const shellEnabled = /OmniShellHost\.exe/i.test(registry.machineWinlogonShell?.value || '')
     || isLegacyMachineShellBackup(backup, registry)
     || (isWinlogonMachineShellBackup(backup)
       && registry.machineWinlogonShell?.value === backup.command);
   if (shellEnabled) {
-    win32UserShellEnabled = true;
-    if (registry.run?.exists) {
-      const script = [
-        "$ErrorActionPreference = 'Stop'",
-        `$runKey = '${WINDOWS_RUN_KEY}'`,
-        `$name = '${WINDOWS_RUN_NAME}'`,
-        'Remove-ItemProperty -LiteralPath $runKey -Name $name -ErrorAction Stop',
-      ].join('\n');
-      await runWindowsPowerShell(script);
-    }
-    return false;
+    throw new Error('Omniscience is still configured as the Windows shell; restore Explorer before configuring normal autostart');
   }
   const launchCommand = app.isPackaged
     ? quoteWindowsArgument(process.execPath)
@@ -609,31 +471,33 @@ export async function configureWindowsAutostart() {
 
 async function ensureExplorerShell() {
   if (process.platform !== 'win32') return true;
-  const status = await requestWin32('explorer-shell-status');
-  if (!status?.taskbar || !status?.desktop) {
+  let status = await requestWin32('explorer-shell-status');
+  if (!status?.taskbar) {
     const started = await requestWin32('explorer-shell-start');
-    if (!started) throw new Error('Explorer did not restore its desktop and taskbar');
+    if (!started) throw new Error('Explorer did not restore its taskbar');
+    status = await requestWin32('explorer-shell-status');
   }
-  if (global.mainWindow && !global.mainWindow.isDestroyed()) {
-    const attached = await setWindowsDesktopWindow(global.mainWindow);
-    if (!attached) {
-      console.warn('[windows-shell] Explorer is running, but desktop window could not be reattached');
-    }
+  if (!status?.taskbar) throw new Error('Explorer taskbar is unavailable');
+  const restored = await requestWin32('taskbar-restore');
+  if (!restored) throw new Error('Windows taskbar could not be restored');
+  status = await requestWin32('explorer-shell-status');
+  if (!status?.taskbarVisible) {
+    throw new Error('Explorer taskbar is not visible after restoration');
   }
-  win32ShellMode = false;
+  win32TaskbarHidden = false;
   global.topbarBroadcast?.();
   return true;
 }
 
 async function showWindowsShellError(reason, explorerRestored) {
   const detail = explorerRestored
-    ? 'Обычный рабочий стол и панель задач Explorer восстановлены.'
-    : 'Не удалось подтвердить восстановление Explorer. Запустите explorer.exe вручную через Диспетчер задач.';
+    ? 'Панель задач Explorer восстановлена.'
+    : 'Не удалось подтвердить восстановление панели. Запустите explorer.exe вручную через Диспетчер задач.';
   try {
     await dialog.showMessageBox({
       type: explorerRestored ? 'warning' : 'error',
-      title: 'Ошибка оболочки Omniscience',
-      message: 'Не удалось надёжно отобразить или переключить панель Omniscience.',
+      title: 'Ошибка панели Omniscience',
+      message: 'Не удалось надёжно отобразить панель Omniscience.',
       detail: `${reason || 'Ошибка отрисовки панели.'}\n\n${detail}`,
       buttons: ['OK'],
     });
@@ -645,7 +509,7 @@ async function showWindowsShellError(reason, explorerRestored) {
 export async function recoverWindowsShell(reason) {
   if (process.platform !== 'win32') return false;
   if (win32ShellRecovery) return win32ShellRecovery;
-  if (Date.now() < win32ShellFailureSuppressedUntil) return !win32ShellMode;
+  if (Date.now() < win32ShellFailureSuppressedUntil) return !win32TaskbarHidden;
   win32ShellFailureSuppressedUntil = Date.now() + 10000;
   win32ShellRecovery = (async () => {
     let restored = false;
@@ -667,10 +531,6 @@ export async function recoverWindowsShell(reason) {
 export async function restoreWindowsExplorerForShutdown() {
   if (process.platform !== 'win32') return true;
   try {
-    if (!win32ShellMode) {
-      const status = await requestWin32('explorer-shell-status');
-      if (status?.taskbar && status?.desktop) return true;
-    }
     await ensureExplorerShell();
     return true;
   } catch (error) {
@@ -2038,69 +1898,6 @@ function getWin32ShellCommand() {
   return command.map(quoteWindowsArgument).join(' ');
 }
 
-function getWin32ShellBackupPath() {
-  return path.join(app.getPath('userData'), 'shell-launcher-backup.json');
-}
-
-async function saveWin32ShellBackup(status) {
-  const backupPath = getWin32ShellBackupPath();
-  if (process.platform !== 'win32') {
-    throw new Error('Shell Launcher is only available on Windows');
-  }
-  try {
-    await access(backupPath);
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-    try {
-      await writeFile(backupPath, JSON.stringify(status, null, 2), { flag: 'wx' });
-    } catch (writeError) {
-      if (writeError.code !== 'EEXIST') throw writeError;
-    }
-  }
-}
-
-async function enableWin32ShellLauncher() {
-  const status = await requestWin32('shell-status');
-  if (!status.supported) return { ok: false, error: 'unsupported_edition', status };
-  if (!status.available) {
-    return { ok: false, error: 'shell_launcher_feature_disabled', status };
-  }
-  await saveWin32ShellBackup(status);
-  const updated = await requestWin32Admin('set-shell', { shell: getWin32ShellCommand() });
-  return { ok: true, status: updated };
-}
-
-async function restoreWin32ShellLauncher() {
-  const backupPath = getWin32ShellBackupPath();
-  let backup;
-  try {
-    backup = JSON.parse(await readFile(backupPath, 'utf8'));
-  } catch (err) {
-    if (err.code === 'ENOENT') return { ok: false, error: 'backup_not_found' };
-    throw err;
-  }
-  const status = await requestWin32('shell-status');
-  if (!status.supported || !status.available) {
-    return { ok: false, error: status.supported ? 'shell_launcher_feature_disabled' : 'unsupported_edition', status };
-  }
-  if (backup.sid !== status.sid) {
-    return { ok: false, error: 'backup_user_mismatch', status };
-  }
-  const updated = await requestWin32Admin('restore-shell', { backup });
-  await unlink(backupPath);
-  return { ok: true, status: updated };
-}
-
-async function resetWin32ShellLauncher() {
-  const status = await requestWin32('shell-status');
-  if (!status.supported) return { ok: false, error: 'unsupported_edition', status };
-  if (!status.available) {
-    return { ok: false, error: 'shell_launcher_feature_disabled', status };
-  }
-  const updated = await requestWin32Admin('remove-shell');
-  return { ok: true, status: updated };
-}
-
 function resolveTarget(id) {
   if (id == null) return null;
   try {
@@ -2317,58 +2114,12 @@ export default async function () {
     startWin32Host();
     refreshWin32Windows();
     win32RefreshTimer = setInterval(refreshWin32Windows, 500);
-    requestWin32('explorer-shell-status').then((status) => {
-      win32ShellMode = !(status?.taskbar && status?.desktop);
-      global.topbarBroadcast?.();
-    }).catch((error) => {
-      console.error('[windows-shell] initial Explorer state check failed:', error.message);
-    });
-    ipcMain.handle('windows:shell-launcher-status', async () => {
-      try {
-        const status = await requestWin32('shell-status');
-        let backupAvailable = false;
-        try {
-          await access(getWin32ShellBackupPath());
-          backupAvailable = true;
-        } catch (err) {
-          if (err.code !== 'ENOENT') throw err;
-        }
-        return { ...status, backupAvailable, adminHelperActive: !!win32AdminSocket };
-      } catch (err) {
-        console.error('[nativeWindows:win32] Shell Launcher status failed:', err.message);
-        return { available: false, error: err.message, adminHelperActive: !!win32AdminSocket };
-      }
-    });
     ipcMain.handle('windows:request-admin', async () => {
       try {
         await startWin32AdminHost();
         return { ok: true };
       } catch (err) {
         console.error('[nativeWindows:admin] helper startup failed:', err.message);
-        return { ok: false, error: err.message };
-      }
-    });
-    ipcMain.handle('windows:shell-launcher-enable', async () => {
-      try {
-        return await enableWin32ShellLauncher();
-      } catch (err) {
-        console.error('[nativeWindows:win32] Shell Launcher configuration failed:', err.message);
-        return { ok: false, error: err.message };
-      }
-    });
-    ipcMain.handle('windows:shell-launcher-restore', async () => {
-      try {
-        return await restoreWin32ShellLauncher();
-      } catch (err) {
-        console.error('[nativeWindows:win32] Shell Launcher restore failed:', err.message);
-        return { ok: false, error: err.message };
-      }
-    });
-    ipcMain.handle('windows:shell-launcher-reset', async () => {
-      try {
-        return await resetWin32ShellLauncher();
-      } catch (err) {
-        console.error('[nativeWindows:win32] Shell Launcher reset failed:', err.message);
         return { ok: false, error: err.message };
       }
     });

@@ -11,8 +11,6 @@ export default function TopBarContainer() {
     showClock: true,
     showClockMs: false,
     overviewOpen: false,
-    windowsShellMode: false,
-    shellSwitchAvailable: false,
   });
 
   useEffect(() => {
@@ -36,20 +34,6 @@ export default function TopBarContainer() {
     [],
   );
 
-  const toggleWindowsShell = useCallback(async () => {
-    const api = window.electron_topbar_API;
-    try {
-      const result = await api?.invoke('topbar:toggle-user-shell');
-      if (typeof result?.shellMode === 'boolean') {
-        setState((previous) => ({ ...previous, windowsShellMode: result.shellMode }));
-      }
-    } catch (error) {
-      api?.send('shell-session:renderer-error', {
-        message: `Shell toggle failed: ${error?.stack || error?.message || error}`,
-      });
-    }
-  }, []);
-
   return (
     <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <TopBar
@@ -63,7 +47,6 @@ export default function TopBarContainer() {
         onRequestSearch={() => send('topbar:open-search')}
         onRequestSettings={() => send('topbar:open-settings')}
         onRequestLogout={() => send('topbar:logout')}
-        onToggleWindowsShell={toggleWindowsShell}
       />
     </Box>
   );
