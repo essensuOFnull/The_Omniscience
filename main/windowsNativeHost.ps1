@@ -38,11 +38,17 @@ public static class OmniWin32
     private const uint ABM_QUERYPOS = 0x00000002;
     private const uint ABM_SETPOS = 0x00000003;
     private const uint ABE_TOP = 1;
+    private const uint SPI_SETWORKAREA = 0x002F;
+    private const uint SPI_GETWORKAREA = 0x0030;
+    private const uint SPIF_SENDCHANGE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const int WM_APP = 0x8000;
     private static readonly HashSet<IntPtr> AppBars = new HashSet<IntPtr>();
     private static readonly EnumWindowsProc WindowEnumerator = EnumerateWindow;
     private static readonly Dictionary<IntPtr, Thread> ActiveDrags = new Dictionary<IntPtr, Thread>();
+    private static RECT OriginalWorkArea;
+    private static bool HasOriginalWorkArea;
+    private static bool WorkAreaReserved;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
@@ -146,6 +152,8 @@ public static class OmniWin32
     private static extern IntPtr ShellExecute(IntPtr hwnd, string operation, string file, string parameters, string directory, int showCommand);
     [DllImport("shell32.dll")]
     private static extern UIntPtr SHAppBarMessage(uint message, ref APPBARDATA data);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint action, uint parameter, ref RECT value, uint flags);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -262,6 +270,63 @@ public static class OmniWin32
             rc = rect,
             lParam = IntPtr.Zero
         };
+    }
+
+    private static bool ReserveWorkArea(RECT requested)
+    {
+        RECT current = new RECT();
+        if (!SystemParametersInfo(SPI_GETWORKAREA, 0, ref current, 0)) return false;
+        if (!HasOriginalWorkArea)
+        {
+            OriginalWorkArea = current;
+            HasOriginalWorkArea = true;
+        }
+
+        RECT reserved = OriginalWorkArea;
+        int originalWidth = reserved.Right - reserved.Left;
+        if (originalWidth <= 0) return false;
+        if (requested.Left > reserved.Left + 2
+            || requested.Right < reserved.Right - 2
+            || requested.Top > reserved.Top + 2)
+        {
+            return false;
+        }
+
+        reserved.Top = Math.Max(reserved.Top, requested.Bottom);
+        if (reserved.Top >= reserved.Bottom) return false;
+        if (!SystemParametersInfo(SPI_SETWORKAREA, 0, ref reserved, SPIF_SENDCHANGE)) return false;
+        WorkAreaReserved = true;
+        return true;
+    }
+
+    private static bool RestoreWorkArea()
+    {
+        if (!HasOriginalWorkArea || !WorkAreaReserved)
+        {
+            HasOriginalWorkArea = false;
+            WorkAreaReserved = false;
+            return true;
+        }
+
+        RECT original = OriginalWorkArea;
+        if (!SystemParametersInfo(SPI_SETWORKAREA, 0, ref original, SPIF_SENDCHANGE)) return false;
+        HasOriginalWorkArea = false;
+        WorkAreaReserved = false;
+        return true;
+    }
+
+    private static bool PositionFallbackDock(IntPtr window, RECT requested, int width, int height)
+    {
+        if (!ReserveWorkArea(requested)) return false;
+        if (SetWindowPos(
+            window, new IntPtr(-1), requested.Left, requested.Top,
+            Math.Max(1, width), Math.Max(1, height), SWP_NOACTIVATE
+        ))
+        {
+            return true;
+        }
+        RestoreWorkArea();
+        return false;
     }
 
     private static string GetImagePath(uint pid)
@@ -381,25 +446,43 @@ public static class OmniWin32
     public static bool SetDock(long hwnd, int x, int y, int width, int height)
     {
         IntPtr window = new IntPtr(hwnd);
+        int requestedHeight = Math.Max(1, height);
         RECT requested = new RECT {
-            Left = x, Top = y, Right = x + Math.Max(1, width), Bottom = y + Math.Max(1, height)
+            Left = x, Top = y, Right = x + Math.Max(1, width), Bottom = y + requestedHeight
         };
         APPBARDATA data = NewAppBarData(window, requested);
         if (!AppBars.Contains(window))
         {
-            if (SHAppBarMessage(ABM_NEW, ref data) == UIntPtr.Zero) return false;
+            if (SHAppBarMessage(ABM_NEW, ref data) == UIntPtr.Zero)
+            {
+                return PositionFallbackDock(window, requested, width, requestedHeight);
+            }
             AppBars.Add(window);
         }
 
         data = NewAppBarData(window, requested);
-        SHAppBarMessage(ABM_QUERYPOS, ref data);
-        data.rc = requested;
-        SHAppBarMessage(ABM_SETPOS, ref data);
-        return SetWindowPos(
-            window, new IntPtr(-1), x, y,
-            Math.Max(1, width), Math.Max(1, height),
+        if (SHAppBarMessage(ABM_QUERYPOS, ref data) == UIntPtr.Zero)
+        {
+            RemoveDock(hwnd);
+            return PositionFallbackDock(window, requested, width, requestedHeight);
+        }
+        data.rc.Bottom = data.rc.Top + requestedHeight;
+        if (SHAppBarMessage(ABM_SETPOS, ref data) == UIntPtr.Zero)
+        {
+            RemoveDock(hwnd);
+            return PositionFallbackDock(window, requested, width, requestedHeight);
+        }
+        int finalWidth = data.rc.Right - data.rc.Left;
+        int finalHeight = data.rc.Bottom - data.rc.Top;
+        if (finalWidth <= 0 || finalHeight <= 0) return false;
+        bool positioned = SetWindowPos(
+            window, new IntPtr(-1), data.rc.Left, data.rc.Top,
+            finalWidth, finalHeight,
             SWP_NOACTIVATE
         );
+        if (positioned) return true;
+        RemoveDock(hwnd);
+        return PositionFallbackDock(window, requested, width, requestedHeight);
     }
 
     public static bool ResetDock(long hwnd)
@@ -410,15 +493,35 @@ public static class OmniWin32
         APPBARDATA data = NewAppBarData(window, new RECT());
         UIntPtr removed = SHAppBarMessage(ABM_REMOVE, ref data);
         AppBars.Remove(window);
-        return !wasRegistered || removed != UIntPtr.Zero;
+        bool restored = RestoreWorkArea();
+        return (!wasRegistered || removed != UIntPtr.Zero) && restored;
     }
 
     public static bool RemoveDock(long hwnd)
     {
         IntPtr window = new IntPtr(hwnd);
-        if (!AppBars.Remove(window)) return true;
-        APPBARDATA data = NewAppBarData(window, new RECT());
-        return SHAppBarMessage(ABM_REMOVE, ref data) != UIntPtr.Zero;
+        bool wasRegistered = AppBars.Remove(window);
+        bool removed = true;
+        if (wasRegistered)
+        {
+            APPBARDATA data = NewAppBarData(window, new RECT());
+            removed = SHAppBarMessage(ABM_REMOVE, ref data) != UIntPtr.Zero;
+        }
+        bool restored = RestoreWorkArea();
+        return removed && restored;
+    }
+
+    public static bool ResetAllDockReservations()
+    {
+        bool removed = true;
+        foreach (IntPtr window in new List<IntPtr>(AppBars))
+        {
+            APPBARDATA data = NewAppBarData(window, new RECT());
+            if (SHAppBarMessage(ABM_REMOVE, ref data) == UIntPtr.Zero) removed = false;
+        }
+        AppBars.Clear();
+        bool restored = RestoreWorkArea();
+        return removed && restored;
     }
 
     public static bool SetCursor(int x, int y) { return SetCursorPos(x, y); }
@@ -969,6 +1072,157 @@ function Invoke-MachineShellPolicyAction($request) {
     }
 }
 
+function Invoke-MachineWinlogonShellAction($request) {
+    if (-not $PipeName) {
+        throw 'Machine Winlogon shell changes require the elevated helper'
+    }
+    $principal = [Security.Principal.WindowsPrincipal]::new(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Administrator approval is required to change the machine Winlogon shell'
+    }
+
+    $machinePolicyPath = 'Software\Microsoft\Windows\CurrentVersion\Policies\System'
+    $machineWinlogonPath = 'Software\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    $machineHive = [Microsoft.Win32.Registry]::LocalMachine
+    $policyBefore = Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell'
+    $winlogonBefore = Get-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell'
+    $backupPath = [System.IO.Path]::GetFullPath([string]$request.backupPath)
+    $expectedBackupPath = [System.IO.Path]::GetFullPath(
+        (Join-Path (Join-Path $env:ProgramData 'The_Omniscience') 'windows-shell-backup.json')
+    )
+    if (-not [string]::Equals(
+        $backupPath, $expectedBackupPath, [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw 'Invalid shared shell backup path'
+    }
+
+    $backupExisted = [System.IO.File]::Exists($backupPath)
+    $previousBackupBytes = $null
+    if ($backupExisted) {
+        $previousBackupBytes = [System.IO.File]::ReadAllBytes($backupPath)
+    }
+    $backupWritten = $false
+    try {
+        if ($request.action -eq 'machine-winlogon-apply') {
+            $expectedStateMatches = (Test-UserRegistrySnapshot $policyBefore $request.expectedMachinePolicyShell) -and
+                (Test-UserRegistrySnapshot $winlogonBefore $request.expectedMachineWinlogonShell)
+            if (-not $expectedStateMatches) {
+                throw 'Machine shell values changed before approval; no changes were made'
+            }
+            $backupIsValid = ($request.backup.schemaVersion -eq 4) -and
+                ($request.backup.scope -eq 'machine') -and
+                ($request.backup.command -ceq [string]$request.command) -and
+                (Test-UserRegistrySnapshot $winlogonBefore $request.backup.machineWinlogonShell) -and
+                ($request.backup.machinePolicyShell -ne $null)
+            if (-not $backupIsValid) {
+                throw 'Invalid Winlogon shell backup data'
+            }
+
+            if ($null -eq $request.expectedPreviousBackup) {
+                if ($backupExisted) {
+                    throw 'An unexpected machine shell backup already exists'
+                }
+                if (-not (Test-UserRegistrySnapshot $policyBefore $request.backup.machinePolicyShell)) {
+                    throw 'Original machine policy snapshot does not match the current registry'
+                }
+            } else {
+                if (-not $backupExisted) {
+                    throw 'The expected legacy machine shell backup is missing'
+                }
+                $savedBackup = [System.Text.Encoding]::UTF8.GetString($previousBackupBytes) | ConvertFrom-Json
+                $legacyBackupMatches = ($savedBackup.schemaVersion -eq 3) -and
+                    ($savedBackup.scope -eq 'machine') -and
+                    ($savedBackup.command -ceq [string]$policyBefore.value) -and
+                    ($request.expectedPreviousBackup.command -ceq [string]$savedBackup.command) -and
+                    (Test-UserRegistrySnapshot $savedBackup.machinePolicyShell $request.backup.machinePolicyShell)
+                if (-not $legacyBackupMatches) {
+                    throw 'The existing machine shell backup does not match the current policy'
+                }
+            }
+
+            [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($backupPath)) | Out-Null
+            $backupTemporaryPath = "$backupPath.$PID.tmp"
+            $backupJson = ConvertTo-Json -InputObject $request.backup -Compress -Depth 10
+            [System.IO.File]::WriteAllText(
+                $backupTemporaryPath, $backupJson, [System.Text.UTF8Encoding]::new($false)
+            )
+            Move-Item -LiteralPath $backupTemporaryPath -Destination $backupPath -Force
+            $backupWritten = $true
+
+            Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $request.backup.machinePolicyShell
+            Set-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell' @{
+                exists = $true
+                value = [string]$request.command
+                kind = 'String'
+            }
+            $applyVerified = (Test-UserRegistrySnapshot `
+                (Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell') `
+                $request.backup.machinePolicyShell) -and
+                ((Get-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell').value -ceq [string]$request.command)
+            if (-not $applyVerified) {
+                throw 'Machine Winlogon shell update did not verify'
+            }
+        } elseif ($request.action -eq 'machine-winlogon-restore') {
+            $backup = $request.backup
+            $restoreStateMatches = ($backup.schemaVersion -eq 4) -and
+                ($backup.scope -eq 'machine') -and
+                ($winlogonBefore.value -ceq [string]$backup.command) -and
+                (Test-UserRegistrySnapshot $policyBefore $backup.machinePolicyShell)
+            if (-not $restoreStateMatches) {
+                throw 'Machine shell values changed; refusing to restore over another shell'
+            }
+            if (-not $backupExisted) {
+                throw 'The shared machine shell backup is missing'
+            }
+            $savedBackup = [System.Text.Encoding]::UTF8.GetString($previousBackupBytes) | ConvertFrom-Json
+            $backupMatches = ($savedBackup.schemaVersion -eq 4) -and
+                ($savedBackup.scope -eq 'machine') -and
+                ($savedBackup.command -ceq [string]$backup.command) -and
+                (Test-UserRegistrySnapshot $savedBackup.machinePolicyShell $backup.machinePolicyShell) -and
+                (Test-UserRegistrySnapshot $savedBackup.machineWinlogonShell $backup.machineWinlogonShell)
+            if (-not $backupMatches) {
+                throw 'The shared Winlogon shell backup does not match the requested restore'
+            }
+            Set-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell' $backup.machineWinlogonShell
+            Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $backup.machinePolicyShell
+            $restoreVerified = (Test-UserRegistrySnapshot `
+                (Get-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell') `
+                $backup.machineWinlogonShell) -and
+                (Test-UserRegistrySnapshot `
+                    (Get-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell') `
+                    $backup.machinePolicyShell)
+            if (-not $restoreVerified) {
+                throw 'Machine Winlogon shell restoration did not verify'
+            }
+        } else {
+            throw "Unsupported machine Winlogon shell action: $($request.action)"
+        }
+        return $true
+    } catch {
+        $failure = $_
+        try {
+            Set-UserRegistrySnapshot $machineHive $machinePolicyPath 'Shell' $policyBefore
+            Set-UserRegistrySnapshot $machineHive $machineWinlogonPath 'Shell' $winlogonBefore
+        } catch {
+            throw "Winlogon shell operation failed and registry rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+        }
+        if ($backupWritten) {
+            try {
+                if ($backupExisted) {
+                    [System.IO.File]::WriteAllBytes($backupPath, $previousBackupBytes)
+                } else {
+                    [System.IO.File]::Delete($backupPath)
+                }
+            } catch {
+                throw "Winlogon shell operation failed and backup rollback was incomplete: $($failure.Exception.Message); $($_.Exception.Message)"
+            }
+        }
+        throw $failure
+    }
+}
+
 while ($null -ne ($line = $reader.ReadLine())) {
     try {
         $request = ConvertFrom-Json -InputObject $line
@@ -1013,6 +1267,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
             }
             'shell-status' { Get-ShellLauncherStatus }
             { $_ -in 'machine-shell-apply', 'machine-shell-restore', 'machine-shell-update' } { Invoke-MachineShellPolicyAction $request }
+            { $_ -in 'machine-winlogon-apply', 'machine-winlogon-restore' } { Invoke-MachineWinlogonShellAction $request }
             'explorer-shell-status' { [OmniWin32]::GetExplorerShellStatus() }
             'explorer-shell-start' { [OmniWin32]::StartExplorerShell() }
             { $_ -in 'set-shell', 'restore-shell', 'remove-shell' } { Invoke-ShellLauncherAction $request }
@@ -1029,4 +1284,6 @@ if ($PipeName) {
     $writer.Dispose()
     $reader.Dispose()
     $pipe.Dispose()
+} else {
+    [OmniWin32]::ResetAllDockReservations() | Out-Null
 }

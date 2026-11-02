@@ -286,6 +286,7 @@ export function getWindowsShellMode() {
 const WINDOWS_USER_SHELL_KEY = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
 const WINDOWS_USER_SHELL_POLICY_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
 const WINDOWS_MACHINE_SHELL_POLICY_KEY = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
+const WINDOWS_MACHINE_WINLOGON_KEY = 'HKLM:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
 const WINDOWS_RUN_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const WINDOWS_RUN_NAME = 'The_Omniscience';
 
@@ -306,6 +307,7 @@ async function readWindowsUserShellRegistry() {
     `$shellKey = '${WINDOWS_USER_SHELL_KEY}'`,
     `$policyKey = '${WINDOWS_USER_SHELL_POLICY_KEY}'`,
     `$machinePolicyKey = '${WINDOWS_MACHINE_SHELL_POLICY_KEY}'`,
+    `$machineWinlogonKey = '${WINDOWS_MACHINE_WINLOGON_KEY}'`,
     `$runKey = '${WINDOWS_RUN_KEY}'`,
     'function Read-RegistryValue($key, $name) {',
     '  if (Test-Path -LiteralPath $key) {',
@@ -317,7 +319,7 @@ async function readWindowsUserShellRegistry() {
     '  return @{ exists = $false; value = $null; kind = $null }',
     '}',
     '$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
-    '$result = @{ sid = $sid; shell = (Read-RegistryValue $shellKey "Shell"); policyShell = (Read-RegistryValue $policyKey "Shell"); machinePolicyShell = (Read-RegistryValue $machinePolicyKey "Shell"); run = (Read-RegistryValue $runKey "The_Omniscience") }',
+    '$result = @{ sid = $sid; shell = (Read-RegistryValue $shellKey "Shell"); policyShell = (Read-RegistryValue $policyKey "Shell"); machinePolicyShell = (Read-RegistryValue $machinePolicyKey "Shell"); machineWinlogonShell = (Read-RegistryValue $machineWinlogonKey "Shell"); run = (Read-RegistryValue $runKey "The_Omniscience") }',
     '$result | ConvertTo-Json -Compress -Depth 4',
   ].join('\n');
   return JSON.parse(await runWindowsPowerShell(script));
@@ -351,117 +353,133 @@ async function getWindowsUserShellCommand() {
   return args.map(quoteWindowsArgument).join(' ');
 }
 
-async function writeWindowsMachineShellPolicy(command, backup, expectedMachinePolicyShell) {
-  try {
-    await requestWin32Admin('machine-shell-apply', {
-      command,
-      backup,
-      backupPath: getWindowsUserShellBackupPath(),
-      expectedMachinePolicyShell,
-    });
-  } catch (error) {
-    const [current, savedBackup] = await Promise.all([
-      readWindowsUserShellRegistry().catch(() => null),
-      readWindowsUserShellBackup().catch(() => null),
-    ]);
-    if (current?.machinePolicyShell?.value !== command
-      || savedBackup?.command !== command
-      || !sameRegistrySnapshot(savedBackup.machinePolicyShell, backup.machinePolicyShell)) {
-      throw error;
-    }
-  }
-}
-
-function isMachineShellBackup(backup) {
+function isLegacyMachineShellBackup(backup, registry) {
   return backup?.schemaVersion === 3
     && backup.scope === 'machine'
     && typeof backup.command === 'string'
+    && registry.machinePolicyShell?.value === backup.command
     && backup.machinePolicyShell
     && typeof backup.machinePolicyShell.exists === 'boolean';
 }
 
-async function updateWindowsMachineShellPolicy(command, backup) {
+function isWinlogonMachineShellBackup(backup) {
+  return backup?.schemaVersion === 4
+    && backup.scope === 'machine'
+    && typeof backup.command === 'string'
+    && backup.machinePolicyShell
+    && typeof backup.machinePolicyShell.exists === 'boolean'
+    && backup.machineWinlogonShell
+    && typeof backup.machineWinlogonShell.exists === 'boolean';
+}
+
+async function writeWindowsWinlogonShell(command, registry, previousBackup) {
+  const policySnapshot = isLegacyMachineShellBackup(previousBackup, registry)
+    ? previousBackup.machinePolicyShell
+    : registry.machinePolicyShell;
+  const backup = {
+    schemaVersion: 4,
+    scope: 'machine',
+    machinePolicyShell: policySnapshot,
+    machineWinlogonShell: registry.machineWinlogonShell,
+    command,
+  };
   try {
-    await requestWin32Admin('machine-shell-update', {
-      expectedCommand: backup.command,
+    await requestWin32Admin('machine-winlogon-apply', {
       command,
+      backup,
       backupPath: getWindowsUserShellBackupPath(),
+      expectedMachinePolicyShell: registry.machinePolicyShell,
+      expectedMachineWinlogonShell: registry.machineWinlogonShell,
+      expectedPreviousBackup: previousBackup,
     });
   } catch (error) {
     const [current, savedBackup] = await Promise.all([
       readWindowsUserShellRegistry().catch(() => null),
       readWindowsUserShellBackup().catch(() => null),
     ]);
-    if (current?.machinePolicyShell?.value !== command
+    if (current?.machineWinlogonShell?.value !== command
+      || !sameRegistrySnapshot(current?.machinePolicyShell, policySnapshot)
       || savedBackup?.command !== command
-      || !sameRegistrySnapshot(savedBackup.machinePolicyShell, backup.machinePolicyShell)) {
+      || !isWinlogonMachineShellBackup(savedBackup)
+      || !sameRegistrySnapshot(savedBackup.machinePolicyShell, backup.machinePolicyShell)
+      || !sameRegistrySnapshot(savedBackup.machineWinlogonShell, backup.machineWinlogonShell)) {
       throw error;
     }
   }
   const updated = await readWindowsUserShellRegistry();
-  if (updated.machinePolicyShell?.value !== command) {
-    throw new Error('Native shell host update did not verify');
+  if (updated.machineWinlogonShell?.value !== command
+    || !sameRegistrySnapshot(updated.machinePolicyShell, policySnapshot)) {
+    throw new Error('Winlogon shell update did not verify');
   }
   win32UserShellEnabled = true;
   await configureWindowsAutostart();
-  return { ok: true, shellMode: true, restartRequired: true, updated: true };
+  return { ok: true, shellMode: true, restartRequired: true, migrated: true };
 }
 
 async function enableWindowsUserShell() {
   const command = await getWindowsUserShellCommand();
   const registry = await readWindowsUserShellRegistry();
-  if (registry.machinePolicyShell?.value === command) {
+  if (registry.machineWinlogonShell?.value === command) {
     win32UserShellEnabled = true;
     await configureWindowsAutostart();
     return { ok: true, shellMode: true, alreadyEnabled: true };
   }
-  if (registry.machinePolicyShell?.exists) {
+  const previousBackup = await readWindowsUserShellBackup();
+  const legacyPolicyShell = isLegacyMachineShellBackup(previousBackup, registry);
+  if (registry.machinePolicyShell?.exists && !legacyPolicyShell) {
     throw new Error('A different machine-wide shell policy is already configured; refusing to overwrite it');
   }
-  const previousBackup = await readWindowsUserShellBackup();
-  if (previousBackup) {
-    if (!(previousBackup.schemaVersion === 3
-      && previousBackup.scope === 'machine'
-      && typeof previousBackup.command === 'string'
-      && sameRegistrySnapshot(registry.machinePolicyShell, previousBackup.machinePolicyShell))) {
-      throw new Error('A machine shell backup already exists but the machine policy does not match; restore it before continuing');
-    }
+  if (previousBackup && !legacyPolicyShell) {
+    throw new Error('A previous machine shell backup exists but does not match current registry values; restore manually before continuing');
   }
-  const backup = {
-    schemaVersion: 3,
-    scope: 'machine',
-    machinePolicyShell: registry.machinePolicyShell,
-    command,
-  };
-  await writeWindowsMachineShellPolicy(command, backup, registry.machinePolicyShell);
-  win32UserShellEnabled = true;
-  await configureWindowsAutostart();
-  return { ok: true, shellMode: true, restartRequired: true };
+  return writeWindowsWinlogonShell(command, registry, previousBackup);
 }
 
 async function restoreWindowsUserShell() {
   const backupPath = getWindowsUserShellBackupPath();
   const backup = JSON.parse(await readFile(backupPath, 'utf8'));
-  if (backup.schemaVersion !== 3 || backup.scope !== 'machine' || typeof backup.command !== 'string') {
+  const isWinlogonBackup = isWinlogonMachineShellBackup(backup);
+  const isLegacyBackup = backup?.schemaVersion === 3
+    && backup.scope === 'machine'
+    && typeof backup.command === 'string';
+  if (!isWinlogonBackup && !isLegacyBackup) {
     throw new Error('Windows shell backup has an unsupported format');
   }
   const registry = await readWindowsUserShellRegistry();
-  if (registry.machinePolicyShell?.value !== backup.command) {
-    throw new Error('The machine-wide shell policy changed; refusing to overwrite it');
+  const currentShell = isWinlogonBackup
+    ? registry.machineWinlogonShell
+    : registry.machinePolicyShell;
+  if (currentShell?.value !== backup.command) {
+    throw new Error('The machine-wide shell changed; refusing to overwrite it');
   }
   try {
-    await requestWin32Admin('machine-shell-restore', {
-      expectedCommand: backup.command,
-      machinePolicyShell: backup.machinePolicyShell,
-      backupPath,
-    });
+    if (isWinlogonBackup) {
+      await requestWin32Admin('machine-winlogon-restore', {
+        backup,
+        backupPath,
+      });
+    } else {
+      await requestWin32Admin('machine-shell-restore', {
+        expectedCommand: backup.command,
+        machinePolicyShell: backup.machinePolicyShell,
+        backupPath,
+      });
+    }
   } catch (error) {
     const current = await readWindowsUserShellRegistry().catch(() => null);
-    if (current?.machinePolicyShell?.value === backup.command) throw error;
+    const currentCommand = isWinlogonBackup
+      ? current?.machineWinlogonShell?.value
+      : current?.machinePolicyShell?.value;
+    if (currentCommand === backup.command) throw error;
   }
   const restored = await readWindowsUserShellRegistry();
-  if (!sameRegistrySnapshot(restored.machinePolicyShell, backup.machinePolicyShell)) {
-    throw new Error('Machine shell policy restoration did not verify');
+  if (isWinlogonBackup) {
+    if (!sameRegistrySnapshot(restored.machineWinlogonShell, backup.machineWinlogonShell)
+      || !sameRegistrySnapshot(restored.machinePolicyShell, backup.machinePolicyShell)) {
+      throw new Error('Machine Winlogon shell restoration did not verify');
+    }
+  } else if (!sameRegistrySnapshot(restored.machinePolicyShell, backup.machinePolicyShell)) {
+    throw new Error('Legacy machine policy restoration did not verify');
   }
   await unlink(backupPath);
   await configureWindowsAutostart();
@@ -476,47 +494,47 @@ export async function toggleWindowsUserShell() {
     const command = await getWindowsUserShellCommand();
     const registry = await readWindowsUserShellRegistry();
     const backup = await readWindowsUserShellBackup();
-    const currentCommand = registry.machinePolicyShell?.value;
-    const managedLegacyShell = currentCommand !== command
-      && isMachineShellBackup(backup)
-      && backup.command === currentCommand;
-    const enabled = currentCommand === command || managedLegacyShell;
+    const legacyPolicyShell = isLegacyMachineShellBackup(backup, registry);
+    const enabled = registry.machineWinlogonShell?.value === command || legacyPolicyShell;
+    const needsMigration = legacyPolicyShell;
     const confirmation = await dialog.showMessageBox(global.topbarWindow, {
       type: 'warning',
       title: 'Системная оболочка Windows',
-      message: managedLegacyShell
-        ? 'Обновить shell launcher или вернуть Explorer?'
+      message: needsMigration
+        ? 'Перенести оболочку в стандартную настройку Winlogon или вернуть Explorer?'
         : enabled
           ? 'Вернуть Explorer как оболочку при следующем входе?'
           : 'Назначить Omniscience оболочкой при следующем входе?',
-      detail: managedLegacyShell
-        ? 'Обновление заменит старый PowerShell launcher на быстрый нативный host и отключит дублирующую автозагрузку. Можно также восстановить Explorer. Изменение затрагивает всех пользователей и требует UAC.'
+      detail: needsMigration
+        ? 'Текущая машинная политика не запускается Windows на этом компьютере. Перенос сохранит исходный Explorer и прежнюю политику в общем бэкапе, а затем назначит host через HKLM Winlogon. Изменение затрагивает всех пользователей и требует UAC.'
         : enabled
-          ? 'Будет восстановлено прежнее значение системной политики HKLM. Текущая сессия не изменится.'
-          : 'Это системная политика HKLM и она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При выходе или сбое Omniscience нативный host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
-      buttons: managedLegacyShell
-        ? ['Обновить launcher', 'Вернуть Explorer', 'Отмена']
+          ? 'Будут восстановлены прежние значения HKLM Winlogon и политики оболочки. Текущая сессия не изменится.'
+          : 'Это системная настройка HKLM Winlogon, она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При выходе или сбое Omniscience нативный host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
+      buttons: needsMigration
+        ? ['Перенести в Winlogon', 'Вернуть Explorer', 'Отмена']
         : [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
-      defaultId: managedLegacyShell ? 2 : 1,
-      cancelId: managedLegacyShell ? 2 : 1,
+      defaultId: needsMigration ? 2 : 1,
+      cancelId: needsMigration ? 2 : 1,
       noLink: true,
     });
-    if (confirmation.response !== 0 && !(managedLegacyShell && confirmation.response === 1)) {
+    if (confirmation.response !== 0 && !(needsMigration && confirmation.response === 1)) {
       return { ok: false, cancelled: true, shellMode: enabled };
     }
-    const result = managedLegacyShell && confirmation.response === 0
-      ? await updateWindowsMachineShellPolicy(command, backup)
-      : enabled ? await restoreWindowsUserShell() : await enableWindowsUserShell();
+    const result = needsMigration && confirmation.response === 1
+      ? await restoreWindowsUserShell()
+      : enabled && !needsMigration
+        ? await restoreWindowsUserShell()
+        : await enableWindowsUserShell();
     global.topbarBroadcast?.();
     await dialog.showMessageBox(global.topbarWindow, {
       type: 'info',
       title: 'Оболочка Windows',
-      message: result.updated
-        ? 'Нативный shell launcher настроен.'
+      message: result.migrated
+        ? 'Нативная оболочка Winlogon настроена.'
         : result.shellMode
           ? 'Omniscience назначена оболочкой для следующего входа.'
           : 'Explorer восстановлен для следующего входа.',
-      detail: 'Системная политика применяется ко всем пользователям после выхода из Windows и повторного входа.',
+      detail: 'Настройка HKLM применяется ко всем пользователям после выхода из Windows и повторного входа.',
       buttons: ['OK'],
     });
     return result;
@@ -535,8 +553,8 @@ export async function configureWindowsAutostart() {
   const registry = await readWindowsUserShellRegistry();
   const shellCommand = await getWindowsUserShellCommand();
   const backup = await readWindowsUserShellBackup();
-  const shellEnabled = registry.machinePolicyShell?.value === shellCommand
-    || (isMachineShellBackup(backup) && backup.command === registry.machinePolicyShell?.value);
+  const shellEnabled = registry.machineWinlogonShell?.value === shellCommand
+    || isLegacyMachineShellBackup(backup, registry);
   if (shellEnabled) {
     win32UserShellEnabled = true;
     if (registry.run?.exists) {
@@ -2335,7 +2353,14 @@ export default async function () {
     app.once('will-quit', () => {
       if (win32RefreshTimer) clearInterval(win32RefreshTimer);
       win32RefreshTimer = null;
-      if (win32Host && !win32Host.killed) win32Host.kill();
+      if (win32Host && !win32Host.killed) {
+        const host = win32Host;
+        if (host.stdin && !host.stdin.destroyed) host.stdin.end();
+        const shutdownTimer = setTimeout(() => {
+          if (!host.killed) host.kill();
+        }, 1500);
+        shutdownTimer.unref();
+      }
       win32Host = null;
       if (win32AdminSocket) win32AdminSocket.end();
       win32AdminSocket = null;

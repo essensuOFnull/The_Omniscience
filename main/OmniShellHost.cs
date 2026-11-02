@@ -12,6 +12,7 @@ internal static class OmniShellHost
 
     private static int Main(string[] args)
     {
+        WriteLog("Shell host starting.");
         string executable = null;
         string appPath = null;
         for (int i = 0; i < args.Length; i++)
@@ -52,11 +53,9 @@ internal static class OmniShellHost
                 {
                     throw new InvalidOperationException("Windows did not start the Electron process.");
                 }
+                WriteLog("Electron process started with PID " + application.Id + ".");
                 application.WaitForExit();
-                if (application.ExitCode != 0)
-                {
-                    WriteLog("Electron exited with code " + application.ExitCode + ".");
-                }
+                WriteLog("Electron process exited with code " + application.ExitCode + ".");
             }
         }
         catch (Exception error)
@@ -100,11 +99,13 @@ internal static class OmniShellHost
     {
         if (FindWindow("Shell_TrayWnd", null) != IntPtr.Zero)
         {
+            WriteLog("Explorer taskbar is already available; fallback skipped.");
             return;
         }
 
         try
         {
+            WriteLog("Explorer taskbar is absent; starting Explorer fallback.");
             string explorerPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.Windows),
                 "explorer.exe"
@@ -124,6 +125,7 @@ internal static class OmniShellHost
                 {
                     if (FindWindow("Shell_TrayWnd", null) != IntPtr.Zero)
                     {
+                        WriteLog("Explorer taskbar appeared.");
                         return;
                     }
                     Thread.Sleep(100);
