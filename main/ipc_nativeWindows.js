@@ -372,15 +372,29 @@ function isWinlogonMachineShellBackup(backup) {
     && typeof backup.machineWinlogonShell.exists === 'boolean';
 }
 
+function isManagedWinlogonShell(backup, registry) {
+  if (!isWinlogonMachineShellBackup(backup)
+    || !sameRegistrySnapshot(registry.machinePolicyShell, backup.machinePolicyShell)) {
+    return false;
+  }
+  return registry.machineWinlogonShell?.value === backup.command
+    || sameRegistrySnapshot(registry.machineWinlogonShell, backup.machineWinlogonShell);
+}
+
 async function writeWindowsWinlogonShell(command, registry, previousBackup) {
   const policySnapshot = isLegacyMachineShellBackup(previousBackup, registry)
     ? previousBackup.machinePolicyShell
-    : registry.machinePolicyShell;
+    : isWinlogonMachineShellBackup(previousBackup)
+      ? previousBackup.machinePolicyShell
+      : registry.machinePolicyShell;
+  const winlogonSnapshot = isWinlogonMachineShellBackup(previousBackup)
+    ? previousBackup.machineWinlogonShell
+    : registry.machineWinlogonShell;
   const backup = {
     schemaVersion: 4,
     scope: 'machine',
     machinePolicyShell: policySnapshot,
-    machineWinlogonShell: registry.machineWinlogonShell,
+    machineWinlogonShell: winlogonSnapshot,
     command,
   };
   try {
@@ -426,10 +440,11 @@ async function enableWindowsUserShell() {
   }
   const previousBackup = await readWindowsUserShellBackup();
   const legacyPolicyShell = isLegacyMachineShellBackup(previousBackup, registry);
+  const managedWinlogonShell = isManagedWinlogonShell(previousBackup, registry);
   if (registry.machinePolicyShell?.exists && !legacyPolicyShell) {
     throw new Error('A different machine-wide shell policy is already configured; refusing to overwrite it');
   }
-  if (previousBackup && !legacyPolicyShell) {
+  if (previousBackup && !legacyPolicyShell && !managedWinlogonShell) {
     throw new Error('A previous machine shell backup exists but does not match current registry values; restore manually before continuing');
   }
   return writeWindowsWinlogonShell(command, registry, previousBackup);
@@ -495,23 +510,28 @@ export async function toggleWindowsUserShell() {
     const registry = await readWindowsUserShellRegistry();
     const backup = await readWindowsUserShellBackup();
     const legacyPolicyShell = isLegacyMachineShellBackup(backup, registry);
-    const enabled = registry.machineWinlogonShell?.value === command || legacyPolicyShell;
-    const needsMigration = legacyPolicyShell;
+    const activeManagedWinlogonShell = isWinlogonMachineShellBackup(backup)
+      && registry.machineWinlogonShell?.value === backup.command;
+    const enabled = registry.machineWinlogonShell?.value === command
+      || legacyPolicyShell
+      || activeManagedWinlogonShell;
+    const needsMigration = legacyPolicyShell
+      || (activeManagedWinlogonShell && registry.machineWinlogonShell?.value !== command);
     const confirmation = await dialog.showMessageBox(global.topbarWindow, {
       type: 'warning',
       title: 'Системная оболочка Windows',
       message: needsMigration
-        ? 'Перенести оболочку в стандартную настройку Winlogon или вернуть Explorer?'
+        ? 'Обновить системную оболочку или вернуть Explorer?'
         : enabled
           ? 'Вернуть Explorer как оболочку при следующем входе?'
           : 'Назначить Omniscience оболочкой при следующем входе?',
       detail: needsMigration
-        ? 'Текущая машинная политика не запускается Windows на этом компьютере. Перенос сохранит исходный Explorer и прежнюю политику в общем бэкапе, а затем назначит host через HKLM Winlogon. Изменение затрагивает всех пользователей и требует UAC.'
+        ? 'Обновление сохранит исходные значения в общем бэкапе и назначит актуальный host через HKLM Winlogon. Изменение затрагивает всех пользователей и требует UAC. При каждом входе потребуется подтвердить запуск повышенного Electron; при отмене host вернёт Explorer.'
         : enabled
           ? 'Будут восстановлены прежние значения HKLM Winlogon и политики оболочки. Текущая сессия не изменится.'
-          : 'Это системная настройка HKLM Winlogon, она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При выходе или сбое Omniscience нативный host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
+          : 'Это системная настройка HKLM Winlogon, она применяется ко всем пользователям компьютера. После подтверждения появится запрос UAC. При каждом входе также потребуется подтвердить запуск повышенного Electron; при отмене или сбое host запустит Explorer. Изменение вступит в силу после выхода из Windows и повторного входа. Для немедленного восстановления можно открыть Диспетчер задач и запустить explorer.exe.',
       buttons: needsMigration
-        ? ['Перенести в Winlogon', 'Вернуть Explorer', 'Отмена']
+        ? ['Обновить оболочку', 'Вернуть Explorer', 'Отмена']
         : [enabled ? 'Вернуть Explorer' : 'Назначить Omniscience', 'Отмена'],
       defaultId: needsMigration ? 2 : 1,
       cancelId: needsMigration ? 2 : 1,
@@ -534,7 +554,7 @@ export async function toggleWindowsUserShell() {
         : result.shellMode
           ? 'Omniscience назначена оболочкой для следующего входа.'
           : 'Explorer восстановлен для следующего входа.',
-      detail: 'Настройка HKLM применяется ко всем пользователям после выхода из Windows и повторного входа.',
+      detail: 'Настройка HKLM применяется ко всем пользователям после выхода из Windows и повторного входа. Для shell-режима Windows будет запрашивать подтверждение UAC при каждом входе.',
       buttons: ['OK'],
     });
     return result;
@@ -554,7 +574,9 @@ export async function configureWindowsAutostart() {
   const shellCommand = await getWindowsUserShellCommand();
   const backup = await readWindowsUserShellBackup();
   const shellEnabled = registry.machineWinlogonShell?.value === shellCommand
-    || isLegacyMachineShellBackup(backup, registry);
+    || isLegacyMachineShellBackup(backup, registry)
+    || (isWinlogonMachineShellBackup(backup)
+      && registry.machineWinlogonShell?.value === backup.command);
   if (shellEnabled) {
     win32UserShellEnabled = true;
     if (registry.run?.exists) {

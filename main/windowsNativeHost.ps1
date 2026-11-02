@@ -315,6 +315,15 @@ public static class OmniWin32
         return true;
     }
 
+    private static bool IsWorkAreaReserved(RECT requested)
+    {
+        RECT current = new RECT();
+        return SystemParametersInfo(SPI_GETWORKAREA, 0, ref current, 0)
+            && current.Top >= requested.Bottom - 2
+            && current.Left <= requested.Left + 2
+            && current.Right >= requested.Right - 2;
+    }
+
     private static bool PositionFallbackDock(IntPtr window, RECT requested, int width, int height)
     {
         if (!ReserveWorkArea(requested)) return false;
@@ -480,7 +489,7 @@ public static class OmniWin32
             finalWidth, finalHeight,
             SWP_NOACTIVATE
         );
-        if (positioned) return true;
+        if (positioned && IsWorkAreaReserved(requested)) return true;
         RemoveDock(hwnd);
         return PositionFallbackDock(window, requested, width, requestedHeight);
     }
@@ -1114,7 +1123,6 @@ function Invoke-MachineWinlogonShellAction($request) {
             $backupIsValid = ($request.backup.schemaVersion -eq 4) -and
                 ($request.backup.scope -eq 'machine') -and
                 ($request.backup.command -ceq [string]$request.command) -and
-                (Test-UserRegistrySnapshot $winlogonBefore $request.backup.machineWinlogonShell) -and
                 ($request.backup.machinePolicyShell -ne $null)
             if (-not $backupIsValid) {
                 throw 'Invalid Winlogon shell backup data'
@@ -1129,16 +1137,32 @@ function Invoke-MachineWinlogonShellAction($request) {
                 }
             } else {
                 if (-not $backupExisted) {
-                    throw 'The expected legacy machine shell backup is missing'
+                    throw 'The expected previous machine shell backup is missing'
                 }
                 $savedBackup = [System.Text.Encoding]::UTF8.GetString($previousBackupBytes) | ConvertFrom-Json
-                $legacyBackupMatches = ($savedBackup.schemaVersion -eq 3) -and
-                    ($savedBackup.scope -eq 'machine') -and
-                    ($savedBackup.command -ceq [string]$policyBefore.value) -and
-                    ($request.expectedPreviousBackup.command -ceq [string]$savedBackup.command) -and
-                    (Test-UserRegistrySnapshot $savedBackup.machinePolicyShell $request.backup.machinePolicyShell)
-                if (-not $legacyBackupMatches) {
-                    throw 'The existing machine shell backup does not match the current policy'
+                if ($savedBackup.schemaVersion -eq 3) {
+                    $legacyBackupMatches = ($savedBackup.scope -eq 'machine') -and
+                        ($savedBackup.command -ceq [string]$policyBefore.value) -and
+                        ($request.expectedPreviousBackup.command -ceq [string]$savedBackup.command) -and
+                        (Test-UserRegistrySnapshot $savedBackup.machinePolicyShell $request.backup.machinePolicyShell) -and
+                        (Test-UserRegistrySnapshot $winlogonBefore $request.backup.machineWinlogonShell)
+                    if (-not $legacyBackupMatches) {
+                        throw 'The existing legacy machine shell backup does not match current registry values'
+                    }
+                } elseif ($savedBackup.schemaVersion -eq 4) {
+                    $winlogonMatchesPrevious = ($winlogonBefore.value -ceq [string]$savedBackup.command) -or
+                        (Test-UserRegistrySnapshot $winlogonBefore $savedBackup.machineWinlogonShell)
+                    $managedBackupMatches = ($savedBackup.scope -eq 'machine') -and
+                        ($request.expectedPreviousBackup.command -ceq [string]$savedBackup.command) -and
+                        (Test-UserRegistrySnapshot $policyBefore $savedBackup.machinePolicyShell) -and
+                        (Test-UserRegistrySnapshot $request.backup.machinePolicyShell $savedBackup.machinePolicyShell) -and
+                        (Test-UserRegistrySnapshot $request.backup.machineWinlogonShell $savedBackup.machineWinlogonShell) -and
+                        $winlogonMatchesPrevious
+                    if (-not $managedBackupMatches) {
+                        throw 'The existing Winlogon backup does not match current registry values'
+                    }
+                } else {
+                    throw 'The existing machine shell backup has an unsupported format'
                 }
             }
 

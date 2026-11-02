@@ -43,8 +43,8 @@ internal static class OmniShellHost
                 WorkingDirectory = !string.IsNullOrWhiteSpace(appPath) && Directory.Exists(appPath)
                     ? appPath
                     : Path.GetDirectoryName(executable),
-                UseShellExecute = false,
-                CreateNoWindow = true
+                UseShellExecute = true,
+                Verb = "runas"
             };
 
             using (Process application = Process.Start(startInfo))
@@ -53,7 +53,7 @@ internal static class OmniShellHost
                 {
                     throw new InvalidOperationException("Windows did not start the Electron process.");
                 }
-                WriteLog("Electron process started with PID " + application.Id + ".");
+                WriteLog("Elevated Electron process started with PID " + application.Id + ".");
                 application.WaitForExit();
                 WriteLog("Electron process exited with code " + application.ExitCode + ".");
             }
