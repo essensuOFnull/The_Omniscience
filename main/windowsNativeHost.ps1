@@ -59,6 +59,7 @@ public static class OmniWin32
     private static readonly EnumWindowsProc WindowEnumerator = EnumerateWindow;
     private static readonly Dictionary<IntPtr, Thread> ActiveDrags = new Dictionary<IntPtr, Thread>();
     private static readonly Dictionary<IntPtr, bool> ExplorerTaskbarVisibility = new Dictionary<IntPtr, bool>();
+    private static readonly Dictionary<IntPtr, bool> ExplorerDesktopIconVisibility = new Dictionary<IntPtr, bool>();
     private static RECT OriginalWorkArea;
     private static bool HasOriginalWorkArea;
     private static bool WorkAreaReserved;
@@ -343,6 +344,43 @@ public static class OmniWin32
             if (IsWindowVisible(taskbar) != originalVisibility) return false;
             ExplorerTaskbarVisibility.Remove(taskbar);
         }
+        return true;
+    }
+
+    public static bool HideExplorerDesktopIcons()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        if (state.DesktopViews.Count == 0) return false;
+
+        foreach (IntPtr desktopView in state.DesktopViews)
+        {
+            if (!IsWindow(desktopView)) continue;
+            if (!ExplorerDesktopIconVisibility.ContainsKey(desktopView))
+                ExplorerDesktopIconVisibility.Add(desktopView, IsWindowVisible(desktopView));
+            ShowWindow(desktopView, SW_HIDE);
+            if (IsWindowVisible(desktopView))
+            {
+                RestoreExplorerDesktopIcons();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static bool RestoreExplorerDesktopIcons()
+    {
+        ShellWindowState state = GetExplorerShellState();
+        foreach (IntPtr desktopView in state.DesktopViews)
+        {
+            if (!IsWindow(desktopView)) continue;
+            bool originalVisibility;
+            if (!ExplorerDesktopIconVisibility.TryGetValue(desktopView, out originalVisibility)) continue;
+            ShowWindow(desktopView, originalVisibility ? SW_SHOWNOACTIVATE : SW_HIDE);
+            if (IsWindowVisible(desktopView) != originalVisibility) return false;
+            ExplorerDesktopIconVisibility.Remove(desktopView);
+        }
+        foreach (IntPtr desktopView in new List<IntPtr>(ExplorerDesktopIconVisibility.Keys))
+            if (!IsWindow(desktopView)) ExplorerDesktopIconVisibility.Remove(desktopView);
         return true;
     }
 
@@ -726,6 +764,18 @@ public static class OmniWin32
     public static bool SetDock(long hwnd, int x, int y, int width, int height)
     {
         IntPtr window = new IntPtr(hwnd);
+        IntPtr monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        if (monitor == IntPtr.Zero)
+            throw new InvalidOperationException("Could not locate the dock window's monitor");
+        MONITORINFO monitorInfo = new MONITORINFO {
+            cbSize = Marshal.SizeOf(typeof(MONITORINFO))
+        };
+        if (!GetMonitorInfo(monitor, ref monitorInfo))
+            throw new InvalidOperationException("GetMonitorInfo failed: " + Marshal.GetLastWin32Error());
+
+        x = monitorInfo.rcMonitor.Left;
+        y = monitorInfo.rcMonitor.Top;
+        width = monitorInfo.rcMonitor.Right - x;
         int requestedHeight = Math.Max(1, height);
         RECT requested = new RECT {
             Left = x, Top = y, Right = x + Math.Max(1, width), Bottom = y + requestedHeight
@@ -746,21 +796,24 @@ public static class OmniWin32
             RemoveDock(hwnd);
             return PositionFallbackDock(window, requested, width, requestedHeight);
         }
-        data.rc.Bottom = data.rc.Top + requestedHeight;
+        data.rc = requested;
         if (SHAppBarMessage(ABM_SETPOS, ref data) == UIntPtr.Zero)
         {
             RemoveDock(hwnd);
             return PositionFallbackDock(window, requested, width, requestedHeight);
         }
-        int finalWidth = data.rc.Right - data.rc.Left;
-        int finalHeight = data.rc.Bottom - data.rc.Top;
-        if (finalWidth <= 0 || finalHeight <= 0) return false;
         bool positioned = SetWindowPos(
-            window, new IntPtr(-1), data.rc.Left, data.rc.Top,
-            finalWidth, finalHeight,
+            window, new IntPtr(-1), requested.Left, requested.Top,
+            width, requestedHeight,
             SWP_NOACTIVATE
         );
-        if (positioned && IsWorkAreaReserved(requested)) return true;
+        RECT actual = new RECT();
+        bool atRequestedBounds = GetWindowRect(window, out actual)
+            && actual.Left == requested.Left
+            && actual.Top == requested.Top
+            && actual.Right - actual.Left == width
+            && actual.Bottom - actual.Top == requestedHeight;
+        if (positioned && atRequestedBounds && IsWorkAreaReserved(requested)) return true;
         RemoveDock(hwnd);
         return PositionFallbackDock(window, requested, width, requestedHeight);
     }
@@ -1566,6 +1619,8 @@ while ($null -ne ($line = $reader.ReadLine())) {
             'explorer-shell-start' { [OmniWin32]::StartExplorerShellVisible() }
             'taskbar-hide' { [OmniWin32]::HideExplorerTaskbar() }
             'taskbar-restore' { [OmniWin32]::RestoreExplorerTaskbar() }
+            'desktop-icons-hide' { [OmniWin32]::HideExplorerDesktopIcons() }
+            'desktop-icons-restore' { [OmniWin32]::RestoreExplorerDesktopIcons() }
             default { throw "Unsupported native action: $($request.action)" }
         }
         $response = @{ requestId = $request.requestId; success = $true; result = $result }
@@ -1579,7 +1634,8 @@ if ($PipeName) {
     $writer.Dispose()
     $reader.Dispose()
     $pipe.Dispose()
-} else {
-    [OmniWin32]::ResetAllDockReservations() | Out-Null
-    [OmniWin32]::RestoreExplorerTaskbar() | Out-Null
 }
+
+[OmniWin32]::ResetAllDockReservations() | Out-Null
+[OmniWin32]::RestoreExplorerTaskbar() | Out-Null
+[OmniWin32]::RestoreExplorerDesktopIcons() | Out-Null

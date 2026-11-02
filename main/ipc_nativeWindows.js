@@ -289,6 +289,20 @@ export async function restoreWindowsTaskbar() {
   return true;
 }
 
+export async function hideWindowsDesktopIcons() {
+  if (process.platform !== 'win32') return false;
+  const hidden = await requestWin32('desktop-icons-hide');
+  if (!hidden) throw new Error('Windows desktop icons could not be hidden');
+  return true;
+}
+
+export async function restoreWindowsDesktopIcons() {
+  if (process.platform !== 'win32') return true;
+  const restored = await requestWin32('desktop-icons-restore');
+  if (!restored) throw new Error('Windows desktop icons could not be restored');
+  return true;
+}
+
 const WINDOWS_USER_SHELL_KEY = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
 const WINDOWS_USER_SHELL_POLICY_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
 const WINDOWS_MACHINE_SHELL_POLICY_KEY = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
@@ -480,6 +494,7 @@ async function ensureExplorerShell() {
   if (!status?.taskbar) throw new Error('Explorer taskbar is unavailable');
   const restored = await requestWin32('taskbar-restore');
   if (!restored) throw new Error('Windows taskbar could not be restored');
+  await restoreWindowsDesktopIcons();
   status = await requestWin32('explorer-shell-status');
   if (!status?.taskbarVisible) {
     throw new Error('Explorer taskbar is not visible after restoration');
