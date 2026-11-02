@@ -3,8 +3,9 @@ const { screen } = electronPkg;
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
-  hideWindowsDesktopIcons, hideWindowsTaskbar, removeWindowsDock, resetWindowsDock,
-  restoreWindowsDesktopIcons, restoreWindowsTaskbar, setWindowsDesktopWindow, updateWindowsDock,
+  hideWindowsDesktopIcons, hideWindowsDesktopWallpaper, hideWindowsTaskbar, removeWindowsDock,
+  resetWindowsDock, restoreWindowsDesktopIcons, restoreWindowsDesktopWallpaper,
+  restoreWindowsTaskbar, setWindowsDesktopWindow, updateWindowsDock,
 } from './ipc_nativeWindows.js';
 
 const execFileAsync = promisify(execFile);
@@ -224,14 +225,16 @@ export default function ({ show = true } = {}) {
           }
           await hideWindowsTaskbar();
           await hideWindowsDesktopIcons();
+          await hideWindowsDesktopWallpaper();
           if (global.mainWindow && !global.mainWindow.isDestroyed()) {
             await setWindowsDesktopWindow(global.mainWindow);
           }
         } catch (error) {
-          console.error('[panelStruts] failed to hide Explorer taskbar:', error.message);
+          console.error('[panelStruts] failed to prepare Explorer shell UI:', error.message);
           await Promise.all([
             restoreWindowsTaskbar(),
             restoreWindowsDesktopIcons(),
+            restoreWindowsDesktopWallpaper(),
           ]).catch((restoreError) => {
             console.error('[panelStruts] failed to restore Explorer shell UI:', restoreError.message);
           });
@@ -253,7 +256,11 @@ export default function ({ show = true } = {}) {
   tb.on('close', () => {
     if (process.platform === 'win32') {
       windowsDockReady = false;
-      Promise.all([restoreWindowsTaskbar(), restoreWindowsDesktopIcons()]).catch((error) => {
+      Promise.all([
+        restoreWindowsTaskbar(),
+        restoreWindowsDesktopIcons(),
+        restoreWindowsDesktopWallpaper(),
+      ]).catch((error) => {
         console.error('[panelStruts] failed to restore Explorer shell UI:', error.message);
       });
       removeWindowsDock(tb);

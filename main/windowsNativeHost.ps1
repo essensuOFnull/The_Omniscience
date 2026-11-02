@@ -49,9 +49,14 @@ public static class OmniWin32
     private const uint ABM_REMOVE = 0x00000001;
     private const uint ABM_QUERYPOS = 0x00000002;
     private const uint ABM_SETPOS = 0x00000003;
+    private const uint ABM_GETSTATE = 0x00000004;
+    private const uint ABM_SETSTATE = 0x0000000A;
     private const uint ABE_TOP = 1;
+    private const uint ABS_AUTOHIDE = 0x00000001;
     private const uint SPI_SETWORKAREA = 0x002F;
     private const uint SPI_GETWORKAREA = 0x0030;
+    private const uint SPI_SETDESKWALLPAPER = 0x0014;
+    private const uint SPI_GETDESKWALLPAPER = 0x0073;
     private const uint SPIF_SENDCHANGE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const int WM_APP = 0x8000;
@@ -60,6 +65,10 @@ public static class OmniWin32
     private static readonly Dictionary<IntPtr, Thread> ActiveDrags = new Dictionary<IntPtr, Thread>();
     private static readonly Dictionary<IntPtr, bool> ExplorerTaskbarVisibility = new Dictionary<IntPtr, bool>();
     private static readonly Dictionary<IntPtr, bool> ExplorerDesktopIconVisibility = new Dictionary<IntPtr, bool>();
+    private static string OriginalDesktopWallpaper;
+    private static bool HasOriginalDesktopWallpaper;
+    private static uint OriginalTaskbarAppBarState;
+    private static bool HasOriginalTaskbarAppBarState;
     private static RECT OriginalWorkArea;
     private static bool HasOriginalWorkArea;
     private static bool WorkAreaReserved;
@@ -192,6 +201,10 @@ public static class OmniWin32
     private static extern UIntPtr SHAppBarMessage(uint message, ref APPBARDATA data);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SystemParametersInfo(uint action, uint parameter, ref RECT value, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint action, uint parameter, StringBuilder value, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint action, uint parameter, string value, uint flags);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -322,6 +335,24 @@ public static class OmniWin32
             if (!IsWindow(taskbar)) continue;
             if (!ExplorerTaskbarVisibility.ContainsKey(taskbar))
                 ExplorerTaskbarVisibility.Add(taskbar, IsWindowVisible(taskbar));
+        }
+
+        IntPtr primaryTaskbar = state.Taskbars[0];
+        if (!HasOriginalTaskbarAppBarState)
+        {
+            OriginalTaskbarAppBarState = GetTaskbarAppBarState(primaryTaskbar);
+            HasOriginalTaskbarAppBarState = true;
+        }
+        if (!SetTaskbarAppBarState(primaryTaskbar, OriginalTaskbarAppBarState | ABS_AUTOHIDE)
+            || (GetTaskbarAppBarState(primaryTaskbar) & ABS_AUTOHIDE) == 0)
+        {
+            RestoreTaskbarAppBarState(primaryTaskbar);
+            return false;
+        }
+
+        foreach (IntPtr taskbar in state.Taskbars)
+        {
+            if (!IsWindow(taskbar)) continue;
             ShowWindow(taskbar, SW_HIDE);
             if (IsWindowVisible(taskbar))
             {
@@ -332,9 +363,37 @@ public static class OmniWin32
         return true;
     }
 
+    private static uint GetTaskbarAppBarState(IntPtr taskbar)
+    {
+        APPBARDATA data = NewAppBarData(taskbar, new RECT());
+        return (uint)SHAppBarMessage(ABM_GETSTATE, ref data).ToUInt64();
+    }
+
+    private static bool RestoreTaskbarAppBarState(IntPtr taskbar)
+    {
+        if (!HasOriginalTaskbarAppBarState) return true;
+        if (!SetTaskbarAppBarState(taskbar, OriginalTaskbarAppBarState)) return false;
+        if ((GetTaskbarAppBarState(taskbar) & ABS_AUTOHIDE)
+            != (OriginalTaskbarAppBarState & ABS_AUTOHIDE))
+            return false;
+        HasOriginalTaskbarAppBarState = false;
+        return true;
+    }
+
+    private static bool SetTaskbarAppBarState(IntPtr taskbar, uint state)
+    {
+        APPBARDATA data = NewAppBarData(taskbar, new RECT());
+        data.lParam = new IntPtr(state);
+        return SHAppBarMessage(ABM_SETSTATE, ref data) != UIntPtr.Zero;
+    }
+
     public static bool RestoreExplorerTaskbar()
     {
         ShellWindowState state = GetExplorerShellState();
+        IntPtr taskbarForState = state.Taskbars.Count > 0
+            ? state.Taskbars[0]
+            : IntPtr.Zero;
+        if (!RestoreTaskbarAppBarState(taskbarForState)) return false;
         foreach (IntPtr taskbar in state.Taskbars)
         {
             if (!IsWindow(taskbar)) continue;
@@ -382,6 +441,48 @@ public static class OmniWin32
         foreach (IntPtr desktopView in new List<IntPtr>(ExplorerDesktopIconVisibility.Keys))
             if (!IsWindow(desktopView)) ExplorerDesktopIconVisibility.Remove(desktopView);
         return true;
+    }
+
+    private static string GetDesktopWallpaper()
+    {
+        var wallpaper = new StringBuilder(32768);
+        if (!SystemParametersInfo(SPI_GETDESKWALLPAPER, (uint)wallpaper.Capacity, wallpaper, 0))
+            throw new InvalidOperationException("Could not read the Windows desktop wallpaper: " + Marshal.GetLastWin32Error());
+        return wallpaper.ToString();
+    }
+
+    public static bool HideExplorerWallpaper()
+    {
+        if (!HasOriginalDesktopWallpaper)
+        {
+            OriginalDesktopWallpaper = GetDesktopWallpaper();
+            HasOriginalDesktopWallpaper = true;
+        }
+        if (string.IsNullOrEmpty(OriginalDesktopWallpaper)) return true;
+        if (!SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, string.Empty, SPIF_SENDCHANGE))
+            throw new InvalidOperationException("Could not disable the Windows desktop wallpaper: " + Marshal.GetLastWin32Error());
+        if (string.IsNullOrEmpty(GetDesktopWallpaper())) return true;
+        RestoreExplorerWallpaper();
+        return false;
+    }
+
+    public static bool RestoreExplorerWallpaper()
+    {
+        if (!HasOriginalDesktopWallpaper) return true;
+        if (!SystemParametersInfo(
+            SPI_SETDESKWALLPAPER, 0, OriginalDesktopWallpaper ?? string.Empty, SPIF_SENDCHANGE
+        ))
+            return false;
+        if (!string.Equals(GetDesktopWallpaper(), OriginalDesktopWallpaper, StringComparison.OrdinalIgnoreCase))
+            return false;
+        OriginalDesktopWallpaper = null;
+        HasOriginalDesktopWallpaper = false;
+        return true;
+    }
+
+    public static bool IsExplorerWallpaperEnabled()
+    {
+        return !string.IsNullOrEmpty(GetDesktopWallpaper());
     }
 
     private sealed class EnumerationState
@@ -498,27 +599,25 @@ public static class OmniWin32
         return true;
     }
 
-    private static bool ReserveWorkArea(RECT requested)
+    private static bool CaptureOriginalWorkArea()
     {
+        if (HasOriginalWorkArea) return true;
         RECT current = new RECT();
         if (!SystemParametersInfo(SPI_GETWORKAREA, 0, ref current, 0)) return false;
-        if (!HasOriginalWorkArea)
-        {
-            OriginalWorkArea = current;
-            HasOriginalWorkArea = true;
-        }
+        OriginalWorkArea = current;
+        HasOriginalWorkArea = true;
+        return true;
+    }
 
-        RECT reserved = OriginalWorkArea;
-        int originalWidth = reserved.Right - reserved.Left;
-        if (originalWidth <= 0) return false;
-        if (requested.Left > reserved.Left + 2
-            || requested.Right < reserved.Right - 2
-            || requested.Top > reserved.Top + 2)
-        {
+    private static bool ReserveWorkArea(RECT requested, RECT monitorBounds)
+    {
+        if (!CaptureOriginalWorkArea()) return false;
+        if (requested.Left > monitorBounds.Left + 2
+            || requested.Right < monitorBounds.Right - 2
+            || requested.Top < monitorBounds.Top - 2)
             return false;
-        }
-
-        reserved.Top = Math.Max(reserved.Top, requested.Bottom);
+        RECT reserved = monitorBounds;
+        reserved.Top = Math.Max(monitorBounds.Top, requested.Bottom);
         if (reserved.Top >= reserved.Bottom) return false;
         if (!SystemParametersInfo(SPI_SETWORKAREA, 0, ref reserved, SPIF_SENDCHANGE)) return false;
         WorkAreaReserved = true;
@@ -541,18 +640,21 @@ public static class OmniWin32
         return true;
     }
 
-    private static bool IsWorkAreaReserved(RECT requested)
+    private static bool IsWorkAreaReserved(RECT requested, RECT monitorBounds)
     {
         RECT current = new RECT();
         return SystemParametersInfo(SPI_GETWORKAREA, 0, ref current, 0)
             && current.Top >= requested.Bottom - 2
+            && current.Bottom >= monitorBounds.Bottom - 2
             && current.Left <= requested.Left + 2
-            && current.Right >= requested.Right - 2;
+            && current.Right >= monitorBounds.Right - 2;
     }
 
-    private static bool PositionFallbackDock(IntPtr window, RECT requested, int width, int height)
+    private static bool PositionFallbackDock(
+        IntPtr window, RECT requested, RECT monitorBounds, int width, int height
+    )
     {
-        if (!ReserveWorkArea(requested)) return false;
+        if (!ReserveWorkArea(requested, monitorBounds)) return false;
         if (SetWindowPos(
             window, new IntPtr(-1), requested.Left, requested.Top,
             Math.Max(1, width), Math.Max(1, height), SWP_NOACTIVATE
@@ -611,12 +713,24 @@ public static class OmniWin32
     public static object GetExplorerShellStatus()
     {
         ShellWindowState state = GetExplorerShellState();
+        RECT workArea = new RECT();
+        if (!SystemParametersInfo(SPI_GETWORKAREA, 0, ref workArea, 0))
+            throw new InvalidOperationException("Could not read the Windows work area: " + Marshal.GetLastWin32Error());
         return new {
             running = state.ProcessIds.Count > 0,
             taskbar = state.HasTaskbar,
             desktop = state.HasDesktop,
             taskbarVisible = IsAnyWindowVisible(state.Taskbars),
+            taskbarAutoHide = state.Taskbars.Count > 0
+                && (GetTaskbarAppBarState(state.Taskbars[0]) & ABS_AUTOHIDE) != 0,
             desktopIconsVisible = IsAnyWindowVisible(state.DesktopViews),
+            wallpaperEnabled = IsExplorerWallpaperEnabled(),
+            workArea = new {
+                x = workArea.Left,
+                y = workArea.Top,
+                width = workArea.Right - workArea.Left,
+                height = workArea.Bottom - workArea.Top
+            },
             processIds = new List<int>(state.ProcessIds).ToArray()
         };
     }
@@ -776,6 +890,9 @@ public static class OmniWin32
         x = monitorInfo.rcMonitor.Left;
         y = monitorInfo.rcMonitor.Top;
         width = monitorInfo.rcMonitor.Right - x;
+        if (!CaptureOriginalWorkArea())
+            throw new InvalidOperationException("Could not capture the original Windows work area");
+        RECT monitorBounds = monitorInfo.rcMonitor;
         int requestedHeight = Math.Max(1, height);
         RECT requested = new RECT {
             Left = x, Top = y, Right = x + Math.Max(1, width), Bottom = y + requestedHeight
@@ -785,7 +902,7 @@ public static class OmniWin32
         {
             if (SHAppBarMessage(ABM_NEW, ref data) == UIntPtr.Zero)
             {
-                return PositionFallbackDock(window, requested, width, requestedHeight);
+                return PositionFallbackDock(window, requested, monitorBounds, width, requestedHeight);
             }
             AppBars.Add(window);
         }
@@ -794,14 +911,15 @@ public static class OmniWin32
         if (SHAppBarMessage(ABM_QUERYPOS, ref data) == UIntPtr.Zero)
         {
             RemoveDock(hwnd);
-            return PositionFallbackDock(window, requested, width, requestedHeight);
+            return PositionFallbackDock(window, requested, monitorBounds, width, requestedHeight);
         }
         data.rc = requested;
         if (SHAppBarMessage(ABM_SETPOS, ref data) == UIntPtr.Zero)
         {
             RemoveDock(hwnd);
-            return PositionFallbackDock(window, requested, width, requestedHeight);
+            return PositionFallbackDock(window, requested, monitorBounds, width, requestedHeight);
         }
+        bool workAreaReserved = ReserveWorkArea(requested, monitorBounds);
         bool positioned = SetWindowPos(
             window, new IntPtr(-1), requested.Left, requested.Top,
             width, requestedHeight,
@@ -813,9 +931,10 @@ public static class OmniWin32
             && actual.Top == requested.Top
             && actual.Right - actual.Left == width
             && actual.Bottom - actual.Top == requestedHeight;
-        if (positioned && atRequestedBounds && IsWorkAreaReserved(requested)) return true;
+        if (positioned && atRequestedBounds && workAreaReserved
+            && IsWorkAreaReserved(requested, monitorBounds)) return true;
         RemoveDock(hwnd);
-        return PositionFallbackDock(window, requested, width, requestedHeight);
+        return PositionFallbackDock(window, requested, monitorBounds, width, requestedHeight);
     }
 
     public static bool ResetDock(long hwnd)
@@ -1621,6 +1740,8 @@ while ($null -ne ($line = $reader.ReadLine())) {
             'taskbar-restore' { [OmniWin32]::RestoreExplorerTaskbar() }
             'desktop-icons-hide' { [OmniWin32]::HideExplorerDesktopIcons() }
             'desktop-icons-restore' { [OmniWin32]::RestoreExplorerDesktopIcons() }
+            'desktop-wallpaper-hide' { [OmniWin32]::HideExplorerWallpaper() }
+            'desktop-wallpaper-restore' { [OmniWin32]::RestoreExplorerWallpaper() }
             default { throw "Unsupported native action: $($request.action)" }
         }
         $response = @{ requestId = $request.requestId; success = $true; result = $result }
@@ -1639,3 +1760,4 @@ if ($PipeName) {
 [OmniWin32]::ResetAllDockReservations() | Out-Null
 [OmniWin32]::RestoreExplorerTaskbar() | Out-Null
 [OmniWin32]::RestoreExplorerDesktopIcons() | Out-Null
+[OmniWin32]::RestoreExplorerWallpaper() | Out-Null

@@ -303,6 +303,20 @@ export async function restoreWindowsDesktopIcons() {
   return true;
 }
 
+export async function hideWindowsDesktopWallpaper() {
+  if (process.platform !== 'win32') return false;
+  const hidden = await requestWin32('desktop-wallpaper-hide');
+  if (!hidden) throw new Error('Windows desktop wallpaper could not be disabled');
+  return true;
+}
+
+export async function restoreWindowsDesktopWallpaper() {
+  if (process.platform !== 'win32') return true;
+  const restored = await requestWin32('desktop-wallpaper-restore');
+  if (!restored) throw new Error('Windows desktop wallpaper could not be restored');
+  return true;
+}
+
 const WINDOWS_USER_SHELL_KEY = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
 const WINDOWS_USER_SHELL_POLICY_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
 const WINDOWS_MACHINE_SHELL_POLICY_KEY = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
@@ -495,6 +509,7 @@ async function ensureExplorerShell() {
   const restored = await requestWin32('taskbar-restore');
   if (!restored) throw new Error('Windows taskbar could not be restored');
   await restoreWindowsDesktopIcons();
+  await restoreWindowsDesktopWallpaper();
   status = await requestWin32('explorer-shell-status');
   if (!status?.taskbarVisible) {
     throw new Error('Explorer taskbar is not visible after restoration');
