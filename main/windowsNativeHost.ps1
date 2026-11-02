@@ -31,8 +31,15 @@ public static class OmniWin32
 {
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
     private const int GWL_STYLE = -16;
+    private const int GWL_HWNDPARENT = -8;
     private const int WS_CHILD = 0x40000000;
+    private const int WS_CAPTION = 0x00C00000;
+    private const int WS_THICKFRAME = 0x00040000;
+    private const int WS_SYSMENU = 0x00080000;
+    private const int WS_MINIMIZEBOX = 0x00020000;
+    private const int WS_MAXIMIZEBOX = 0x00010000;
     private const int WS_POPUP = unchecked((int)0x80000000);
+    private const uint GW_OWNER = 4;
     private const uint ABM_NEW = 0x00000000;
     private const uint ABM_REMOVE = 0x00000001;
     private const uint ABM_QUERYPOS = 0x00000002;
@@ -116,6 +123,15 @@ public static class OmniWin32
     private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
     [DllImport("user32.dll")]
     private static extern IntPtr GetParent(IntPtr child);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string className, string windowName);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(
+        IntPtr window, uint message, IntPtr wParam, IntPtr lParam,
+        uint flags, uint timeout, out IntPtr result
+    );
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ScreenToClient(IntPtr window, ref POINT point);
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
@@ -162,6 +178,8 @@ public static class OmniWin32
     private static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
+    [DllImport("kernel32.dll")]
+    private static extern void SetLastError(uint errorCode);
 
     private static OmniWindowInfo ReadWindow(IntPtr hwnd, IntPtr foreground, int ownPid)
     {
@@ -270,6 +288,51 @@ public static class OmniWin32
             rc = rect,
             lParam = IntPtr.Zero
         };
+    }
+
+    private static bool SetAsShellBackground(IntPtr window, int x, int y, int width, int height)
+    {
+        int style = GetWindowLongPtr(window, GWL_STYLE).ToInt32();
+        int windowControls = WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        int topLevelStyle = (style & ~(WS_CHILD | windowControls)) | WS_POPUP;
+        SetLastError(0);
+        IntPtr previousStyle = SetWindowLongPtr(window, GWL_STYLE, new IntPtr(topLevelStyle));
+        if (previousStyle == IntPtr.Zero && Marshal.GetLastWin32Error() != 0) return false;
+
+        SetLastError(0);
+        IntPtr previousParent = SetParent(window, IntPtr.Zero);
+        int parentError = Marshal.GetLastWin32Error();
+        if (previousParent == IntPtr.Zero && parentError != 0)
+        {
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            return false;
+        }
+
+        IntPtr previousOwner = GetWindow(window, GW_OWNER);
+        SetLastError(0);
+        IntPtr previousWindowOwner = SetWindowLongPtr(window, GWL_HWNDPARENT, IntPtr.Zero);
+        int ownerError = Marshal.GetLastWin32Error();
+        if ((previousWindowOwner == IntPtr.Zero && ownerError != 0)
+            || GetWindow(window, GW_OWNER) != IntPtr.Zero)
+        {
+            SetParent(window, previousParent);
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            if (previousOwner != IntPtr.Zero)
+                SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
+            return false;
+        }
+
+        bool positioned = SetWindowPos(
+            window, new IntPtr(1), x, y, Math.Max(1, width), Math.Max(1, height),
+            SWP_NOACTIVATE | 0x0020
+        );
+        if (positioned) return true;
+
+        SetParent(window, previousParent);
+        SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+        if (previousOwner != IntPtr.Zero)
+            SetWindowLongPtr(window, GWL_HWNDPARENT, previousOwner);
+        return false;
     }
 
     private static bool ReserveWorkArea(RECT requested)
@@ -432,24 +495,66 @@ public static class OmniWin32
     public static bool SetDesktop(long hwnd, int x, int y, int width, int height)
     {
         IntPtr window = new IntPtr(hwnd);
-        IntPtr desktop = FindWindow("Progman", null);
-        if (desktop == IntPtr.Zero) return false;
+        IntPtr progman = FindWindow("Progman", null);
+        if (progman == IntPtr.Zero)
+        {
+            return SetAsShellBackground(window, x, y, width, height);
+        }
+
+        IntPtr worker = IntPtr.Zero;
+        IntPtr messageResult;
+        SendMessageTimeout(
+            progman, 0x052C, new IntPtr(0xD), new IntPtr(1), 0, 1000, out messageResult
+        );
+        EnumWindows((candidate, unused) => {
+            if (FindWindowEx(candidate, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
+            {
+                worker = FindWindowEx(IntPtr.Zero, candidate, "WorkerW", null);
+                return worker == IntPtr.Zero;
+            }
+            return true;
+        }, IntPtr.Zero);
+        IntPtr desktop = worker != IntPtr.Zero ? worker : progman;
+
         int style = GetWindowLongPtr(window, GWL_STYLE).ToInt32();
-        SetWindowLongPtr(window, GWL_STYLE, new IntPtr((style | WS_CHILD) & ~WS_POPUP));
+        int childStyle = (style | WS_CHILD) & ~WS_POPUP;
+        SetLastError(0);
+        IntPtr previousStyle = SetWindowLongPtr(window, GWL_STYLE, new IntPtr(childStyle));
+        int styleError = Marshal.GetLastWin32Error();
+        if (previousStyle == IntPtr.Zero && styleError != 0)
+        {
+            return SetAsShellBackground(window, x, y, width, height);
+        }
+
+        SetLastError(0);
         IntPtr previousParent = SetParent(window, desktop);
-        if (GetParent(window) != desktop)
+        int parentError = Marshal.GetLastWin32Error();
+        if (previousParent == IntPtr.Zero && parentError != 0)
         {
             SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
-            return false;
+            return SetAsShellBackground(window, x, y, width, height);
+        }
+        if (GetParent(window) != desktop)
+        {
+            SetParent(window, previousParent);
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            return SetAsShellBackground(window, x, y, width, height);
+        }
+        POINT origin = new POINT { X = x, Y = y };
+        if (!ScreenToClient(desktop, ref origin))
+        {
+            SetParent(window, previousParent);
+            SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
+            return SetAsShellBackground(window, x, y, width, height);
         }
         bool positioned = SetWindowPos(
-            window, new IntPtr(1), x, y, Math.Max(1, width), Math.Max(1, height),
+            window, IntPtr.Zero, origin.X, origin.Y, Math.Max(1, width), Math.Max(1, height),
             SWP_NOACTIVATE | 0x0020
         );
         if (positioned) return true;
         SetParent(window, previousParent);
         SetWindowLongPtr(window, GWL_STYLE, new IntPtr(style));
-        return false;
+        return SetAsShellBackground(window, x, y, width, height);
     }
 
     public static bool SetDock(long hwnd, int x, int y, int width, int height)

@@ -128,18 +128,20 @@ async function shutdownAll(mainWindow) {
 
 export default async function () {
     const primaryDisplay = screen.getPrimaryDisplay();
-    const { width, height } = primaryDisplay.workAreaSize;
+    const bounds = process.platform === 'win32'
+        ? primaryDisplay.bounds
+        : { x: 0, y: 0, ...primaryDisplay.workAreaSize };
 
     const isSession = process.env.OMNISCIENCE_SESSION === '1' && process.platform !== 'win32';
 
     global.mainWindow = new BrowserWindow({
-        x: 0,
-        y: 0,
-        width,
-        height,
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
         transparent: true,
         backgroundColor: '#00000000',
-        resizable: true,
+        resizable: process.platform !== 'win32',
         show: process.platform !== 'win32',
         type: 'desktop',
         frame: false,
@@ -158,8 +160,9 @@ export default async function () {
 
     if (process.platform === 'win32') {
         global.mainWindow.once('ready-to-show', async () => {
+            if (global.mainWindow.isDestroyed()) return;
+            global.mainWindow.showInactive();
             await setWindowsDesktopWindow(global.mainWindow);
-            if (!global.mainWindow.isDestroyed()) global.mainWindow.show();
         });
     }
 
