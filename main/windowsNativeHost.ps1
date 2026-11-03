@@ -1282,6 +1282,30 @@ public static class OmniWin32
     {
         return ShellExecute(IntPtr.Zero, "runas", executable, parameters, directory, 1).ToInt64() > 32;
     }
+    public static bool ToggleMaximize(long hwnd)
+    {
+        IntPtr window = new IntPtr(hwnd);
+        if (!IsWindow(window)) return false;
+
+        bool currentlyMaximized = IsZoomed(window);
+        bool currentlyMinimized = IsIconic(window);
+        bool targetMaximized = !currentlyMaximized && !currentlyMinimized;
+
+        // SW_MAXIMIZE (3) или SW_RESTORE (9)
+        ShowWindowAsync(window, targetMaximized ? 3 : 9);
+
+        // Ждём, пока состояние реально изменится. Без этого JS получит
+        // ответ «success», но панель ещё видит старое состояние,
+        // и следующий клик снова пошлёт SW_MAXIMIZE (no-op).
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 500)
+        {
+            if (!IsWindow(window)) return false;
+            if (IsZoomed(window) == targetMaximized) return true;
+            System.Threading.Thread.Sleep(15);
+        }
+        return false;
+    }
 }
 '@
 
@@ -1849,6 +1873,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
             'focus' { [OmniWin32]::Focus([long]$request.hwnd) }
             'minimize' { [OmniWin32]::Minimize([long]$request.hwnd) }
             'maximize' { [OmniWin32]::Maximize([long]$request.hwnd, [bool]$request.maximize) }
+            'toggle-maximize' { [OmniWin32]::ToggleMaximize([long]$request.hwnd) }
             'close' { [OmniWin32]::Close([long]$request.hwnd) }
             'elevate' {
                 if ($PipeName) { throw 'elevation_not_available_from_helper' }

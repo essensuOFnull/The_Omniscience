@@ -17,15 +17,24 @@ export default function TopBarContainer() {
     const api = window.electron_topbar_API;
     if (!api) return;
 
+    // Флаг: получили ли мы хоть одно обновление через state-update.
+    // Если да — ответ get-state (который был отправлен раньше) не применяем,
+    // чтобы не перезаписать более свежее состояние старым снапшотом.
+    let gotUpdate = false;
+
+    const off = api.on('topbar:state-update', (patch) => {
+      if (patch) {
+        gotUpdate = true;
+        setState((p) => ({ ...p, ...patch }));
+      }
+    });
+
     api.invoke('topbar:get-state')
       .then((s) => {
-        if (s) setState((p) => ({ ...p, ...s }));
+        if (s && !gotUpdate) setState((p) => ({ ...p, ...s }));
       })
       .catch(() => {});
 
-    const off = api.on('topbar:state-update', (patch) => {
-      if (patch) setState((p) => ({ ...p, ...patch }));
-    });
     return off;
   }, []);
 

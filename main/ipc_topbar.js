@@ -560,4 +560,28 @@ export default function () {
   });
 
   setTimeout(() => { initTopbarState(); }, 0);
+
+    /* ─────────────────────────────────────────────────────────────
+   * Автотрансляция состояния при загрузке TopBar'а
+   *
+   * Гарантирует, что после (re)load'а TopBar получит актуальный
+   * снапшот, даже если state-update'ы, отправленные во время
+   * загрузки, потерялись (renderer ещё не навесил listener'ы).
+   * ───────────────────────────────────────────────────────────── */
+  function attachTopbarAutoBroadcast() {
+    const w = global.topbarWindow;
+    if (!w || w.isDestroyed()) {
+      setTimeout(attachTopbarAutoBroadcast, 100);
+      return;
+    }
+    // Слушаем каждый did-finish-load (в т.ч. при reload).
+    w.webContents.on('did-finish-load', () => {
+      broadcastTopbarState();
+    });
+    // Если TopBar уже загружен к моменту вызова — пушим сразу.
+    if (!w.webContents.isLoading()) {
+      broadcastTopbarState();
+    }
+  }
+  setTimeout(attachTopbarAutoBroadcast, 100);
 }

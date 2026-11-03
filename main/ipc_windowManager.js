@@ -97,7 +97,7 @@ export function getXidForWindow(id) {
 
 export function listWindows() {
   return Array.from(windows.entries())
-    .filter(([, entry]) => !entry.meta.isShell)   // ← shell-окна не показываем
+    .filter(([, entry]) => !entry.meta.isShell)
     .map(([id, entry]) => ({
       id,
       appId: entry.meta.appId,
@@ -109,7 +109,6 @@ export function listWindows() {
       focused: entry.win.isFocused(),
       bounds: entry.win.getBounds(),
       xid: entry.meta.xid,
-      // --- bridge overlay ---
       isBridgeOverlay: !!entry.meta.isBridgeOverlay,
       daemonWindowId: entry.meta.daemonWindowId || null,
     }));
@@ -125,19 +124,33 @@ function attachWindowEvents(id, win) {
     global.topbarBroadcast?.();
   };
 
+  // Отправляет renderer'у актуальное состояние окна.
+  // Preload слушает 'window-state-changed' через electron_mainWindow_API.onWindowStateChange.
+  const sendState = () => {
+    if (win.isDestroyed()) return;
+    try {
+      win.webContents.send('window-state-changed', {
+        maximized: win.isMaximized(),
+        minimized: win.isMinimized(),
+        fullscreen: win.isFullScreen(),
+      });
+    } catch { /* webContents мог быть destroyed */ }
+  };
+
   win.on('focus', () => {
     global.__focusedWindowId = id;
-    // Своё окно получило фокус: убедимся, что XID уже кэширован.
     const entry = windows.get(id);
     if (entry && !entry.meta.xid) entry.meta.xid = getXid(win);
     global.topbarBroadcast?.();
     emit('focus');
   });
   win.on('blur', () => emit('blur'));
-  win.on('minimize', () => emit('minimize'));
-  win.on('restore', () => emit('restore'));
-  win.on('maximize', () => emit('maximize'));
-  win.on('unmaximize', () => emit('unmaximize'));
+  win.on('minimize', () => { sendState(); emit('minimize'); });
+  win.on('restore',  () => { sendState(); emit('restore'); });
+  win.on('maximize', () => { sendState(); emit('maximize'); });
+  win.on('unmaximize', () => { sendState(); emit('unmaximize'); });
+  win.on('enter-full-screen', sendState);
+  win.on('leave-full-screen', sendState);
   win.on('move', () => emit('moved', { bounds: win.getBounds() }));
   win.on('resize', () => emit('resized', { bounds: win.getBounds() }));
 
@@ -149,6 +162,10 @@ function attachWindowEvents(id, win) {
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(`[windowManager] load failed for "${id}": ${code} ${desc} (${url})`);
   });
+
+  // После загрузки renderer'а шлём начальное состояние — чтобы UI сразу
+  // знал, развёрнуто ли окно, свёрнуто ли.
+  win.webContents.on('did-finish-load', sendState);
 
   win.on('closed', () => {
     windows.delete(id);
@@ -263,6 +280,15 @@ export function destroyWindowById(id) {
 /* IPC                                                                 */
 /* ------------------------------------------------------------------ */
 
+// Находит окно, из которого пришёл IPC. Для «своих» окон (не shell),
+// которые шлют window_close / window_minimize / window_maximize из preload.
+function getSenderWindow(event) {
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win && !win.isDestroyed() ? win : null;
+  } catch { return null; }
+}
+
 export default function () {
   ipcMain.on('window:create', (_e, req) => {
     try { createWindowByRequest(req || {}); }
@@ -343,6 +369,37 @@ export default function () {
       loading: wc.isLoading(),
     };
   });
+
+  /* ───────────────────────────────────────────────────────────────
+   * Каналы для «своих» окон (window_close, window_minimize, ...)
+   *
+   * Preload этих окон (electron_mainWindow_API) шлёт именно так —
+   * с подчёркиваниями, без id. Окно определяется по отправителю.
+   * ─────────────────────────────────────────────────────────────── */
+
+  ipcMain.on('window_close', (event) => {
+    const win = getSenderWindow(event);
+    if (win) win.close();
+  });
+
+  ipcMain.on('window_minimize', (event) => {
+    const win = getSenderWindow(event);
+    if (win) win.minimize();
+  });
+
+  ipcMain.on('window_maximize', (event) => {
+    const win = getSenderWindow(event);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.on('window_restore', (event) => {
+    const win = getSenderWindow(event);
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -380,10 +437,6 @@ export function isShellWindow(id) {
 /* Bridge-оверлеи (gtk-bridge)                                         */
 /* ------------------------------------------------------------------ */
 
-// Оверлей — это полноценное окно, но созданное не через
-// createWindowByRequest. Регистрируем его в том же реестре, чтобы
-// TopBar и window:list его видели. isShell НЕ ставим — иначе listWindows
-// его отфильтрует.
 export function registerBridgeOverlay(win, id, meta = {}) {
   if (!id || !win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
     return false;
@@ -412,8 +465,6 @@ export function unregisterBridgeOverlay(id) {
 /* Наши обычные окна (window-settings и подобные)                      */
 /* ------------------------------------------------------------------ */
 
-// Отличие от registerShellWindow: НЕ помечает окно как shell,
-// поэтому оно попадает в listWindows и в TopBar.
 export function registerOwnWindow(win, id, meta = {}) {
   if (!id || !win || (typeof win.isDestroyed === 'function' && win.isDestroyed())) {
     return false;
@@ -451,7 +502,6 @@ export function listDevTools() {
         const owner = wc.getOwnerBrowserWindow?.();
         if (!owner || owner.isDestroyed()) continue;
 
-        // Ищем id владельца в реестре окон
         let ownerId = null;
         for (const [id, entry] of windows) {
           if (entry.win === owner) { ownerId = id; break; }

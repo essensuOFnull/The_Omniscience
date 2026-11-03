@@ -752,6 +752,19 @@ function cacheWin32Icon(imagePath) {
   });
 }
 
+let lastNativeState = { windows: [], activeXid: null };
+
+function pushNativeState() {
+  lastNativeState = {
+    windows: win32Windows.map((window) => ({
+      ...window,
+      icon: window.imagePath ? win32IconCache.get(window.imagePath) || null : null,
+    })),
+    activeXid: win32ActiveHwnd,
+  };
+  global.topbarBroadcast?.();
+}
+
 async function refreshWin32Windows() {
   if (win32RefreshPromise) return win32RefreshPromise;
   win32RefreshPromise = (async () => {
@@ -772,7 +785,7 @@ async function refreshWin32Windows() {
     win32LastHash = hash;
     win32Windows = next;
     win32ActiveHwnd = activeHwnd;
-    global.topbarBroadcast?.();
+    pushNativeState();
     if (global.mainWindow && !global.mainWindow.isDestroyed()) {
       global.mainWindow.webContents.send('shell:native-windows-updated', next);
     }
@@ -2041,27 +2054,30 @@ export async function minimizeWindowById(id) {
   }
 }
 
-export async function maximizeWindowById(id, maximized) {
+export async function maximizeWindowById(id, _maximizedFromUi) {
   try {
     const t = resolveTarget(id);
     if (!t) return { ok: false };
+
     if (t.kind === 'our') {
       const w = getWindowById(t.appId);
-      if (w) { if (maximized) w.unmaximize(); else w.maximize(); }
+      if (w && !w.isDestroyed()) {
+        // Toggle по фактическому состоянию — не доверяем UI.
+        if (w.isMaximized()) w.unmaximize();
+        else w.maximize();
+      }
       return { ok: true };
     }
-    if (t.xid != null && watcher) {
-      const ok = await watcher.maximize(t.xid, maximized);
-      return { ok };
-    }
+
     if (t.kind === 'native' && t.hwnd) {
-      return {
-        ok: await requestWin32WindowAction('maximize', {
-          hwnd: t.hwnd,
-          maximize: !maximized,
-        }),
-      };
+      // PS1 сам прочитает IsZoomed и переключит. Не доверяем UI-флагу.
+      return { ok: await requestWin32WindowAction('toggle-maximize', { hwnd: t.hwnd }) };
     }
+
+    if (t.xid != null && watcher) {
+      return { ok: await watcher.maximize(t.xid, _maximizedFromUi) };
+    }
+
     return { ok: false };
   } catch (e) {
     if (DEBUG) dbgWarn('maximizeWindowById error:', e?.message || e);
@@ -2405,6 +2421,10 @@ export default async function () {
   ipcMain.handle('native-window:get-opacity', async (_e, { id }) => {
     return getWindowOpacityById(id);
   });
+
+  ipcMain.handle('native-windows:get-state', () => lastNativeState);
+
+  ipcMain.handle('shell:get-native-state', () => getNativeState());
 
   return watcher;
 }
