@@ -224,7 +224,7 @@ export default function ({ show = true } = {}) {
             return;
           }
           await hideWindowsTaskbar();
-          await hideWindowsDesktopIcons();
+          //await hideWindowsDesktopIcons();
           await hideWindowsDesktopWallpaper();
           if (global.mainWindow && !global.mainWindow.isDestroyed()) {
             await setWindowsDesktopWindow(global.mainWindow);
