@@ -1107,7 +1107,14 @@ public static class OmniWin32
             ? 0
             : GetWindowThreadProcessId(foreground, out ignoredPid);
         uint targetThread = GetWindowThreadProcessId(window, out ignoredPid);
-        ShowWindow(window, 9);
+
+        // ВАЖНО: SW_RESTORE (9) НЕ просто «развернуть из свёрнутого».
+        // На maximized/fullscreen-окне он снимает maximized и выкидывает
+        // из fullscreen. Восстанавливаем ТОЛЬКО реально свёрнутое окно.
+        // ShowWindowAsync — чтобы не блокировать поток целевого приложения.
+        if (IsIconic(window))
+            ShowWindowAsync(window, 9);   // SW_RESTORE
+
         bool attachedForeground = false;
         bool attachedTarget = false;
         try

@@ -1955,23 +1955,38 @@ export async function focusWindowById(id) {
   try {
     const t = resolveTarget(id);
     if (!t) return { ok: false };
+
     if (t.kind === 'our') {
       const w = getWindowById(t.appId);
+      if (!w || w.isDestroyed()) return { ok: false };
       try {
+        // Восстанавливаем ТОЛЬКО реально свёрнутое окно.
+        // show()/moveTop() на видимом fullscreen-окне в Electron
+        // сбрасывают fullscreen — поэтому их не зовём.
         if (w.isMinimized()) w.restore();
-        w.show(); w.focus(); w.moveTop();
-      } catch { /* ignore */ }
+        else if (!w.isVisible()) w.show();
+        w.focus();
+      } catch { }
+      return { ok: true };
     }
+
+    if (t.kind === 'native' && t.hwnd) {
+      // Передаём подсказку хосту: не трогать состояние окна,
+      // если оно не свёрнуто. PS1 должен уважать restoreIfMinimized.
+      const ok = await requestWin32WindowAction('focus', {
+        hwnd: t.hwnd,
+        restoreIfMinimized: true,
+      });
+      await refreshWin32Windows();
+      return { ok };
+    }
+
     if (t.xid != null && watcher) {
       const ok = await watcher.focus(t.xid);
       watcher.scheduleRefresh();
       return { ok };
     }
-    if (t.kind === 'native' && t.hwnd) {
-      const ok = await requestWin32WindowAction('focus', { hwnd: t.hwnd });
-      await refreshWin32Windows();
-      return { ok };
-    }
+
     return { ok: true };
   } catch (e) {
     if (DEBUG) dbgWarn('focusWindowById error:', e?.message || e);

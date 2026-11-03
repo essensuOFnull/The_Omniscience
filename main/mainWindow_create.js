@@ -123,7 +123,7 @@ async function shutdownAll(mainWindow) {
 
     // Гарантированный выход процесса, даже если сработал before-quit
     // и мы подавили его preventDefault'ом.
-    try { app.quit(); } catch (_) {}
+    try { app.quit(); } catch (_) { }
 }
 
 export default async function () {
@@ -159,26 +159,34 @@ export default async function () {
     });
 
     if (process.platform === 'win32') {
-        const applyDesktopRole = async () => {
-            if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
-            await setWindowsDesktopWindow(global.mainWindow);
-        };
+        // ВАЖНО: setWindowsDesktopWindow больше НЕ вызываем — она делает
+        // SetParent(WorkerW), после чего окно структурно оказывается под
+        // SysListView32 и не получает ни кликов, ни фокуса.
+
+        // Desktop-уровень z-order — ближайший аналог KDE type:'desktop'
+        // без SetParent. Окно остаётся обычным top-level, но внизу z-order.
+        global.mainWindow.setAlwaysOnTop(true, 'desktop');
+
+        // При смене метрик дисплея нужно только пере-применить bounds
+        // штатными средствами Electron, без PS1.
         const handleDisplayMetricsChanged = (_event, _display, changedMetrics) => {
             if (changedMetrics.includes('bounds') || changedMetrics.includes('workArea')) {
-                applyDesktopRole().catch((error) => {
-                    console.error('[desktop] failed to reapply desktop bounds:', error.message);
-                });
+                const primary = screen.getPrimaryDisplay();
+                global.mainWindow.setBounds(primary.bounds);
+                global.mainWindow.setAlwaysOnTop(true, 'desktop');
             }
         };
-
         screen.on('display-metrics-changed', handleDisplayMetricsChanged);
         global.mainWindow.once('closed', () => {
             screen.removeListener('display-metrics-changed', handleDisplayMetricsChanged);
         });
-        global.mainWindow.once('ready-to-show', async () => {
+
+        global.mainWindow.once('ready-to-show', () => {
             if (global.mainWindow.isDestroyed()) return;
-            global.mainWindow.showInactive();
-            await applyDesktopRole();
+            // showInactive() специально НЕ фокусирует — было ошибкой.
+            global.mainWindow.show();
+            global.mainWindow.focus();
+            global.mainWindow.setAlwaysOnTop(true, 'desktop');
         });
     }
 
@@ -191,7 +199,7 @@ export default async function () {
     // сигналит процессу. Даже если эта цепочка не сработает — watchdog
     // ниже поймает смерть KWin и завершит Electron сам.
     process.on('SIGTERM', () => shutdownAll(global.mainWindow));
-    process.on('SIGINT',  () => shutdownAll(global.mainWindow));
+    process.on('SIGINT', () => shutdownAll(global.mainWindow));
 
     // Если mainWindow закрывают напрямую (X, Alt+F4, kill окна) —
     // перехватываем quit и проводим ту же процедуру.
