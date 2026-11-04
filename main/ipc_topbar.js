@@ -258,11 +258,7 @@ function buildState() {
       };
     });
 
-  const allWindows = [...ourWindows, ...devToolsWindows, ...native];
-  const windows = [
-    ...allWindows.filter((w) => !w.isHidden),
-    ...allWindows.filter((w) => w.isHidden),
-  ];
+  const windows = [...ourWindows, ...devToolsWindows, ...native];
 
   const fallbackWindowId = global.__focusedWindowId || windows.find((w) => w.focused)?.id || windows[0]?.id || null;
   const activeWindow = windows.find((w) => w.id === fallbackWindowId) || windows[0] || null;
