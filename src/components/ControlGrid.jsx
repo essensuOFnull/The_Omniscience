@@ -1,5 +1,11 @@
 import React, { useCallback, useRef, useState } from 'react';
 
+import {
+  getWindowActionChannel,
+  getWindowBoundsChannel,
+  isWebWindowLike,
+} from './windowActionRouting';
+
 import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
 import SearchIcon from '@mui/icons-material/Search';
 import BuildIcon from '@mui/icons-material/Build';
@@ -38,6 +44,13 @@ function api() {
 function callNative(channel, payload) {
   const a = api();
   if (!a) return Promise.resolve({ ok: false });
+
+  const isWebWindowAction = typeof channel === 'string' && channel.startsWith('window:');
+  if (isWebWindowAction && typeof a.send === 'function') {
+    a.send(channel, payload);
+    return Promise.resolve({ ok: true });
+  }
+
   if (typeof a.invoke === 'function') {
     return a.invoke(channel, payload).catch(() => ({
       ok: false,
@@ -96,6 +109,10 @@ export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
     if (!aw || aw.maximized || !aw.id) return;
     e.preventDefault();
     e.stopPropagation();
+
+    const webWindow = isWebWindowLike(aw);
+    const boundsChannel = getWindowBoundsChannel(aw);
+    const dragEndChannel = webWindow ? null : 'native-window:drag-end';
 
     // Сессия drag. Готовность (ready) и sync — чтобы корректно пережить
     // асинхронный IPC и WarpPointer на стороне main.
@@ -156,14 +173,14 @@ export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
         }
       }
 
-      fireNative('native-window:set-bounds', { id: d.id, bounds: next });
+      fireNative(boundsChannel, { id: d.id, bounds: next });
     };
 
     const onUp = () => {
       dragRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      fireNative('native-window:drag-end', {});
+      if (dragEndChannel) fireNative(dragEndChannel, {});
     };
 
     document.addEventListener('mousemove', onMove);
@@ -210,18 +227,47 @@ export default function ControlGrid({ activeWindow, onOpenWindowSettings }) {
 
   const closeWin = useCallback(() => {
     const aw = awRef.current;
-    if (aw?.id) callNative('native-window:close', { id: aw.id });
+    if (!aw?.id) return;
+
+    const a = api();
+    if (a?.send) {
+      a.send('topbar:close-window', { id: aw.id, kind: aw.kind || 'our' });
+      return;
+    }
+
+    callNative(getWindowActionChannel(aw, 'close'), { id: aw.id, kind: aw.kind || 'our' });
   }, []);
 
   const minimizeWin = useCallback(() => {
     const aw = awRef.current;
-    if (aw?.id) callNative('native-window:minimize', { id: aw.id });
+    if (!aw?.id) return;
+
+    const a = api();
+    if (a?.send) {
+      a.send('topbar:minimize-window', { id: aw.id, kind: aw.kind || 'our' });
+      return;
+    }
+
+    callNative(getWindowActionChannel(aw, 'minimize'), { id: aw.id, kind: aw.kind || 'our' });
   }, []);
 
   const maximizeWin = useCallback(() => {
     const aw = awRef.current;
-    if (aw?.id) callNative('native-window:maximize', {
+    if (!aw?.id) return;
+
+    const a = api();
+    if (a?.send) {
+      a.send('topbar:maximize-window', {
+        id: aw.id,
+        kind: aw.kind || 'our',
+        maximized: !!aw.maximized,
+      });
+      return;
+    }
+
+    callNative(getWindowActionChannel(aw, 'maximize'), {
       id: aw.id,
+      kind: aw.kind || 'our',
       maximized: !!aw.maximized,
     });
   }, []);

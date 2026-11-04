@@ -264,7 +264,8 @@ function buildState() {
     ...allWindows.filter((w) => w.isHidden),
   ];
 
-  const activeWindow = windows.find((w) => w.focused) || null;
+  const fallbackWindowId = global.__focusedWindowId || windows.find((w) => w.focused)?.id || windows[0]?.id || null;
+  const activeWindow = windows.find((w) => w.id === fallbackWindowId) || windows[0] || null;
 
   return {
     windows, activeWindow, apps: cachedApps,
@@ -455,14 +456,23 @@ export default function () {
   ipcMain.on('topbar:focus-window', (_e, { id }) => {
     focusWindowById(id).catch((e) => console.error('[topbar:focus-window]', e?.message || e));
   });
-  ipcMain.on('topbar:close-window', (_e, { id }) => {
-    closeWindowById(id).catch((e) => console.error('[topbar:close-window]', e?.message || e));
+  ipcMain.on('topbar:close-window', (_e, payload = {}) => {
+    const { id } = payload || {};
+    const targetId = id ?? global.__focusedWindowId ?? null;
+    if (targetId == null) return;
+    closeWindowById(targetId).catch((e) => console.error('[topbar:close-window]', e?.message || e));
   });
-  ipcMain.on('topbar:minimize-window', (_e, { id }) => {
-    minimizeWindowById(id).catch((e) => console.error('[topbar:minimize-window]', e?.message || e));
+  ipcMain.on('topbar:minimize-window', (_e, payload = {}) => {
+    const { id } = payload || {};
+    const targetId = id ?? global.__focusedWindowId ?? null;
+    if (targetId == null) return;
+    minimizeWindowById(targetId).catch((e) => console.error('[topbar:minimize-window]', e?.message || e));
   });
-  ipcMain.on('topbar:maximize-window', (_e, { id, maximized }) => {
-    maximizeWindowById(id, maximized).catch((e) => console.error('[topbar:maximize-window]', e?.message || e));
+  ipcMain.on('topbar:maximize-window', (_e, payload = {}) => {
+    const { id, maximized } = payload || {};
+    const targetId = id ?? global.__focusedWindowId ?? null;
+    if (targetId == null) return;
+    maximizeWindowById(targetId, maximized).catch((e) => console.error('[topbar:maximize-window]', e?.message || e));
   });
 
   ipcMain.on('topbar:open-devtools', (_e, { id }) => {

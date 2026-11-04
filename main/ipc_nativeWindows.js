@@ -10,7 +10,11 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import readline from 'readline';
-import { getWindowById, getXidForWindow } from './ipc_windowManager.js';
+import {
+  getWindowById,
+  getXidForWindow,
+  listWindows,
+} from './ipc_windowManager.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -1944,12 +1948,36 @@ function getWin32ShellCommand() {
 function resolveTarget(id) {
   if (id == null) return null;
   try {
-    const our = getWindowById(id);
-    if (our) {
-      const xidHex = getXidForWindow(id);
-      if (!xidHex) return { kind: 'our', xid: null, appId: id };
-      return { kind: 'our', xid: parseXid(xidHex), appId: id };
+    const candidates = Array.from(new Set([
+      id,
+      String(id),
+      Number(id),
+      id && typeof id === 'string' ? id.trim() : id,
+      id && typeof id === 'string' ? id.replace(/^['"]|['"]$/g, '') : id,
+    ].filter((value) => value !== null && value !== undefined && value !== '')));
+
+    for (const candidate of candidates) {
+      const our = getWindowById(candidate);
+      if (our) {
+        const xidHex = getXidForWindow(candidate);
+        if (!xidHex) return { kind: 'our', xid: null, appId: candidate };
+        return { kind: 'our', xid: parseXid(xidHex), appId: candidate };
+      }
     }
+
+    for (const entry of listWindows()) {
+      if (!entry || !entry.id) continue;
+      if (candidates.some((candidate) =>
+        String(entry.id) === String(candidate)
+        || String(entry.appId || '') === String(candidate)
+        || String(entry.xid || '') === String(candidate)
+      )) {
+        const xidHex = getXidForWindow(entry.id);
+        if (!xidHex) return { kind: 'our', xid: null, appId: entry.id };
+        return { kind: 'our', xid: parseXid(xidHex), appId: entry.id };
+      }
+    }
+
     if (process.platform === 'win32') {
       const hwnd = parseWin32Hwnd(id);
       return hwnd ? { kind: 'native', hwnd } : null;

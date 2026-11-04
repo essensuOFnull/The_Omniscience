@@ -302,6 +302,33 @@ export default function () {
     entry.win.focus();
   });
 
+  ipcMain.handle('window:minimize', (_e, { id }) => {
+    const win = windows.get(id)?.win;
+    if (!win) return { ok: false };
+    win.minimize();
+    return { ok: true };
+  });
+
+  ipcMain.handle('window:maximize', (_e, { id }) => {
+    const win = windows.get(id)?.win;
+    if (!win) return { ok: false };
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+    return { ok: true };
+  });
+
+  ipcMain.handle('window:unmaximize', (_e, { id }) => {
+    const win = windows.get(id)?.win;
+    if (!win) return { ok: false };
+    win.unmaximize();
+    return { ok: true };
+  });
+
+  ipcMain.handle('window:close', (_e, { id }) => {
+    destroyWindowById(id);
+    return { ok: true };
+  });
+
   ipcMain.on('window:minimize', (_e, { id }) => {
     windows.get(id)?.win.minimize();
   });
