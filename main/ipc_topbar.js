@@ -1,9 +1,5 @@
 import electronPkg from 'electron';
 const { app, ipcMain, BrowserWindow, screen, shell } = electronPkg;
-import { spawn, exec, execFile } from 'child_process';
-import { promisify } from 'util';
-import { readFileSync, readlinkSync, existsSync } from 'fs';
-import path from 'path';
 import {
   listWindows,
   getWindowById,
@@ -19,12 +15,9 @@ import {
   maximizeWindowById,
   recoverWindowsShell,
 } from './ipc_nativeWindows.js';
-import { findAncestorWindowPid } from './ipc_pidTree.js';
 import {
   openOverview, closeOverview, toggleOverview, isOverviewOpen,
 } from './ipc_overview.js';
-
-const execAsync = promisify(exec);
 
 let cachedApps = [];
 let windowSettingsWin = null;
@@ -68,98 +61,10 @@ export async function initTopbarState() {
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-function normalizeXid(x) {
+// На Windows "id" native-окна — это HWND (строка). Нормализуем к строке
+// в нижнем регистре — этого достаточно для сравнения с activeXid.
+function normalizeNativeId(x) {
   return x ? String(x).toLowerCase() : null;
-}
-
-function bridgeGtkXidFor(w) {
-  if (!w || !w.isBridgeOverlay || !w.daemonWindowId) return null;
-  const map = global.gtkBridgeXidMap;
-  if (!map) return null;
-  const xid = map.get(w.daemonWindowId);
-  return xid ? normalizeXid(xid) : null;
-}
-
-// Ищем уже существующий bridge-overlay для данного XID native-окна.
-function findOverlayForXid(xid) {
-  const norm = normalizeXid(xid);
-  if (!norm) return null;
-  const list = listWindows();
-  for (const w of list) {
-    if (!w.isBridgeOverlay || !w.daemonWindowId) continue;
-    const ovXid = bridgeGtkXidFor(w);
-    if (ovXid && ovXid === norm) return w;
-  }
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
-/* /proc helpers — для перезапуска приложения с хуком                  */
-/* ------------------------------------------------------------------ */
-
-function readProcExe(pid) {
-  try { return readlinkSync(`/proc/${pid}/exe`); }
-  catch { return null; }
-}
-
-function readProcCmdline(pid) {
-  try {
-    const data = readFileSync(`/proc/${pid}/cmdline`, 'utf8');
-    return data.split('\0').filter(Boolean);
-  } catch { return null; }
-}
-
-function launchScriptPath() {
-  const root = global.paths?.projectRoot;
-  if (!root) return null;
-  const p = path.join(root, 'gtk-bridge', 'launch.sh');
-  return existsSync(p) ? p : null;
-}
-
-async function waitForProcessExit(pid, timeoutMs = 2000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try { process.kill(pid, 0); }
-    catch { return true; }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
-}
-
-// Перезапускает native-приложение с LD_PRELOAD через launch.sh.
-// Возвращает { ok, error?, pid? }.
-async function restartWithHook(windowId) {
-  const data = getWindowData(windowId);
-  if (!data) return { ok: false, error: 'window not found' };
-  if (data.kind !== 'native') return { ok: false, error: 'not native window' };
-  if (!data.pid) return { ok: false, error: 'no pid for window' };
-
-  const exe = readProcExe(data.pid);
-  if (!exe) return { ok: false, error: 'cannot read /proc/<pid>/exe' };
-
-  const launcher = launchScriptPath();
-  if (!launcher) return { ok: false, error: 'gtk-bridge/launch.sh not found' };
-
-  console.log(`[overlay] restarting pid=${data.pid} (${exe}) via ${launcher}`);
-
-  try { process.kill(data.pid, 'SIGTERM'); }
-  catch (e) { console.warn('[overlay] kill failed:', e.message); }
-
-  await waitForProcessExit(data.pid, 2000);
-  await new Promise((r) => setTimeout(r, 300));
-
-  try {
-    const child = spawn(launcher, [exe], {
-      detached: true,
-      stdio: 'ignore',
-      env: { ...process.env },
-    });
-    child.unref();
-    return { ok: true, pid: child.pid };
-  } catch (e) {
-    console.error('[overlay] spawn failed:', e.message);
-    return { ok: false, error: e.message };
-  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -169,23 +74,27 @@ async function restartWithHook(windowId) {
 function buildState() {
   const cfg = global.config?.topbar || {};
   const { windows: nativeWindows, activeXid } = getNativeState();
-  const activeNorm = normalizeXid(activeXid);
+  const activeNorm = normalizeNativeId(activeXid);
 
   /* --- Electron BrowserWindow'ы --- */
   const ourWindows = listWindows().map((w) => {
-    const xid = normalizeXid(w.xid);
     const b = w.bounds || {};
+    const xid = normalizeNativeId(w.xid);
     return {
-      id: w.id, xid, kind: 'our',
-      title: w.title || '', icon: w.icon || null,
-      maximized: !!w.maximized, minimized: !!w.minimized,
+      id: w.id,
+      xid,
+      kind: 'our',
+      title: w.title || '',
+      icon: w.icon || null,
+      maximized: !!w.maximized,
+      minimized: !!w.minimized,
       isHidden: false,
       focused: !!w.focused || !!(activeNorm && xid && xid === activeNorm),
       wmClass: null,
       x: b.x, y: b.y, width: b.width, height: b.height,
-      isBridgeOverlay: !!w.isBridgeOverlay,
-      daemonWindowId: w.daemonWindowId || null,
-      gtkXid: bridgeGtkXidFor(w),
+      isBridgeOverlay: false,
+      daemonWindowId: null,
+      gtkXid: null,
       isDevTools: false,
       ownerId: null,
       pid: null,
@@ -216,51 +125,40 @@ function buildState() {
     console.warn('[topbar] listDevTools failed:', e.message);
   }
 
-  /* --- Native X11 окна --- */
-  const ourXids = new Set(ourWindows.map((w) => w.xid).filter(Boolean));
-
-  const pidToXid = new Map();
-  if (process.platform !== 'win32') {
-    for (const w of nativeWindows) {
-      const p = Number(w.pid);
-      if (Number.isFinite(p) && p > 0) pidToXid.set(p, normalizeXid(w.id));
-    }
-  }
-  const knownPids = [...pidToXid.keys()];
+  /* --- Native Windows-окна ---
+   * PS1-хост уже фильтрует наши собственные окна по PID (ownPid),
+   * но оставим дополнительную защиту по id на всякий случай. */
+  const ourIds = new Set(ourWindows.map((w) => w.xid).filter(Boolean));
 
   const native = nativeWindows
-    .filter((w) => !ourXids.has(normalizeXid(w.id)))
+    .filter((w) => !ourIds.has(normalizeNativeId(w.id)))
     .map((w) => {
       const pidNum = Number(w.pid) || null;
-      let parentXid = null;
-      if (pidNum && process.platform !== 'win32') {
-        const ancestorPid = findAncestorWindowPid(pidNum, knownPids);
-        if (ancestorPid) parentXid = pidToXid.get(ancestorPid) || null;
-      }
-      const normId = normalizeXid(w.id);
-
-      // Ищем уже существующий bridge-overlay для этого окна
-      const ov = findOverlayForXid(normId);
+      const normId = normalizeNativeId(w.id);
 
       return {
         id: w.id, xid: normId, kind: 'native',
         title: w.title || w.wmClass || 'Окно',
         icon: w.icon || null,
-        maximized: !!w.isMaximized, minimized: !!w.isMinimized,
+        maximized: !!w.isMaximized,
+        minimized: !!w.isMinimized,
         isHidden: false,
         focused: !!(activeNorm && normId === activeNorm),
         wmClass: w.wmClass,
         x: w.x, y: w.y, width: w.width, height: w.height,
         isBridgeOverlay: false, daemonWindowId: null, gtkXid: null,
         isDevTools: false, ownerId: null,
-        pid: pidNum, parentXid,
-        overlayWindowId: ov ? ov.id : null,
+        pid: pidNum, parentXid: null,
+        overlayWindowId: null,
       };
     });
 
   const windows = [...ourWindows, ...devToolsWindows, ...native];
 
-  const fallbackWindowId = global.__focusedWindowId || windows.find((w) => w.focused)?.id || windows[0]?.id || null;
+  const fallbackWindowId = global.__focusedWindowId
+    || windows.find((w) => w.focused)?.id
+    || windows[0]?.id
+    || null;
   const activeWindow = windows.find((w) => w.id === fallbackWindowId) || windows[0] || null;
 
   return {
@@ -285,7 +183,7 @@ export function broadcastTopbarState() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Window settings — окно                                    */
+/* Window settings                                                     */
 /* ------------------------------------------------------------------ */
 
 function settingsUrlFor(windowId) {
@@ -371,12 +269,12 @@ function getWindowData(id) {
     return {
       id: ourWin.id, kind: 'our',
       title: ourWin.title, icon: ourWin.icon,
-      xid: ourWin.xid, pid: null, wmClass: null,
+      xid: normalizeNativeId(ourWin.xid), pid: null, wmClass: null,
       maximized: !!ourWin.maximized, minimized: !!ourWin.minimized,
       x: b.x, y: b.y, width: b.width, height: b.height,
-      isBridgeOverlay: !!ourWin.isBridgeOverlay,
-      daemonWindowId: ourWin.daemonWindowId || null,
-      gtkXid: bridgeGtkXidFor(ourWin),
+      isBridgeOverlay: false,
+      daemonWindowId: null,
+      gtkXid: null,
       ownerId: null,
       opacity: 1.0,
       overlayWindowId: null,
@@ -400,20 +298,19 @@ function getWindowData(id) {
   }
 
   const { windows: nativeList } = getNativeState();
-  const norm = normalizeXid(id);
-  const native = nativeList.find((x) => normalizeXid(x.id) === norm);
+  const norm = normalizeNativeId(id);
+  const native = nativeList.find((x) => normalizeNativeId(x.id) === norm);
   if (native) {
-    const ov = findOverlayForXid(norm);
     return {
       id: native.id, kind: 'native',
       title: native.title || native.wmClass || 'Окно',
-      icon: native.icon, xid: normalizeXid(native.id),
+      icon: native.icon, xid: normalizeNativeId(native.id),
       pid: native.pid, wmClass: native.wmClass,
       maximized: !!native.isMaximized, minimized: !!native.isMinimized,
       x: native.x, y: native.y, width: native.width, height: native.height,
       isBridgeOverlay: false, daemonWindowId: null, gtkXid: null,
       ownerId: null, opacity: 1.0,
-      overlayWindowId: ov ? ov.id : null,
+      overlayWindowId: null,
     };
   }
 
@@ -428,8 +325,8 @@ export default function () {
   global.topbarBroadcast = broadcastTopbarState;
 
   ipcMain.handle('topbar:get-state', () => buildState());
+
   ipcMain.on('shell-session:renderer-error', (event, payload) => {
-    if (process.platform !== 'win32') return;
     if (event.sender !== global.topbarWindow?.webContents) return;
     const message = String(payload?.message || 'TopBar renderer failed to render').slice(0, 2000);
     recoverWindowsShell(message).catch((error) => {
@@ -496,68 +393,28 @@ export default function () {
     }
   });
 
-  /* --- Bridge overlay --- */
-  // Если overlay уже есть — фокус на него.
-  // Если нет — перезапуск приложения через launch.sh с хуком.
-  ipcMain.on('topbar:open-overlay', async (_e, { id }) => {
-    if (process.platform === 'win32') {
-      console.warn('[overlay] GTK overlay is not supported on Windows');
-      return;
-    }
-    try {
-      const norm = normalizeXid(id);
-      if (!norm) return;
-
-      const overlay = findOverlayForXid(norm);
-      if (overlay) {
-        console.log('[overlay] already exists for', norm, '-> focus');
-        focusWindowById(overlay.id).catch(() => {});
-        return;
-      }
-
-      const res = await restartWithHook(id);
-      if (!res.ok) console.warn('[overlay] restart failed:', res.error);
-    } catch (e) {
-      console.error('[topbar:open-overlay]', e?.message || e);
-    }
+  /* --- Bridge overlay (unsupported on Windows) --- */
+  ipcMain.on('topbar:open-overlay', () => {
+    console.warn('[overlay] GTK overlay is not supported on Windows');
   });
 
   /* --- Прочее --- */
-  ipcMain.on('topbar:launch-app', (_e, { app }) => {
-    console.log('[topbar] launch', app);
+  ipcMain.on('topbar:launch-app', (_e, { app: appRef }) => {
+    console.log('[topbar] launch', appRef);
   });
 
-  ipcMain.on('topbar:open-search', async () => {
-    if (process.platform === 'win32') {
-      try { toggleOverview(); }
-      catch (err) { console.error('[topbar:open-search]', err.message); }
-      return;
-    }
-    try {
-      try { await execAsync('qdbus org.kde.krunner /App display'); }
-      catch { spawn('krunner', [], { detached: true, stdio: 'ignore' }).unref(); }
-    } catch (err) {
-      console.error('[topbar:open-search]', err.message);
-    }
+  ipcMain.on('topbar:open-search', () => {
+    try { toggleOverview(); }
+    catch (err) { console.error('[topbar:open-search]', err.message); }
   });
 
   ipcMain.on('topbar:open-settings', () => {
-    if (process.platform === 'win32') {
-      shell.openExternal('ms-settings:')
-        .catch((err) => console.error('[topbar:open-settings]', err.message));
-      return;
-    }
-    try { spawn('systemsettings', [], { detached: true, stdio: 'ignore' }).unref(); }
-    catch (err) { console.error('[topbar:open-settings]', err.message); }
+    shell.openExternal('ms-settings:')
+      .catch((err) => console.error('[topbar:open-settings]', err.message));
   });
 
   ipcMain.on('topbar:logout', () => {
-    if (process.platform === 'win32') {
-      app.quit();
-      return;
-    }
-    try { exec('qdbus6 org.kde.LogoutPrompt /LogoutPrompt org.kde.LogoutPrompt.promptAll')}
-    catch (err) { console.error('[topbar:logout]', err.message); }
+    app.quit();
   });
 
   ipcMain.handle('topbar:get-window-bounds', (_e, { id }) => {
@@ -567,12 +424,8 @@ export default function () {
 
   setTimeout(() => { initTopbarState(); }, 0);
 
-    /* ─────────────────────────────────────────────────────────────
+  /* ─────────────────────────────────────────────────────────────
    * Автотрансляция состояния при загрузке TopBar'а
-   *
-   * Гарантирует, что после (re)load'а TopBar получит актуальный
-   * снапшот, даже если state-update'ы, отправленные во время
-   * загрузки, потерялись (renderer ещё не навесил listener'ы).
    * ───────────────────────────────────────────────────────────── */
   function attachTopbarAutoBroadcast() {
     const w = global.topbarWindow;
@@ -580,11 +433,9 @@ export default function () {
       setTimeout(attachTopbarAutoBroadcast, 100);
       return;
     }
-    // Слушаем каждый did-finish-load (в т.ч. при reload).
     w.webContents.on('did-finish-load', () => {
       broadcastTopbarState();
     });
-    // Если TopBar уже загружен к моменту вызова — пушим сразу.
     if (!w.webContents.isLoading()) {
       broadcastTopbarState();
     }
