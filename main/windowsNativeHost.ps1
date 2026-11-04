@@ -493,7 +493,7 @@ while ($null -ne ($line = $reader.ReadLine())) {
     try {
         $request = ConvertFrom-Json -InputObject $line
         $result = switch ($request.action) {
-            'list'  { [OmniWin32]::ListWindows([int]$request.ownPid) }
+            'list' { @([OmniWin32]::ListWindows([int]$request.ownPid)) }
             'active'{ [OmniWin32]::GetActiveWindow() }
             'bounds'{
                 [OmniWin32]::SetBounds(

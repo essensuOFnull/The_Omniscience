@@ -795,13 +795,17 @@ async function refreshWin32Windows() {
       requestWin32('list', { ownPid: process.pid }),
       requestWin32('active'),
     ]);
-    const next = Array.isArray(windows) ? windows.map((window) => {
+    const rawWindows = Array.isArray(windows)
+      ? windows
+      : (windows && typeof windows === 'object' ? [windows] : []);
+
+    const next = rawWindows.map((window) => {
       const rect = screen.screenToDipRect(null, {
         x: window.x, y: window.y,
         width: window.width, height: window.height,
       });
       return { ...window, ...rect };
-    }) : [];
+    });
     for (const window of next) cacheWin32Icon(window.imagePath);
     const hash = JSON.stringify([next, activeHwnd]);
     if (hash === win32LastHash) return;
