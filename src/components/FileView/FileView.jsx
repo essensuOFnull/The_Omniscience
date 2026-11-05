@@ -15,14 +15,17 @@ import { useSetting } from '../../settings/useSettings';
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_BRUSH_RADIUS = 55;
-const MIN_BRUSH_RADIUS = 15;
-const WHEEL_SENSITIVITY = 0.15;
+const MIN_BRUSH_RADIUS = 3;
+const MAX_BRUSH_RADIUS = 400;
+const COLLAPSE_THRESHOLD = 2;
+const WHEEL_STEP = 4;
+const RADIUS_STEP_BUTTONS = 5;
 const STORAGE_KEY = 'fileview.brushRadius';
 const RADIUS_SPRING = { stiffness: 260, damping: 26, mass: 0.5 };
 const AUTOPLAY_VIDEO_LIMIT = 12;
 
 /* ------------------------------------------------------------------ */
-/* Утилиты путей                                                        */
+/* Утилиты                                                             */
 /* ------------------------------------------------------------------ */
 
 function buildCrumbs(fullPath) {
@@ -56,6 +59,10 @@ function isRoot(p) {
     if (p === '/') return true;
     if (/^[a-zA-Z]:\\?$/.test(p)) return true;
     return false;
+}
+
+function isFileItem(el) {
+    return el instanceof Element && !!el.closest('[data-file-item]');
 }
 
 /* ------------------------------------------------------------------ */
@@ -121,21 +128,17 @@ function FileItem({
 
     const handleClick = (e) => {
         e.stopPropagation();
-        if (e.shiftKey) return;
-        onSelect(file.id, e);
+        onSelect(file.id);
     };
     const handleDoubleClick = (e) => {
         e.stopPropagation();
-        if (e.shiftKey) return;
         onOpen(file);
     };
     const handleMouseDown = (e) => {
         if (e.button !== 2) return;
-        if (e.shiftKey) return;
         e.stopPropagation();
         onContextRequest(file);
     };
-    const handleContextMenu = (e) => { e.stopPropagation(); };
 
     const handleDragStart = (e) => {
         e.preventDefault();
@@ -153,12 +156,12 @@ function FileItem({
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={handleMouseDown}
-            onContextMenu={handleContextMenu}
+            onContextMenu={(e) => e.stopPropagation()}
             onDragStart={handleDragStart}
             sx={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center',
                 gap: 0.5, p: 1, borderRadius: 0,
-                cursor: 'pointer', userSelect: 'none',
+                userSelect: 'none',
                 opacity: cut ? 0.45 : 1,
                 bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
                 border: selected ? '1px solid rgba(168,85,247,0.6)' : '1px solid transparent',
@@ -210,100 +213,7 @@ function FileItem({
 }
 
 /* ------------------------------------------------------------------ */
-/* FileListRow                                                          */
-/* ------------------------------------------------------------------ */
-
-function FileListRow({
-    file, selected, cut, onSelect, onOpen, onContextRequest,
-    onDragRequest, registerRef,
-}) {
-    const iconUrl = useFileIcon(file.id);
-    const [iconFailed, setIconFailed] = useState(false);
-    const [mediaFailed, setMediaFailed] = useState(false);
-
-    useEffect(() => { setIconFailed(false); setMediaFailed(false); }, [file.id]);
-
-    const setRef = useCallback((el) => { registerRef(file.id, el); }, [file.id, registerRef]);
-
-    const hasMedia = file.mediaKind === 'image' && !mediaFailed;
-
-    const handleClick = (e) => {
-        e.stopPropagation();
-        if (e.shiftKey) return;
-        onSelect(file.id, e);
-    };
-    const handleMouseDown = (e) => {
-        if (e.button !== 2) return;
-        if (e.shiftKey) return;
-        e.stopPropagation();
-        onContextRequest(file);
-    };
-    const handleDragStart = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onDragRequest(file);
-    };
-
-    return (
-        <Box
-            ref={setRef}
-            data-file-item=""
-            draggable
-            onClick={handleClick}
-            onDoubleClick={(e) => { e.stopPropagation(); if (!e.shiftKey) onOpen(file); }}
-            onMouseDown={handleMouseDown}
-            onContextMenu={(e) => e.stopPropagation()}
-            onDragStart={handleDragStart}
-            sx={{
-                display: 'flex', alignItems: 'center', gap: 1,
-                px: 1, py: 0.5,
-                cursor: 'pointer', userSelect: 'none', borderRadius: 0,
-                opacity: cut ? 0.45 : 1,
-                bgcolor: selected ? 'rgba(168,85,247,0.25)' : 'transparent',
-                '&:hover': {
-                    bgcolor: selected ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.05)',
-                },
-                transition: 'opacity 0.15s',
-            }}
-        >
-            <Box
-                sx={{
-                    width: 24, height: 24,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    overflow: 'hidden', borderRadius: 0,
-                    pointerEvents: 'none',
-                }}
-            >
-                {hasMedia ? (
-                    <img
-                        src={file.fileUrl}
-                        alt=""
-                        draggable={false}
-                        onError={() => setMediaFailed(true)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                ) : iconUrl && !iconFailed ? (
-                    <img
-                        src={iconUrl}
-                        width="20" height="20"
-                        alt=""
-                        draggable={false}
-                        onError={() => setIconFailed(true)}
-                        style={{ objectFit: 'contain' }}
-                    />
-                ) : (
-                    <span style={{ fontSize: 16 }}>{file.isDir ? '📁' : '📄'}</span>
-                )}
-            </Box>
-            <Typography sx={{ color: '#fff', fontSize: 13 }} noWrap>
-                {file.name}
-            </Typography>
-        </Box>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/* FileViewInner — сердце рабочего стола                               */
+/* FileViewInner                                                       */
 /* ------------------------------------------------------------------ */
 
 function FileViewInner({ basePath }) {
@@ -311,20 +221,20 @@ function FileViewInner({ basePath }) {
     const [selectedIds, setSelectedIds] = useState(() => new Set());
     const [cutPaths, setCutPaths] = useState(() => new Set());
 
-    const [shiftHeld, setShiftHeld] = useState(false);
+    /* --- Состояние кисти --- */
+    const [inContainer, setInContainer] = useState(false);
     const [brushMode, setBrushMode] = useState(null);
     const [dragOver, setDragOver] = useState(false);
 
-    /* --- Единственная подписка на директорию во всём компоненте --- */
+    /* --- Единственная подписка на директорию --- */
     const { files, loading, error, reload } = useDirectory(currentPath);
 
-    /* --- Radius --- */
+    /* --- Радиус --- */
     const initialRadius = (() => {
         try {
             const saved = parseFloat(localStorage.getItem(STORAGE_KEY));
-            return Number.isFinite(saved)
-                ? Math.max(MIN_BRUSH_RADIUS, saved)
-                : DEFAULT_BRUSH_RADIUS;
+            if (!Number.isFinite(saved)) return DEFAULT_BRUSH_RADIUS;
+            return Math.max(0, Math.min(MAX_BRUSH_RADIUS, saved));
         } catch (_) { return DEFAULT_BRUSH_RADIUS; }
     })();
 
@@ -332,17 +242,24 @@ function FileViewInner({ basePath }) {
     const radiusSpring = useSpring(radiusTarget, RADIUS_SPRING);
     const brushX = useMotionValue(0);
     const brushY = useMotionValue(0);
+    const [radiusDisplay, setRadiusDisplay] = useState(Math.round(initialRadius));
 
     const brushLeft = useTransform([brushX, radiusSpring], ([x, r]) => x - r);
     const brushTop = useTransform([brushY, radiusSpring], ([y, r]) => y - r);
     const brushSize = useTransform(radiusSpring, (r) => r * 2);
+
+    /* --- Единый режим: кисть включена, пока радиус >= порога --- */
+    const brushEnabled = radiusDisplay >= COLLAPSE_THRESHOLD;
 
     /* --- Refs --- */
     const containerRef = useRef(null);
     const fileRefs = useRef(new Map());
     const selectedIdsRef = useRef(selectedIds);
     const brushRef = useRef({ mode: null, workingSet: null });
+    const brushEnabledRef = useRef(brushEnabled);
     const lastMousePosRef = useRef(null);
+
+    useEffect(() => { brushEnabledRef.current = brushEnabled; }, [brushEnabled]);
 
     const filesRef = useRef(files);
     useEffect(() => { filesRef.current = files; }, [files]);
@@ -350,22 +267,19 @@ function FileViewInner({ basePath }) {
     const currentPathRef = useRef(currentPath);
     useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
 
-    // reload меняет идентичность при каждом ре-рендере — держим в ref,
-    // чтобы подписка на события main не переподключалась.
     const reloadRef = useRef(reload);
     useEffect(() => { reloadRef.current = reload; }, [reload]);
 
     useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
-    // Сброс выделения и кисти при смене папки
+    /* --- Сброс при смене папки --- */
     useEffect(() => {
         setSelectedIds(new Set());
         setBrushMode(null);
         brushRef.current = { mode: null, workingSet: null };
     }, [currentPath]);
 
-    /* -------------------- Вырезанные файлы -------------------- */
-
+    /* --- Вырезанные --- */
     useEffect(() => {
         const api = window.electron_desktop_API;
         if (!api) return;
@@ -384,24 +298,15 @@ function FileViewInner({ basePath }) {
         return () => { off?.(); };
     }, []);
 
-    /* -------------------- Слушаем main: перезагрузка -------------------- */
-
+    /* --- Перезагрузка по запросу main --- */
     useEffect(() => {
         const api = window.electron_desktop_API;
         if (!api?.on) return;
-
-        const offReload = api.on('fs:request-reload', () => {
-            reloadRef.current?.();
-        });
-
+        const offReload = api.on('fs:request-reload', () => { reloadRef.current?.(); });
         return () => { offReload?.(); };
     }, []);
 
-    /* -------------------- Keyboard capture через main -------------------- */
-    // Desktop-окно может не получать клавиатурный фокус от WM,
-    // поэтому Ctrl+C/X/V/A и Delete приходят не через keydown, а через
-    // before-input-event в главном процессе. Здесь — только реакция.
-
+    /* --- Клавиатурные шорткаты через main --- */
     useEffect(() => {
         const api = window.electron_desktop_API;
         if (!api) return;
@@ -448,10 +353,9 @@ function FileViewInner({ basePath }) {
             api.disableKeyboardCapture?.();
             off?.();
         };
-    }, []);  // один раз за жизнь компонента
+    }, []);
 
-    /* -------------------- Производные -------------------- */
-
+    /* --- Производные --- */
     const videoCount = useMemo(
         () => files.filter((f) => f.mediaKind === 'video').length,
         [files],
@@ -461,18 +365,14 @@ function FileViewInner({ basePath }) {
     const crumbs = useMemo(() => buildCrumbs(currentPath), [currentPath]);
     const canGoBack = !isRoot(currentPath);
 
-    /* -------------------- DOM-рефы -------------------- */
-
+    /* --- Рефы элементов --- */
     const registerRef = useCallback((id, el) => {
         if (el) fileRefs.current.set(id, el);
         else fileRefs.current.delete(id);
     }, []);
 
-    /* -------------------- Навигация -------------------- */
-
-    const handleOpenFolder = useCallback((folderPath) => {
-        setCurrentPath(folderPath);
-    }, []);
+    /* --- Навигация --- */
+    const handleOpenFolder = useCallback((folderPath) => setCurrentPath(folderPath), []);
 
     const handleBack = useCallback(() => {
         setCurrentPath((prev) => {
@@ -482,39 +382,21 @@ function FileViewInner({ basePath }) {
         });
     }, []);
 
-    const handleNavigateTo = useCallback((targetPath) => {
-        setCurrentPath(targetPath);
+    const handleNavigateTo = useCallback((targetPath) => setCurrentPath(targetPath), []);
+
+    /* --- Выделение кликом (работает только в режиме курсора) --- */
+    const handleSelect = useCallback((id) => {
+        setSelectedIds(new Set([id]));
     }, []);
 
-    /* -------------------- Выделение кликом -------------------- */
-
-    const handleSelect = useCallback((id, e) => {
-        if (e && e.shiftKey) return;
-        const additive = e && (e.ctrlKey || e.metaKey);
-        setSelectedIds((prev) => {
-            if (additive) {
-                const next = new Set(prev);
-                if (next.has(id)) next.delete(id);
-                else next.add(id);
-                return next;
-            }
-            return new Set([id]);
-        });
-    }, []);
-
-    /* -------------------- Открытие -------------------- */
-
+    /* --- Открытие --- */
     const handleOpen = useCallback(async (file) => {
         const api = window.electron_desktop_API;
-        if (file.isDir) {
-            handleOpenFolder(file.id);
-            return;
-        }
+        if (file.isDir) { handleOpenFolder(file.id); return; }
         await api.openPath(file.id);
     }, [handleOpenFolder]);
 
-    /* -------------------- ПКМ / drag-out -------------------- */
-
+    /* --- ПКМ / drag-out --- */
     const handleItemContextRequest = useCallback((file) => {
         const api = window.electron_desktop_API;
         if (!api?.setContextPaths) return;
@@ -531,24 +413,7 @@ function FileViewInner({ basePath }) {
         api.startDrag(paths);
     }, []);
 
-    const handleContainerMouseDown = useCallback((e) => {
-        if (e.button !== 2) return;
-        if (e.shiftKey) return;
-        if (e.target instanceof Element && e.target.closest('[data-file-item]')) return;
-
-        const api = window.electron_desktop_API;
-        if (!api?.setContextPaths) return;
-
-        const selected = selectedIdsRef.current;
-        if (selected.size > 0) {
-            api.setContextPaths({ kind: 'files', paths: [...selected] });
-        } else {
-            api.setContextPaths({ kind: 'background', paths: [currentPath] });
-        }
-    }, [currentPath]);
-
-    /* -------------------- Drag-in -------------------- */
-
+    /* --- Drag-in --- */
     const handleDrop = useCallback(async (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -558,221 +423,196 @@ function FileViewInner({ basePath }) {
         if (!api) { console.warn('[drop] no api'); return; }
 
         const dt = e.dataTransfer;
-        console.log('[drop] ===== DROP =====');
-        console.log('[drop] effectAllowed:', dt.effectAllowed);
-        console.log('[drop] types:', Array.from(dt.types || []));
-        console.log('[drop] items.length:', dt.items?.length ?? 0);
-        console.log('[drop] files.length:', dt.files?.length ?? 0);
-
         const items = dt.items;
-        if (!items || items.length === 0) {
-            console.warn('[drop] no items — aborting');
-            return;
-        }
+        if (!items || items.length === 0) return;
 
-        // КРИТИЧНО: getAsFileSystemHandle вызывается СИНХРОННО для всех items.
-        // DataTransferItemList инвалидируется после первого await — если ждать
-        // внутри цикла, второй вызов молча вернёт null.
         const handlePromises = [];
         for (let i = 0; i < items.length; i++) {
             const it = items[i];
-            console.log(`[drop] item[${i}]: kind=${it.kind}, type=${it.type}, hasFSA=${typeof it.getAsFileSystemHandle === 'function'}`);
             if (it.kind !== 'file') continue;
             if (typeof it.getAsFileSystemHandle !== 'function') continue;
-            try {
-                handlePromises.push(it.getAsFileSystemHandle());
-            } catch (err) {
-                console.error(`[drop] item[${i}] sync FSA call threw:`, err);
-            }
+            try { handlePromises.push(it.getAsFileSystemHandle()); }
+            catch (err) { console.error(`[drop] item[${i}] sync FSA call threw:`, err); }
         }
-
-        console.log('[drop] handle promises created:', handlePromises.length);
 
         const inlineFiles = [];
         for (let i = 0; i < handlePromises.length; i++) {
             try {
                 const handle = await handlePromises[i];
-                console.log(`[drop] handle[${i}]:`, handle ? handle.kind : 'null');
                 if (!handle || handle.kind !== 'file') continue;
-
                 const file = await handle.getFile();
-                console.log(`[drop] file[${i}]: name="${file.name}", size=${file.size}, type="${file.type}"`);
-
                 const buf = await file.arrayBuffer();
-                console.log(`[drop] buffer[${i}]: ${buf.byteLength} bytes`);
-
                 if (buf.byteLength > 0) {
                     inlineFiles.push({ name: file.name || '', data: new Uint8Array(buf) });
                 }
-            } catch (err) {
-                console.error(`[drop] handle[${i}] failed:`, err);
-            }
+            } catch (err) { console.error(`[drop] handle[${i}] failed:`, err); }
         }
 
-        console.log('[drop] collected inline files:', inlineFiles.length);
-        if (inlineFiles.length === 0) {
-            console.warn('[drop] nothing to write — aborting');
-            return;
-        }
-
+        if (inlineFiles.length === 0) return;
         const res = await api.writeDroppedFiles(inlineFiles, currentPath);
-        console.log('[drop] writeDroppedFiles result:', res);
         if (res?.success) reload();
     }, [currentPath, reload]);
 
-    /* -------------------- Трекер мыши -------------------- */
+    /* --- Кисть: применение в точке --- */
+    const applyBrushAt = useCallback((x, y) => {
+        const st = brushRef.current;
+        if (!st.workingSet) return;
+        const r = radiusSpring.get();
+        if (r < MIN_BRUSH_RADIUS) return;
+        const r2 = r * r;
+        let changed = false;
 
-    useEffect(() => {
-        const onMove = (e) => {
-            lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-            brushX.set(e.clientX);
-            brushY.set(e.clientY);
-        };
-        document.addEventListener('mousemove', onMove);
-        return () => document.removeEventListener('mousemove', onMove);
-    }, [brushX, brushY]);
-
-    /* -------------------- Shift -------------------- */
-
-    useEffect(() => {
-        const applyShift = (e) => {
-            const held = !!e.shiftKey;
-            setShiftHeld(held);
-            if (held && lastMousePosRef.current) {
-                brushX.set(lastMousePosRef.current.x);
-                brushY.set(lastMousePosRef.current.y);
+        fileRefs.current.forEach((el, id) => {
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const closestX = Math.max(rect.left, Math.min(x, rect.right));
+            const closestY = Math.max(rect.top, Math.min(y, rect.bottom));
+            const dx = x - closestX;
+            const dy = y - closestY;
+            if (dx * dx + dy * dy <= r2) {
+                if (st.mode === 'add' && !st.workingSet.has(id)) {
+                    st.workingSet.add(id); changed = true;
+                } else if (st.mode === 'remove' && st.workingSet.has(id)) {
+                    st.workingSet.delete(id); changed = true;
+                }
             }
-        };
-        const onKeyDown = (e) => applyShift(e);
-        const onKeyUp = (e) => applyShift(e);
-        const onBlur = () => {
-            setShiftHeld(false);
-            setBrushMode(null);
-            brushRef.current = { mode: null, workingSet: null };
-        };
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
-        window.addEventListener('blur', onBlur);
-        return () => {
-            window.removeEventListener('keydown', onKeyDown);
-            window.removeEventListener('keyup', onKeyUp);
-            window.removeEventListener('blur', onBlur);
-        };
-    }, [brushX, brushY]);
+        });
+        if (changed) setSelectedIds(new Set(st.workingSet));
+    }, [radiusSpring]);
 
-    /* -------------------- Колесо: радиус -------------------- */
+    /* --- Радиус --- */
+    const setRadius = useCallback((next) => {
+        next = Math.max(0, Math.min(MAX_BRUSH_RADIUS, next));
+        radiusTarget.set(next);
+        setRadiusDisplay(Math.round(next));
+        try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) { }
+    }, [radiusTarget]);
 
+    const adjustRadius = useCallback((delta) => {
+        setRadius(radiusTarget.get() + delta);
+    }, [radiusTarget, setRadius]);
+
+    /* --- Колесо: сжатие/рост кисти --- */
     useEffect(() => {
-        if (!shiftHeld) return;
+        const container = containerRef.current;
+        if (!container) return;
+
         const onWheel = (e) => {
-            const t = e.target;
-            if (t instanceof Element && t.closest('[data-no-brush-wheel]')) return;
+            if (e.target instanceof Element && e.target.closest('[data-no-brush-wheel]')) return;
+
+            const current = radiusTarget.get();
+            const delta = -Math.sign(e.deltaY) * WHEEL_STEP;
+            let next = current + delta;
+            if (next < MIN_BRUSH_RADIUS) next = 0;
+            next = Math.max(0, Math.min(MAX_BRUSH_RADIUS, next));
+
+            if (next === current) return;
             e.preventDefault();
             e.stopPropagation();
-            const delta = -e.deltaY * WHEEL_SENSITIVITY;
-            const next = Math.max(MIN_BRUSH_RADIUS, radiusTarget.get() + delta);
-            radiusTarget.set(next);
-            try { localStorage.setItem(STORAGE_KEY, String(next)); } catch (_) { }
+            setRadius(next);
         };
-        document.addEventListener('wheel', onWheel, { passive: false });
-        return () => document.removeEventListener('wheel', onWheel);
-    }, [shiftHeld, radiusTarget]);
 
-    /* -------------------- Кисть -------------------- */
+        container.addEventListener('wheel', onWheel, { passive: false });
+        return () => container.removeEventListener('wheel', onWheel);
+    }, [radiusTarget, setRadius]);
 
+    /* --------------------------------------------------------------
+     * Единый обработчик мыши
+     * -------------------------------------------------------------- */
     useEffect(() => {
-        if (!shiftHeld) {
-            setBrushMode(null);
-            brushRef.current = { mode: null, workingSet: null };
-            return;
-        }
-
-        const applyBrushAt = (x, y) => {
-            const st = brushRef.current;
-            if (!st.workingSet) return;
-            const r = radiusSpring.get();
-            const r2 = r * r;
-            let changed = false;
-
-            fileRefs.current.forEach((el, id) => {
-                if (!el) return;
-                const rect = el.getBoundingClientRect();
-                const closestX = Math.max(rect.left, Math.min(x, rect.right));
-                const closestY = Math.max(rect.top, Math.min(y, rect.bottom));
-                const dx = x - closestX;
-                const dy = y - closestY;
-                if (dx * dx + dy * dy <= r2) {
-                    if (st.mode === 'add' && !st.workingSet.has(id)) {
-                        st.workingSet.add(id); changed = true;
-                    } else if (st.mode === 'remove' && st.workingSet.has(id)) {
-                        st.workingSet.delete(id); changed = true;
-                    }
-                }
-            });
-            if (changed) setSelectedIds(new Set(st.workingSet));
-        };
-
         const onMove = (e) => {
             lastMousePosRef.current = { x: e.clientX, y: e.clientY };
             brushX.set(e.clientX);
             brushY.set(e.clientY);
+
+            const container = containerRef.current;
+            setInContainer(!!(container && container.contains(e.target)));
+
             if (brushRef.current.mode) {
                 e.preventDefault();
                 applyBrushAt(e.clientX, e.clientY);
             }
         };
+
         const onDown = (e) => {
             if (e.button !== 0 && e.button !== 2) return;
-            const t = e.target;
-            if (t instanceof Element && t.closest('[data-no-brush]')) return;
-            e.preventDefault();
-            e.stopPropagation();
-            const mode = e.button === 0 ? 'add' : 'remove';
-            brushRef.current = { mode, workingSet: new Set(selectedIdsRef.current) };
-            setBrushMode(mode);
-            applyBrushAt(e.clientX, e.clientY);
+
+            const container = containerRef.current;
+            if (!container || !container.contains(e.target)) return;
+            if (e.target instanceof Element && e.target.closest('[data-no-brush]')) return;
+
+            /* --- Режим кисти: только рисование, никакого UI --- */
+            if (brushEnabledRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                container.focus?.();
+
+                const mode = e.button === 0 ? 'add' : 'remove';
+                brushRef.current = { mode, workingSet: new Set(selectedIdsRef.current) };
+                setBrushMode(mode);
+                applyBrushAt(e.clientX, e.clientY);
+                return;
+            }
+
+            /* --- Режим курсора: обычное поведение --- */
+            // Файлы обрабатывают mousedown сами (через FileItem).
+            if (isFileItem(e.target)) return;
+
+            if (e.button === 2) {
+                // ПКМ по фону — контекст для нативного меню
+                const api = window.electron_desktop_API;
+                if (api?.setContextPaths) {
+                    const selected = selectedIdsRef.current;
+                    if (selected.size > 0) {
+                        api.setContextPaths({ kind: 'files', paths: [...selected] });
+                    } else {
+                        api.setContextPaths({ kind: 'background', paths: [currentPathRef.current] });
+                    }
+                }
+            } else if (e.button === 0) {
+                // ЛКМ по фону — снять выделение
+                setSelectedIds(new Set());
+            }
         };
+
         const onUp = () => {
-            if (!brushRef.current.mode) return;
-            brushRef.current = { mode: null, workingSet: null };
-            setBrushMode(null);
+            if (brushRef.current.mode) {
+                brushRef.current = { mode: null, workingSet: null };
+                setBrushMode(null);
+            }
         };
+
         const onCtx = (e) => {
-            const t = e.target;
-            if (t instanceof Element && t.closest('[data-no-brush]')) return;
+            if (!brushEnabledRef.current) return;      // в режиме курсора меню разрешено
+            if (e.target instanceof Element && e.target.closest('[data-no-brush]')) return;
             e.preventDefault();
             e.stopPropagation();
         };
 
-        let rafId = null;
-        const scheduleReapply = () => {
-            if (rafId != null) return;
-            rafId = requestAnimationFrame(() => {
-                rafId = null;
-                if (brushRef.current.mode && lastMousePosRef.current) {
-                    applyBrushAt(lastMousePosRef.current.x, lastMousePosRef.current.y);
-                }
-            });
+        const onBlur = () => {
+            if (brushRef.current.mode) {
+                brushRef.current = { mode: null, workingSet: null };
+                setBrushMode(null);
+            }
+            setInContainer(false);
         };
-        const unsubscribeRadius = radiusSpring.on('change', scheduleReapply);
 
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mousedown', onDown, true);
         document.addEventListener('mouseup', onUp);
         document.addEventListener('contextmenu', onCtx, true);
+        window.addEventListener('blur', onBlur);
 
         return () => {
-            if (rafId != null) cancelAnimationFrame(rafId);
-            unsubscribeRadius();
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mousedown', onDown, true);
             document.removeEventListener('mouseup', onUp);
             document.removeEventListener('contextmenu', onCtx, true);
+            window.removeEventListener('blur', onBlur);
         };
-    }, [shiftHeld, radiusSpring, brushX, brushY]);
+    }, [applyBrushAt, brushX, brushY]);
 
-    /* -------------------- Стили сетки -------------------- */
-
+    /* --- Стили сетки --- */
     const containerStyle = useMemo(() => ({
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, 90px)',
@@ -784,12 +624,13 @@ function FileViewInner({ basePath }) {
         overflowY: 'auto', overflowX: 'hidden',
         position: 'relative',
         userSelect: 'none',
-        cursor: shiftHeld ? 'none' : 'default',
         outline: 'none',
-    }), [shiftHeld]);
+    }), []);
 
-    /* -------------------- Рендер -------------------- */
+    /* --- Показывать ли кисть --- */
+    const showBrush = brushEnabled && (brushMode || inContainer);
 
+    /* --- Рендер --- */
     return (
         <Box
             sx={{
@@ -798,20 +639,14 @@ function FileViewInner({ basePath }) {
                 pointerEvents: 'auto',
             }}
         >
-            {/* ----- Панель навигации ----- */}
+            {/* Панель навигации */}
             <Box
                 sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    px: 1.5,
-                    py: 0.75,
-                    mb: 1,
+                    display: 'flex', alignItems: 'center', gap: 1,
+                    px: 1.5, py: 0.75, mb: 1,
                     bgcolor: 'rgba(0,0,0,0.6)',
                     borderBottom: '1px solid rgba(255,255,255,0.08)',
-                    maxWidth: '100%',
-                    overflow: 'hidden',
-                    flexShrink: 0,
+                    maxWidth: '100%', overflow: 'hidden', flexShrink: 0,
                 }}
             >
                 <IconButton
@@ -828,8 +663,7 @@ function FileViewInner({ basePath }) {
                     separator="/"
                     sx={{
                         color: '#aaa',
-                        flex: 1,
-                        minWidth: 0,
+                        flex: 1, minWidth: 0,
                         '& .MuiBreadcrumbs-separator': { color: 'rgba(255,255,255,0.3)' },
                         '& .MuiBreadcrumbs-ol': { flexWrap: 'nowrap' },
                     }}
@@ -844,10 +678,8 @@ function FileViewInner({ basePath }) {
                                 onClick={() => handleNavigateTo(c.path)}
                                 sx={{
                                     color: last ? '#fff' : '#aaa',
-                                    fontSize: 13,
-                                    fontFamily: 'monospace',
-                                    whiteSpace: 'nowrap',
-                                    cursor: 'pointer',
+                                    fontSize: 13, fontFamily: 'monospace',
+                                    whiteSpace: 'nowrap', cursor: 'pointer',
                                 }}
                             >
                                 {c.name}
@@ -855,20 +687,52 @@ function FileViewInner({ basePath }) {
                         );
                     })}
                 </Breadcrumbs>
+
+                {/* Индикатор / ручная регулировка радиуса */}
+                <Box
+                    data-no-brush=""
+                    data-no-brush-wheel=""
+                    sx={{
+                        display: 'flex', alignItems: 'center', gap: 0.25,
+                        ml: 'auto', flexShrink: 0,
+                        bgcolor: 'rgba(255,255,255,0.06)',
+                        borderRadius: 1, px: 0.5,
+                    }}
+                >
+                    <Box
+                        component="span"
+                        role="button"
+                        onClick={() => adjustRadius(-RADIUS_STEP_BUTTONS)}
+                        sx={{
+                            color: '#fff', cursor: 'pointer', px: 0.75,
+                            fontSize: 16, lineHeight: 1, userSelect: 'none',
+                            '&:hover': { color: '#a855f7' },
+                        }}
+                    >−</Box>
+                    <Typography sx={{
+                        color: brushEnabled ? '#fff' : '#a855f7',
+                        fontSize: 11, minWidth: 22, textAlign: 'center',
+                    }}>
+                        {brushEnabled ? radiusDisplay : '↺'}
+                    </Typography>
+                    <Box
+                        component="span"
+                        role="button"
+                        onClick={() => adjustRadius(RADIUS_STEP_BUTTONS)}
+                        sx={{
+                            color: '#fff', cursor: 'pointer', px: 0.75,
+                            fontSize: 16, lineHeight: 1, userSelect: 'none',
+                            '&:hover': { color: '#a855f7' },
+                        }}
+                    >+</Box>
+                </Box>
             </Box>
 
-            {/* ----- Сетка файлов (принимает drop извне и отдаёт drag наружу) ----- */}
+            {/* Сетка файлов */}
             <Box
                 ref={containerRef}
                 tabIndex={-1}
-                onMouseDown={(e) => {
-                    if (e.button === 0) containerRef.current?.focus?.();
-                    handleContainerMouseDown(e);
-                }}
-                onDragEnter={(e) => {
-                    e.preventDefault();
-                    setDragOver(true);
-                }}
+                onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
@@ -882,6 +746,13 @@ function FileViewInner({ basePath }) {
                 onDrop={handleDrop}
                 sx={{
                     ...containerStyle,
+                    // Курсор зависит только от режима
+                    cursor: brushEnabled ? 'none' : 'default',
+                    // В режиме кисти файлы полностью "выключены" для мыши:
+                    // ни кликов, ни dblclick, ни drag, ни contextmenu.
+                    '& [data-file-item]': brushEnabled
+                        ? { pointerEvents: 'none', cursor: 'none' }
+                        : { cursor: 'pointer' },
                     boxShadow: dragOver
                         ? 'inset 0 0 0 2px rgba(168,85,247,0.65)'
                         : 'none',
@@ -920,7 +791,7 @@ function FileViewInner({ basePath }) {
                     />
                 ))}
 
-                {shiftHeld && (
+                {showBrush && (
                     <motion.div
                         className="ignore_The_Omniscience_Theme_recursive"
                         style={{
@@ -952,7 +823,7 @@ function FileViewInner({ basePath }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Экспорт: самодостаточный рабочий стол                               */
+/* Экспорт                                                             */
 /* ------------------------------------------------------------------ */
 
 export default function FileView() {
