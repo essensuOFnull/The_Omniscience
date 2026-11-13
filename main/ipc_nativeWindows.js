@@ -16,27 +16,6 @@ import {
 const execFileAsync = promisify(execFile);
 
 /* ------------------------------------------------------------------ */
-/* Глобальная защита процесса                                          */
-/* ------------------------------------------------------------------ */
-
-process.on('unhandledRejection', (reason) => {
-  if (DEBUG) console.warn('[nativeWindows] unhandledRejection:', reason?.message || reason);
-  if (win32TaskbarHidden) {
-    recoverWindowsShell(reason?.stack || reason?.message || String(reason)).catch((error) => {
-      console.error('[windows-shell] recovery after unhandled rejection failed:', error.message);
-    });
-  }
-});
-process.on('uncaughtException', (err) => {
-  console.error('[nativeWindows] uncaughtException:', err);
-  if (win32TaskbarHidden) {
-    recoverWindowsShell(err?.stack || err?.message || String(err)).catch((error) => {
-      console.error('[windows-shell] recovery after uncaught exception failed:', error.message);
-    });
-  }
-});
-
-/* ------------------------------------------------------------------ */
 /* Debug                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -319,12 +298,6 @@ const WINDOWS_USER_SHELL_POLICY_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\Curr
 const WINDOWS_MACHINE_SHELL_POLICY_KEY = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System';
 const WINDOWS_MACHINE_WINLOGON_KEY = 'HKLM:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
 const WINDOWS_RUN_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
-const WINDOWS_RUN_NAME = 'The_Omniscience';
-
-function encodePowerShellValue(value) {
-  return `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(value, 'utf8').toString('base64')}'))`;
-}
-
 async function runWindowsPowerShell(script) {
   const { stdout } = await execFileAsync('powershell.exe', [
     '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script,
@@ -441,7 +414,6 @@ async function restoreWindowsUserShell() {
     throw new Error('Legacy machine policy restoration did not verify');
   }
   await unlink(backupPath);
-  await configureWindowsAutostart();
   return { ok: true, restartRequired: true };
 }
 
@@ -462,33 +434,6 @@ export async function restoreWindowsShellForAutostart() {
   if (!managedShellIsActive) return false;
 
   await restoreWindowsUserShell();
-  return true;
-}
-
-export async function configureWindowsAutostart() {
-  const registry = await readWindowsUserShellRegistry();
-  const backup = await readWindowsUserShellBackup();
-  const shellEnabled = /OmniShellHost\.exe/i.test(registry.machineWinlogonShell?.value || '')
-    || isLegacyMachineShellBackup(backup, registry)
-    || (isWinlogonMachineShellBackup(backup)
-      && registry.machineWinlogonShell?.value === backup.command);
-  if (shellEnabled) {
-    throw new Error('Omniscience is still configured as the Windows shell; restore Explorer before configuring normal autostart');
-  }
-  const launchCommand = app.isPackaged
-    ? quoteWindowsArgument(process.execPath)
-    : `${quoteWindowsArgument(process.execPath)} ${quoteWindowsArgument(app.getAppPath())}`;
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    `$runKey = '${WINDOWS_RUN_KEY}'`,
-    `$name = '${WINDOWS_RUN_NAME}'`,
-    `$value = ${encodePowerShellValue(launchCommand)}`,
-    'New-Item -Path $runKey -Force | Out-Null',
-    'New-ItemProperty -LiteralPath $runKey -Name $name -Value $value -PropertyType String -Force | Out-Null',
-    '$actual = (Get-Item -LiteralPath $runKey).GetValue($name)',
-    "if ($actual -cne $value) { throw 'Windows startup command did not verify' }",
-  ].join('\n');
-  await runWindowsPowerShell(script);
   return true;
 }
 

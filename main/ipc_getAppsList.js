@@ -14,17 +14,8 @@ const MIME_MAP = {
 };
 
 export async function buildAppsList() {
-  const { componentappsDir, webappsDir, distDir } = global.paths;
+  const { componentappsDir, webappsDir } = global.paths;
   const apps = [];
-
-  apps.push({
-    id: 'new-browser-window',
-    type: 'browser',
-    title: 'Браузер',
-    url: global.config.homepageUrl,
-    icon: global.paths.icon,
-    useShell: false,               // не важно, т.к. Window сам обрабатывает
-  });
 
   // 1. Компонентные приложения (React)
   if (existsSync(componentappsDir)) {
@@ -92,10 +83,25 @@ export async function buildAppsList() {
         id: entry.name,
         type: 'webapp',
         title: entry.name,
-        url: pathToFileURL(join(distDir, 'webapps', entry.name, 'index.html')).href,
+        url: pathToFileURL(indexPath).href,
         icon: iconDataUrl,
       });
     }
+  }
+
+  const extensions = global.extensionsSession?.extensions?.getAllExtensions?.() || [];
+  for (const extension of extensions) {
+    const popup = extension.manifest?.action?.default_popup
+      || extension.manifest?.browser_action?.default_popup;
+    if (!popup) continue;
+
+    apps.push({
+      id: extension.id,
+      type: 'extension',
+      title: extension.name || extension.id,
+      url: `chrome-extension://${extension.id}/${popup}`,
+      icon: null,
+    });
   }
 
   return apps;

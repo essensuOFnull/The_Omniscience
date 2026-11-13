@@ -6,7 +6,12 @@ export default async function () {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
 
-  const IGNORE = ['autoimport.js', 'config.js', 'paths.js']; // config не функция, загружается отдельно
+  const IGNORE = [
+    'autoimport.js',
+    'config.js',
+    'paths.js',
+    'ipc_nativeWindows.js',
+  ];
 
   global.$ = {};
 

@@ -2,7 +2,6 @@ import electronPkg from 'electron';
 const { session, ipcMain } = electronPkg;
 import { ElectronChromeExtensions, setSessionPartitionResolver } from 'electron-chrome-extensions';
 import { readdir, stat, mkdir, rm, readFile } from 'fs/promises';
-import { fileURLToPath } from 'url';
 import path from 'path';
 import AdmZip from 'adm-zip';
 
@@ -31,46 +30,8 @@ export default async function () {
 		const defaultSession = session.defaultSession;
 		global.extensionsSession = defaultSession;
 
-		// === Снятие CSP для всей сессии ===
-		defaultSession.webRequest.onHeadersReceived((details, callback) => {
-			callback({
-				responseHeaders: {
-					...details.responseHeaders,
-					// Добавляем arkh: во все ключевые места, чтобы веб-воркеры и скрипты могли загружать WASM
-					'content-security-policy': [
-						"default-src * arkh: 'unsafe-inline' 'unsafe-eval' data: blob: filesystem:; " +
-						"script-src * arkh: 'unsafe-inline' 'unsafe-eval' blob:; " +
-						"worker-src * arkh: 'unsafe-inline' 'unsafe-eval' blob:;"
-					]
-				}
-			});
-		});
-
-		console.log('[Extensions] CSP disabled for all sites in session');
-
-		// 1. Регистрируем НАШ общий preload как session-preload для всех frame.
-		//    В нём уже вклеены chrome.* API из electron-chrome-extensions.
-		try {
-			await defaultSession.registerPreloadScript({
-				id: 'omniscience-sw-preload',
-				type: 'service-worker',//ВАЖНО
-				filePath: global.paths.extensionsPreload,
-			});
-			await defaultSession.registerPreloadScript({
-				id: 'omniscience-common-preload',
-				type: 'frame',//ВАЖНО
-				filePath: global.paths.reactPreload,
-			});
-			console.log('[Extensions] Common preload registered for session');
-		} catch (err) {
-			console.error('[Extensions] Failed to register common preload:', err.message);
-			return;
-		}
-
-		// 3. Резолвер сессии
 		setSessionPartitionResolver(() => defaultSession);
 
-		// 4. Менеджер расширений
 		const extensionManager = new ElectronChromeExtensions({
 			license: 'GPL-3.0',
 			session: defaultSession,
@@ -80,7 +41,6 @@ export default async function () {
 		global.extensionManager = extensionManager;
 		console.log('[Extensions] Manager created');
 
-		// 5. Загрузка расширений
 		const extensionsDir = global.paths.extensionsDir;
 		// Папка для распакованных .crx (временная)
 		const tempExtractDir = path.join(

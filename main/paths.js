@@ -1,30 +1,36 @@
+import electronPkg from 'electron';
 import path from "path";
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 
 export default function () {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    const root = path.resolve(__dirname, '..');
+    const appRoot = path.resolve(__dirname, '..');
+    const distributionRoot = process.env.APPIMAGE
+        ? path.dirname(process.env.APPIMAGE)
+        : process.env.PORTABLE_EXECUTABLE_DIR
+            || (electronPkg.app.isPackaged
+                ? path.dirname(electronPkg.app.getPath('exe'))
+                : appRoot);
+    const userData = electronPkg.app.getPath('userData');
 
     global.paths = {
-        projectRoot: root,
+        projectRoot: appRoot,
+        distributionRoot,
+        userData,
 
-        icon: path.join(root, 'icon.ico'),
-        config: path.join(root, 'config.json'),
+        icon: path.join(appRoot, 'icon.ico'),
+        config: path.join(appRoot, 'config.json'),
 
-        publicDir: path.join(root, 'public'),
-        srcDir: path.join(root, 'src'),
-        distDir: path.join(root, 'dist'),
+        publicDir: path.join(appRoot, 'public'),
+        distDir: path.join(userData, 'dist'),
 
-        extensionsDir: path.join(root, 'extensions'),
-        webappsDir: path.join(root, 'webapps'),
-        componentappsDir: path.join(root, 'componentapps'),
+        extensionsDir: path.join(distributionRoot, 'extensions'),
+        webappsDir: path.join(distributionRoot, 'webapps'),
+        componentappsDir: path.join(distributionRoot, 'componentapps'),
 
-        reactIndex: pathToFileURL(path.join(root, 'dist', 'src', 'index.html')).href,
-        topBarIndex: pathToFileURL(path.join(root, 'dist', 'src', 'topbar.html')).href,
-        overviewIndex: pathToFileURL(path.join(root, 'dist', 'src', 'overview.html')).href,
-
-        reactPreload: path.join(root, '.temp', 'reactPreload.cjs'),
-        extensionsPreload: path.join(root, '.temp', 'extensionsPreload.cjs'),
+        reactPreload: path.join(userData, 'preloads', 'reactPreload.cjs'),
     };
+
+    global.paths.appRoot = appRoot;
 }

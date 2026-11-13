@@ -2,7 +2,6 @@ import electronPkg from 'electron';
 const { BrowserWindow, ipcMain, screen, webContents } = electronPkg;
 import { pathToFileURL } from 'url';
 import path from 'path';
-import { attachToWebContents } from './ipc_browserContextMenu.js';
 
 /* ------------------------------------------------------------------ */
 /* Реестр окон                                                         */
@@ -27,13 +26,6 @@ function getXid(win) {
 function send(channel, data) {
   if (!global.mainWindow || global.mainWindow.isDestroyed()) return;
   global.mainWindow.webContents.send(channel, data);
-}
-
-function getShellSession() {
-  if (global.mainWindow && !global.mainWindow.isDestroyed()) {
-    return global.mainWindow.webContents.session;
-  }
-  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -200,7 +192,6 @@ export function createWindowByRequest({
       height: 600,
     };
 
-  const session = getShellSession();
   const finalUrl = buildFinalUrl(url, { id, desktopId, extra });
 
   const win = new BrowserWindow({
@@ -208,9 +199,9 @@ export function createWindowByRequest({
     minWidth: 200, minHeight: 120,
     title: title || 'Omniscience',
     icon: global.paths.icon,
-    frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    frame: true,
+    transparent: false,
+    backgroundColor: '#202020',
     resizable: true,
     show: false,
     skipTaskbar: false,
@@ -218,27 +209,20 @@ export function createWindowByRequest({
       preload: preload || undefined,
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false,
+      webSecurity: true,
       webviewTag: true,
-      transparent: true,
-      backgroundColor: '#00000000',
     },
   });
 
-  win.setBackgroundColor('#00000000');
+  if (global.extensionManager && !finalUrl.startsWith('chrome-extension://')) {
+    try {
+      global.extensionManager.addTab(win.webContents, win);
+    } catch (error) {
+      console.error('[windowManager] could not register app window with extensions:', error.message);
+    }
+  }
 
-  try { attachToWebContents(win.webContents); } catch { /* ignore */ }
-
-  try {
-    win.webContents.setWindowOpenHandler(({ url: openUrl, disposition }) => {
-      send('shell:open-window-request', {
-        sourceWindowId: id,
-        url: openUrl,
-        disposition,
-      });
-      return { action: 'deny' };
-    });
-  } catch { /* ignore */ }
+  win.webContents.setWindowOpenHandler(() => ({ action: 'allow' }));
 
   win.loadURL(finalUrl);
 
