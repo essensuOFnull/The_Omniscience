@@ -211,7 +211,21 @@ export function createWindowByRequest({
       contextIsolation: true,
       webSecurity: false,
       webviewTag: true,
+      devTools: true, // ФИКС: явно разрешаем DevTools
     },
+  });
+
+  // ФИКС: Перехватываем клавиши F12 и Ctrl+Shift+I / Cmd+Opt+I, 
+  // так как win.setMenu(null) убивает стандартные акселераторы Electron.
+  win.webContents.on('before-input-event', (event, input) => {
+    const isF12 = input.key === 'F12';
+    const isCtrlShiftI = input.control && input.shift && input.key.toLowerCase() === 'i';
+    const isCmdOptI = input.meta && input.alt && input.key.toLowerCase() === 'i';
+
+    if (isF12 || isCtrlShiftI || isCmdOptI) {
+      win.webContents.toggleDevTools();
+      event.preventDefault();
+    }
   });
 
   if (global.extensionManager && !finalUrl.startsWith('chrome-extension://')) {
@@ -238,7 +252,7 @@ export function createWindowByRequest({
       global.topbarBroadcast?.();
     }
     if (maximized) win.maximize();
-    win.setMenu(null);
+    win.setMenu(null); // Теперь это безопасно, у нас есть свой перехватчик
     win.show();
     send('shell:window-event', { id, type: 'ready' });
   });
