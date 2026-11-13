@@ -15,6 +15,7 @@ const MIME_MAP = {
 
 export async function buildAppsList() {
   const { componentappsDir, webappsDir } = global.paths;
+  const { distDir } = global.paths;
   const apps = [];
 
   // 1. Компонентные приложения (React)

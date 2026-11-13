@@ -1,5 +1,3 @@
-const { contextBridge, ipcRenderer } = require('electron');
-
 contextBridge.exposeInMainWorld('electron_componentapp_xterm_API', {
   on: (event, callback) => {
     const wrapped = (_, data) => callback(data);
