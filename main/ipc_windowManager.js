@@ -201,7 +201,7 @@ export function createWindowByRequest({
     icon: global.paths.icon,
     frame: true,
     transparent: false,
-    backgroundColor: '#202020',
+    backgroundColor: '#00000000',
     resizable: true,
     show: false,
     skipTaskbar: false,
@@ -209,7 +209,7 @@ export function createWindowByRequest({
       preload: preload || undefined,
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true,
+      webSecurity: false,
       webviewTag: true,
     },
   });
@@ -238,6 +238,7 @@ export function createWindowByRequest({
       global.topbarBroadcast?.();
     }
     if (maximized) win.maximize();
+    win.setMenu(null);
     win.show();
     send('shell:window-event', { id, type: 'ready' });
   });
