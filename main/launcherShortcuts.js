@@ -21,7 +21,7 @@ function stableName(appType, appId) {
     .toLowerCase()
     .slice(0, 40) || 'app';
   const hash = createHash('sha256').update(`${appType}:${appId}`).digest('hex').slice(0, 10);
-  return `omniscience-${appType}-${slug}-${hash}`;
+  return `${slug}`;
 }
 
 function quoteWindowsArgument(value) {
